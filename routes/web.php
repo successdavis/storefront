@@ -1,0 +1,151 @@
+<?php
+
+use App\Http\Controllers\Admin\AdminBrandController;
+use App\Http\Controllers\Admin\AdminCategoryController;
+use App\Http\Controllers\Admin\AdminOrderController;
+use App\Http\Controllers\Admin\AdminProductController;
+use App\Http\Controllers\Admin\AdminProductVariantController;
+use App\Http\Controllers\Admin\AdminSkuController;
+use App\Http\Controllers\Admin\ProductImageController;
+use App\Http\Controllers\Admin\VariantTypeController;
+use App\Http\Controllers\Admin\AdminVariantValueController;
+use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\EmployeeController;
+use App\Http\Controllers\Admin\PosTerminalController;
+use App\Http\Controllers\Admin\SaleController;
+use App\Http\Controllers\Admin\SaleItemController;
+use App\Http\Controllers\Admin\SalePaymentController;
+use App\Http\Controllers\Admin\StockEntryController;
+use App\Http\Controllers\BrandController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\CartItemController;
+use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\OrderController;
+//use App\Http\Controllers\ProductController;
+use App\Http\Controllers\Admin\ProductVariantController;
+use App\Http\Controllers\SearchController;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+
+Route::get('/', function () {
+    return Inertia::render('Welcome');
+})->name('home');
+
+Route::get('dashboard', function () {
+    return Inertia::render('Dashboard');
+})->middleware(['auth', 'verified'])->name('dashboard');
+
+
+// Catalog browsing
+Route::get('/categories', [CategoryController::class, 'index'])->name('categories.index');
+Route::get('/categories/{category}', [CategoryController::class, 'show'])->name('categories.show');
+
+Route::get('/brands', [BrandController::class, 'index'])->name('brands.index');
+Route::get('/brands/{brand}', [BrandController::class, 'show'])->name('brands.show');
+
+
+
+
+// Optional: expose variant detail pages if you show variant-level info
+Route::get('/variants/{product_variant}', [ProductVariantController::class, 'show'])
+    ->name('variants.show');
+
+// Cart
+Route::get('/cart', [CartController::class, 'show'])->name('cart.show');
+//Route::post('/cart/items', [CartItemController::class, 'store'])->name('cart.items.store');             // body: variant_id, quantity
+//Route::patch('/cart/items/{cart_item}', [CartItemController::class, 'update'])->name('cart.items.update'); // body: quantity
+//Route::delete('/cart/items/{cart_item}', [CartItemController::class, 'destroy'])->name('cart.items.destroy');
+Route::delete('/cart/empty', [CartController::class, 'empty'])->name('cart.empty');
+
+// Checkout and orders
+Route::middleware('auth')->group(function () {
+//    Route::get('/checkout', [CheckoutController::class, 'create'])->name('checkout.create');
+//    Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
+
+    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+
+    // Order state transitions suited to your enum
+    Route::patch('/orders/{order}/pay', [OrderController::class, 'markPaid'])->name('orders.pay');
+    Route::patch('/orders/{order}/ship', [OrderController::class, 'markShipped'])->name('orders.ship');
+    Route::patch('/orders/{order}/complete', [OrderController::class, 'markCompleted'])->name('orders.complete');
+    Route::patch('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Admin Dashboard
+|--------------------------------------------------------------------------
+|
+| Protect with your preferred middleware. Example: 'auth' and a gate-backed 'admin'.
+|
+*/
+
+Route::prefix('admin')
+    ->as('admin.')
+    ->middleware(['auth', 'verified'])
+    ->group(function () {
+
+        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+        // Catalog management
+        Route::resource('categories', AdminCategoryController::class)->except(['show']);
+        Route::resource('brands', AdminBrandController::class)->except(['show']);
+        Route::patch('brands/{brand}/toggle-top', [AdminBrandController::class, 'toggleTop'])
+            ->name('brands.toggle-top');
+
+        Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
+        Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');
+        Route::get('/products/{product}/edit', [AdminProductController::class, 'edit'])->name('products.edit');
+        Route::post('/products', [AdminProductController::class, 'store'])->name('products.store');
+        Route::put('/products/{product}', [AdminProductController::class, 'update'])->name('products.update');
+        Route::delete('/products/bulk-delete-products', [AdminProductController::class, 'bulkDestroy'])->name('products.bulk-destroy');
+        Route::delete('/products/{product}', [AdminProductController::class, 'destroy'])->name('products.destroy');
+
+        Route::patch('/bulk-un-published/products', [AdminProductController::class, 'bulkUnpublish'])
+            ->name('products.bulk-un-published');
+        Route::patch('/bulk-published/products', [AdminProductController::class, 'bulkPublish'])
+            ->name('products.bulk-published');
+        Route::patch('/products/{product}/toggle-published', [AdminProductController::class, 'togglePublished'])
+            ->name('products.toggle-published');
+        Route::patch('/products/{product}/toggle-featured', [AdminProductController::class, 'toggleFeatured'])
+            ->name('products.toggle-featured');
+        Route::post('/products/{product}/duplicate', [AdminProductController::class, 'duplicate'])
+            ->name('products.duplicate');
+
+        Route::resource('variant-types', VariantTypeController::class)
+            ->parameters(['variant-types' => 'variantType']);
+//        Route::resource('variant-values', AdminVariantValueController::class)->except(['show']);
+//        Route::resource('product-variants', AdminProductVariantController::class)->except(['show']);
+        Route::get('/skus/check', [AdminSkuController::class, 'check'])->name('admin.skus.check');
+
+
+
+        Route::post('/product/{product}/images', [ProductImageController::class, 'store'])->name('products.images.store');
+
+        // Inventory
+        Route::resource('stock-entries', StockEntryController::class)->only(['index', 'create', 'store', 'show']);
+        Route::get('search-variants', [StockEntryController::class, 'search'])->name('variants.search');
+
+        // Orders
+//        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);
+//        Route::patch('orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
+
+        // POS management
+//        Route::resource('pos-terminals', PosTerminalController::class);
+//        Route::resource('employees', EmployeeController::class);
+
+        // Sales and POS flow
+        Route::resource('sales', SaleController::class)->only(['index', 'create', 'store', 'show']);
+        Route::post('sales/{sale}/finalize', [SaleController::class, 'finalize'])->name('sales.finalize');
+
+        // Nested under a sale
+//        Route::resource('sales.items', SaleItemController::class)->shallow()->only(['store', 'update', 'destroy']);
+//        Route::resource('sales.payments', SalePaymentController::class)->shallow()->only(['store', 'destroy']);
+    });
+
+
+require __DIR__.'/settings.php';
+require __DIR__.'/auth.php';

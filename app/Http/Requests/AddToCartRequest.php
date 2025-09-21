@@ -1,0 +1,17 @@
+<?php
+
+
+namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class AddToCartRequest extends FormRequest
+{
+    public function rules(): array
+    {
+        return [
+            'variant_id' => 'required|exists:product_variants,id',
+            'quantity' => 'required|integer|min:1',
+        ];
+    }
+}
