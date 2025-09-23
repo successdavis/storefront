@@ -43,6 +43,8 @@
         @inertiaHead
     </head>
     <body class="font-sans antialiased">
+        @routes
         @inertia
+        @vite('resources/js/app.ts')
     </body>
 </html>

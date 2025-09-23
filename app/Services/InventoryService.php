@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ProductVariant;
 use App\Models\StockEntry;
 use App\Models\StockLayer;
 use App\Models\StockConsumption;

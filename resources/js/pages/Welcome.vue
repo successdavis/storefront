@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { dashboard, login, register } from '@/routes';
 import { Head, Link } from '@inertiajs/vue3';
+import AuthBase from '@/layouts/AuthLayout.vue'
+</script>
+
+<script lang="ts">
+// 👇 tell Inertia to use AuthBase instead of the global layout
+export default {
+  layout: AuthBase
+}
 </script>
 
 <template>

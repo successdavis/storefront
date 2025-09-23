@@ -94,6 +94,7 @@ class ProductVariant extends Model
         $this->decrement('quantity', $quantity);
     }
 
+
     /**
      * ✅ Generate label text (can be used for barcode/label printing)
      */

@@ -18,6 +18,13 @@ defineProps<{
 }>();
 </script>
 
+<script lang="ts">
+// 👇 tell Inertia to use AuthBase instead of the global layout
+export default {
+  layout: AuthBase
+}
+</script>
+
 <template>
     <AuthBase
         title="Log in to your account"

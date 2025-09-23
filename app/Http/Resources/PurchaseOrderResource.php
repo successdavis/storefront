@@ -1,0 +1,97 @@
+<?php
+namespace App\Http\Resources;
+
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class PurchaseOrderResource extends JsonResource
+{
+    public function toArray($request): array
+    {
+        // $this is a PurchaseOrder model
+        return [
+            'id' => $this->id,
+            'po_number' => $this->po_number,
+            'order_date' => $this->order_date?->toDateString(),
+            'expected_date' => $this->expected_date?->toDateString(),
+            'status' => $this->status,
+            'total_amount' => number_format((float)$this->total_amount, 2, '.', ''),
+            'note' => $this->note,
+            'vendor' => $this->whenLoaded('vendor', function () {
+                return [
+                    'id' => $this->vendor->id,
+                    'name' => $this->vendor->name,
+                    'email' => $this->vendor->email,
+                    'phone' => $this->vendor->phone,
+                    'address' => $this->vendor->address,
+                ];
+            }),
+            'warehouse' => $this->whenLoaded('warehouse', function () {
+                return [
+                    'id' => $this->warehouse->id,
+                    'name' => $this->warehouse->name ?? null,
+                ];
+            }),
+            'items' => $this->whenLoaded('items', function () {
+                return $this->items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'product_variant' => [
+                            'id' => $item->productVariant?->id,
+                            'sku' => $item->productVariant?->sku ?? null,
+                            'title' => $item->productVariant?->display_name ?? $item->productVariant?->name ?? null,
+                            'product' => $item->productVariant?->product?->only(['id','name']) ?? null,
+                        ],
+                        'quantity_ordered' => (int) $item->quantity_ordered,
+                        'quantity_received' => (int) $item->quantity_received,
+                        'remaining_quantity' => (int) max(0, $item->quantity_ordered - $item->quantity_received),
+                        'unit_cost' => number_format((float)$item->unit_cost, 2, '.', ''),
+                        'line_total' => number_format((float)$item->line_total, 2, '.', ''),
+                    ];
+                })->values();
+            }),
+            'item_receipts' => $this->whenLoaded('itemReceipts', function () {
+                return $this->itemReceipts->map(function ($receipt) {
+                    return [
+                        'id' => $receipt->id,
+                        'receipt_number' => $receipt->receipt_number,
+                        'received_date' => $receipt->received_date?->toDateString(),
+                        'status' => $receipt->status,
+                        'items' => $receipt->relationLoaded('items')
+                            ? $receipt->items->map(fn($ri) => [
+                                'id' => $ri->id,
+                                'product_variant_id' => $ri->product_variant_id,
+                                'quantity_received' => (int) $ri->quantity_received,
+                                'unit_cost' => number_format((float)$ri->unit_cost, 2, '.', ''),
+                                'line_total' => number_format((float)$ri->line_total, 2, '.', ''),
+                            ])
+                            : null,
+                    ];
+                })->values();
+            }),
+            'vendor_bills' => $this->whenLoaded('vendorBills', function () {
+                return $this->vendorBills->map(function ($bill) {
+                    $payments = $bill->relationLoaded('payments') ? $bill->payments : $bill->payments()->get();
+                    $paid = (float)$payments->sum('amount');
+                    return [
+                        'id' => $bill->id,
+                        'bill_number' => $bill->bill_number,
+                        'bill_date' => $bill->bill_date?->toDateString(),
+                        'due_date' => $bill->due_date?->toDateString(),
+                        'status' => $bill->status,
+                        'total_amount' => number_format((float)$bill->total_amount, 2, '.', ''),
+                        'paid_amount' => number_format($paid, 2, '.', ''),
+                        'outstanding' => number_format(max(0, (float)$bill->total_amount - $paid), 2, '.', ''),
+                    ];
+                })->values();
+            }),
+            // Helpful computed values
+            'totals' => [
+                'items_sum' => number_format(optional($this->items)->sum('line_total') ?? 0.0, 2, '.', ''),
+                'bills_sum' => number_format(optional($this->vendorBills)->sum('total_amount') ?? 0.0, 2, '.', ''),
+                'outstanding' => number_format($this->outstandingAmount(), 2, '.', ''),
+            ],
+            'created_at' => $this->created_at?->toDateTimeString(),
+            'updated_at' => $this->updated_at?->toDateTimeString(),
+        ];
+    }
+}

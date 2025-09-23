@@ -11,7 +11,7 @@ const search = ref(props.filters?.search ?? '');
 const activeOnly = ref(!!props.filters?.active_only);
 
 watch([search, activeOnly], ([s, a]) => {
-    router.get(route('products.index'), { search: s, active_only: a ? 1 : 0 }, { preserveState: true, replace: true });
+    router.get(route('admin.products.index'), { search: s, active_only: a ? 1 : 0 }, { preserveState: true, replace: true });
 });
 </script>
 
@@ -19,7 +19,7 @@ watch([search, activeOnly], ([s, a]) => {
     <div class="p-6 space-y-4">
         <div class="flex items-center justify-between">
             <h1 class="text-2xl font-semibold">Products</h1>
-            <a :href="route('products.create')" class="px-4 py-2 bg-blue-600 text-white rounded">New Product</a>
+            <a :href="route('admin.products.create')" class="px-4 py-2 bg-blue-600 text-white rounded">New Product</a>
         </div>
 
         <div class="flex gap-3">
@@ -52,7 +52,7 @@ watch([search, activeOnly], ([s, a]) => {
                         <span :class="p.is_active ? 'text-green-700' : 'text-gray-500'">{{ p.is_active ? 'Yes' : 'No' }}</span>
                     </td>
                     <td class="p-3 text-right">
-                        <a :href="route('products.edit', p.id)" class="text-blue-600 hover:underline">Edit</a>
+                        <a :href="route('admin.products.edit', p.id)" class="text-blue-600 hover:underline">Edit</a>
                     </td>
                 </tr>
                 <tr v-if="props.products.data.length === 0">

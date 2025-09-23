@@ -15,13 +15,14 @@ export interface NavItem {
     href: NonNullable<InertiaLinkProps['href']>;
     icon?: LucideIcon;
     isActive?: boolean;
-    subItems?: SubItems[];
 }
 
 export interface MainNavItem {
     title: string;
     icon?: LucideIcon | null;
+    href: string;
     isActive?: boolean;
+    subItems?: SubItems[];
 }
 
 export interface SubItems {

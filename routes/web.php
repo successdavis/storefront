@@ -22,10 +22,13 @@ use App\Http\Controllers\CartController;
 use App\Http\Controllers\CartItemController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\ItemReceiptController;
 use App\Http\Controllers\OrderController;
 //use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Admin\ProductVariantController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\VendorController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -129,6 +132,21 @@ Route::prefix('admin')
         Route::resource('stock-entries', StockEntryController::class)->only(['index', 'create', 'store', 'show']);
         Route::get('search-variants', [StockEntryController::class, 'search'])->name('variants.search');
 
+        Route::get('purchase-order', [PurchaseOrderController::class, 'create'])->name('purchase-orders.create');
+        Route::get('purchase-orders/index', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
+        Route::get('purchase-orders/{purchase_order}/show', [PurchaseOrderController::class, 'show'])
+            ->name('purchase-orders.show');
+        Route::get('purchase-orders/{purchase_order}/edit', [PurchaseOrderController::class, 'show'])
+            ->name('purchase-orders.edit');
+        Route::post('/purchase-orders/store', [PurchaseOrderController::class, 'store'])->name('purchase-orders.store');
+
+
+        Route::get('/item-receipts/create', [PurchaseOrderController::class, 'store'])->name('item-receipts.create');
+        Route::get('/purchase-orders/{purchaseOrder}/receive-items', [ItemReceiptController::class, 'store'])->name('item-receipts.store');
+
+        Route::post('/vendors/store', [VendorController::class, 'store'])->name('vendors.store');
+        Route::get('/vendors-bills/create', [VendorController::class, 'store'])->name('vendor-bills.create');
+
         // Orders
 //        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);
 //        Route::patch('orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
@@ -140,6 +158,7 @@ Route::prefix('admin')
         // Sales and POS flow
         Route::resource('sales', SaleController::class)->only(['index', 'create', 'store', 'show']);
         Route::post('sales/{sale}/finalize', [SaleController::class, 'finalize'])->name('sales.finalize');
+
 
         // Nested under a sale
 //        Route::resource('sales.items', SaleItemController::class)->shallow()->only(['store', 'update', 'destroy']);

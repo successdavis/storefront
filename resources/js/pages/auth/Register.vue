@@ -11,6 +11,13 @@ import { Form, Head } from '@inertiajs/vue3';
 import { LoaderCircle } from 'lucide-vue-next';
 </script>
 
+<script lang="ts">
+// 👇 tell Inertia to use AuthBase instead of the global layout
+export default {
+  layout: AuthBase
+}
+</script>
+
 <template>
     <AuthBase
         title="Create an account"
