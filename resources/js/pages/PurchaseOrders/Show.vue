@@ -48,7 +48,10 @@
 
                 <Link
                     :href="
-                        route('admin.purchase-orders.show', purchaseOrder.data.id)
+                        route(
+                            'admin.purchase-orders.show',
+                            purchaseOrder.data.id,
+                        )
                     "
                     class="hidden"
                 />
@@ -72,7 +75,7 @@
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <!-- Items list / main -->
             <section class="space-y-4 lg:col-span-2">
-                <div class="rounded-lg bg-white p-4 shadow sm:p-6">
+                <div class="rounded-lg bg-white just p-4 shadow sm:p-6">
                     <h2 class="mb-3 text-lg font-medium">Items</h2>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -220,7 +223,7 @@
                                                 :key="ri.id"
                                             >
                                                 <td class="py-1 text-sm">
-                                                    {{ ri.product_variant_id }}
+                                                    {{ ri.sku }}
                                                 </td>
                                                 <td class="py-1 text-right">
                                                     {{ ri.quantity_received }}
@@ -323,30 +326,31 @@
                     </dl>
 
                     <div class="mt-4 space-y-2">
-                        <Button
-                            as="a"
-                            class="w-full"
-                            :href="
-                                route('admin.item-receipts.create', {
-                                    purchase_order: purchaseOrder.data.id,
-                                })
-                            "
+                        <Button class="w-full" @click="showReceive = true"
+                            >Receive Items</Button
                         >
-                            Receive Items
-                        </Button>
                         <Button
-                            as="a"
                             variant="outline"
                             class="w-full"
-                            :href="
-                                route('admin.vendor-bills.create', {
-                                    purchase_order: purchaseOrder.data.id,
-                                })
-                            "
+                            @click="showBill = true"
+                            >Create Bill</Button
                         >
-                            Create Bill
-                        </Button>
                     </div>
+
+                    <!-- Modals -->
+                    <ReceiveItemsModal
+                        :open="showReceive"
+                        :order="purchaseOrder.data"
+                        :warehouses="warehouses"
+                        @close="showReceive = false"
+                        @success="refreshPage"
+                    />
+                    <CreateBillModal
+                        :open="showBill"
+                        :order-id="purchaseOrder.data.id"
+                        @close="showBill = false"
+                        @success="refreshPage"
+                    />
                 </div>
 
                 <div class="rounded-lg bg-white p-4 shadow sm:p-6">
@@ -387,14 +391,29 @@
 <!--</template>-->
 
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
-import { defineProps } from 'vue';
+
+import ReceiveItemsModal from '@/components/purchase-orders/ReceiveItemsModal.vue';
+import CreateBillModal from '@/components/purchase-orders/CreateBillModal.vue';
+
+import { defineProps, ref } from 'vue';
 
 type PurchaseOrder = any; // you can replace `any` with a stricter interface if desired
 
-const props = defineProps<{ purchaseOrder: PurchaseOrder }>();
+const props = defineProps<{
+    purchaseOrder: PurchaseOrder;
+    warehouses: Object;
+}>();
 const purchaseOrder = props.purchaseOrder;
+
+const showReceive = ref(false);
+const showBill = ref(false);
+
+function refreshPage() {
+    // after success we refresh data to show new receipts/bills
+    router.reload({ only: ['purchaseOrder'] });
+}
 
 function formatCurrency(value: number | string | null) {
     const v = Number(value ?? 0);

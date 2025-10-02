@@ -27,4 +27,9 @@ class ItemReceiptItem extends Model
     {
         return $this->belongsTo(ItemReceipt::class);
     }
+
+    public function productVariant(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class);
+    }
 }

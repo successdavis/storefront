@@ -55,37 +55,22 @@ const mainNavItems: MainNavItem[] = [
         ]
     },
     {
-        title: 'Vendors',
+        title: 'Purchase Orders',
         icon: Store,
         subItems: [
             {
-                title: 'Purchase Order',
+                title: 'Create PO',
                 href: '/admin/purchase-order',
                 icon: ''
             },
             {
-                title: 'Receive Inventory + bill',
-                href: '/admin/products/create',
+                title: 'PO List',
+                href: '/admin/purchase-orders/index',
                 icon: ''
             },
             {
-                title: 'Receive Inventory only',
-                href: '/admin/categories',
-                icon: ''
-            },
-            {
-                title: 'Inventory Bill', // same as Enter bills against Inventory on quick books
-                href: '/admin/brands',
-                icon: ''
-            },
-            {
-                title: 'Log Expense', // same as Enter Bills on the quickbook platform.
-                href: '/admin/variant-types',
-                icon: ''
-            },
-            {
-                title: 'Pay Bills',
-                href: '/admin/variant-types',
+                title: 'Stock Entries',
+                href: '/admin/stock-entries',
                 icon: ''
             },
         ]

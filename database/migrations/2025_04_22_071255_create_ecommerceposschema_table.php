@@ -165,30 +165,42 @@ return new class extends Migration
         Schema::create('product_variants', function (Blueprint $table) {
             $table->id();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+
             $table->string('sku');
-            $table->integer('quantity')->default(0);
             $table->string('barcode')->nullable()->unique();
-            $table->decimal('cost_price', 10, 2)->nullable();       // purchase cost
-            $table->decimal('regular_price', 10, 2);          // base sell price
-            $table->decimal('sale_price', 10, 2)->nullable(); // optional sale
+
+            // Inventory tracking
+            $table->integer('quantity_on_hand')->default(0); // physical stock
+            $table->integer('reserved')->default(0);
+            $table->integer('available')->virtualAs('GREATEST(quantity_on_hand - reserved, 0)');
+
+            // Cost tracking
+            $table->decimal('total_cost_on_hand', 15, 4)->default(0); // value of stock
+            $table->decimal('average_cost', 15, 4)->default(0);       // WAC
+            $table->decimal('last_purchase_price', 15, 4)->nullable(); // vendor's last bill
+
+            // Selling prices
+            $table->decimal('regular_price', 10, 2);
+            $table->decimal('sale_price', 10, 2)->nullable();
             $table->timestamp('sale_starts_at')->nullable();
             $table->timestamp('sale_ends_at')->nullable();
-            $table->integer('reserved')->default(0);
-            $table->integer('available')->virtualAs('GREATEST(quantity - reserved, 0)');
-            $table->decimal('weight', 10, 3)->nullable();  // kg
-            $table->decimal('length', 10, 2)->nullable();  // cm
-            $table->decimal('width', 10, 2)->nullable();   // cm
-            $table->decimal('height', 10, 2)->nullable();  // cm
+
+            // Product metadata
+            $table->decimal('weight', 10, 3)->nullable();
+            $table->decimal('length', 10, 2)->nullable();
+            $table->decimal('width', 10, 2)->nullable();
+            $table->decimal('height', 10, 2)->nullable();
             $table->boolean('track_inventory')->default(true);
             $table->integer('reorder_point')->default(0);
+
             $table->softDeletes();
             $table->timestamps();
 
             $table->index(['product_id']);
             $table->index(['regular_price']);
-
             $table->unique(['sku', 'deleted_at'], 'product_variants_sku_deleted_at_unique');
         });
+
 
         Schema::create('product_variant_values', function (Blueprint $table) {
             $table->id();
@@ -367,44 +379,44 @@ return new class extends Migration
             $table->index(['warehouse_id','variant_id']);
         });
 
-        Schema::create('stock_layers', function (Blueprint $table) {
-            $table->id();
-
-            $table->foreignId('variant_id')
-                ->constrained('product_variants')
-                ->cascadeOnDelete();
-
-            $table->integer('qty_remaining');              // Units left in this layer
-            $table->decimal('unit_cost', 10, 2);          // Cost per unit for FIFO COGS
-            $table->foreignId('stock_entry_id')           // Link back to original stock_in entry
-            ->constrained('stock_entries')
-                ->cascadeOnDelete();
-
-            $table->nullableMorphs('source');              // Optional link to PO, shipment, supplier, etc.
-            $table->timestamps();
-
-            $table->index(['variant_id']);
-            $table->index(['stock_entry_id']);
-        });
-
-        Schema::create('stock_consumptions', function (Blueprint $table) {
-            $table->id();
-
-            $table->foreignId('stock_entry_id')           // Link to the stock_out entry
-            ->constrained('stock_entries')
-                ->cascadeOnDelete();
-
-            $table->foreignId('stock_layer_id')           // The layer from which stock is consumed
-            ->constrained('stock_layers')
-                ->cascadeOnDelete();
-
-            $table->integer('quantity');                  // Number of units taken from this layer
-            $table->decimal('unit_cost', 10, 2);         // Cost at which this stock was consumed
-            $table->timestamps();
-
-            $table->index(['stock_entry_id']);
-            $table->index(['stock_layer_id']);
-        });
+//        Schema::create('stock_layers', function (Blueprint $table) {
+//            $table->id();
+//
+//            $table->foreignId('variant_id')
+//                ->constrained('product_variants')
+//                ->cascadeOnDelete();
+//
+//            $table->integer('qty_remaining');              // Units left in this layer
+//            $table->decimal('unit_cost', 10, 2);          // Cost per unit for FIFO COGS
+//            $table->foreignId('stock_entry_id')           // Link back to original stock_in entry
+//            ->constrained('stock_entries')
+//                ->cascadeOnDelete();
+//
+//            $table->nullableMorphs('source');              // Optional link to PO, shipment, supplier, etc.
+//            $table->timestamps();
+//
+//            $table->index(['variant_id']);
+//            $table->index(['stock_entry_id']);
+//        });
+//
+//        Schema::create('stock_consumptions', function (Blueprint $table) {
+//            $table->id();
+//
+//            $table->foreignId('stock_entry_id')           // Link to the stock_out entry
+//            ->constrained('stock_entries')
+//                ->cascadeOnDelete();
+//
+//            $table->foreignId('stock_layer_id')           // The layer from which stock is consumed
+//            ->constrained('stock_layers')
+//                ->cascadeOnDelete();
+//
+//            $table->integer('quantity');                  // Number of units taken from this layer
+//            $table->decimal('unit_cost', 10, 2);         // Cost at which this stock was consumed
+//            $table->timestamps();
+//
+//            $table->index(['stock_entry_id']);
+//            $table->index(['stock_layer_id']);
+//        });
 
         Schema::create('bulk_prices', function (Blueprint $table) {
             $table->id();

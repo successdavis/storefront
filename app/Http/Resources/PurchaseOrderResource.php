@@ -1,6 +1,7 @@
 <?php
 namespace App\Http\Resources;
 
+use Carbon\Carbon;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class PurchaseOrderResource extends JsonResource
@@ -54,11 +55,14 @@ class PurchaseOrderResource extends JsonResource
                     return [
                         'id' => $receipt->id,
                         'receipt_number' => $receipt->receipt_number,
-                        'received_date' => $receipt->received_date?->toDateString(),
+                        'received_date' => $receipt->received_date
+                            ? Carbon::parse($receipt->received_date)->format('d M Y')
+                            : null,
                         'status' => $receipt->status,
                         'items' => $receipt->relationLoaded('items')
                             ? $receipt->items->map(fn($ri) => [
                                 'id' => $ri->id,
+                                'sku' => $ri->productVariant?->sku ?? null,
                                 'product_variant_id' => $ri->product_variant_id,
                                 'quantity_received' => (int) $ri->quantity_received,
                                 'unit_cost' => number_format((float)$ri->unit_cost, 2, '.', ''),
@@ -75,8 +79,13 @@ class PurchaseOrderResource extends JsonResource
                     return [
                         'id' => $bill->id,
                         'bill_number' => $bill->bill_number,
-                        'bill_date' => $bill->bill_date?->toDateString(),
-                        'due_date' => $bill->due_date?->toDateString(),
+                        'bill_date' => $bill->bill_date
+                            ? Carbon::parse($bill->bill_date)->format('d M Y')
+                            : null,
+
+                        'due_date'  => $bill->due_date
+                            ? Carbon::parse($bill->due_date)->format('d M Y')
+                            : null,
                         'status' => $bill->status,
                         'total_amount' => number_format((float)$bill->total_amount, 2, '.', ''),
                         'paid_amount' => number_format($paid, 2, '.', ''),

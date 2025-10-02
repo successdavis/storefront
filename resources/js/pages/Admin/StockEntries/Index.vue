@@ -99,7 +99,7 @@ watch([search, type, warehouseId, employeeId, fromDate, toDate], refresh)
             <th class="px-4 py-2 text-right">Qty</th>
             <th class="px-4 py-2 text-right">Unit Cost</th>
             <th class="px-4 py-2 text-right">Total</th>
-            <th class="px-4 py-2 text-left">Employee</th>
+            <th class="px-4 py-2 text-left">Source</th>
             <th class="px-4 py-2">Actions</th>
           </tr>
         </thead>
@@ -118,7 +118,7 @@ watch([search, type, warehouseId, employeeId, fromDate, toDate], refresh)
             <td class="px-4 py-2 text-right">{{ entry.quantity }}</td>
             <td class="px-4 py-2 text-right">{{ entry.unit_cost }}</td>
             <td class="px-4 py-2 text-right">{{ entry.total_cost }}</td>
-            <td class="px-4 py-2">{{ entry.employee?.name ?? '—' }}</td>
+            <td class="px-4 py-2">{{ entry.reason }}</td>
             <td class="px-4 py-2 text-center">
               <Link :href="route('admin.stock-entries.show', entry.id)" class="text-indigo-600 hover:underline">
                 View

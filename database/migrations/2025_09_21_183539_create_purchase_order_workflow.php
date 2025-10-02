@@ -109,14 +109,48 @@ return new class extends Migration {
 
         Schema::create('vendor_bill_items', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('vendor_bill_id')->constrained();
-            $table->foreignId('product_id')->nullable();   // null for service/charge
+            $table->foreignId('vendor_bill_id')
+                ->constrained()
+                ->cascadeOnDelete();
+            $table->foreignId('product_id')->nullable()->constrained();
+            $table->foreignId('product_variant_id')->nullable()->constrained();
+            $table->foreignId('purchase_order_item_id')->nullable()->constrained()->nullOnDelete();
             $table->string('description');
-            $table->decimal('quantity', 12, 2)->default(1);
-            $table->decimal('unit_cost', 10, 2);
+            $table->decimal('quantity', 18, 4)->default(1);
+            $table->decimal('unit_cost', 18, 4);
+            $table->decimal('discount_amount', 18, 4)->default(0);
             $table->enum('type', ['product','service','freight','duty','misc'])->default('product');
             $table->timestamps();
+            $table->index(['vendor_bill_id','product_id']);
         });
+
+        Schema::create('purchase_price_variances', function (Blueprint $table) {
+            $table->id();
+
+            // Links back to financial side
+            $table->foreignId('vendor_bill_item_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
+            // Links back to operational side (optional if bill doesn't match receipts exactly)
+            $table->foreignId('item_receipt_item_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->foreignId('product_variant_id')->constrained();
+
+            $table->decimal('quantity', 18, 4);
+            $table->decimal('unit_cost_received', 18, 4);
+            $table->decimal('unit_cost_billed', 18, 4);
+            $table->decimal('variance_amount', 18, 4); // (billed - received) * qty
+
+            $table->timestamps();
+
+            $table->index(['product_variant_id']);
+            $table->index(['vendor_bill_item_id']);
+        });
+
 
         /**
          * PAYMENTS to vendor

@@ -196,6 +196,7 @@ class PurchaseOrderService
             throw ValidationException::withMessages(['receipt' => 'Invalid receipt payload']);
         }
 
+
         return DB::transaction(function () use ($po, $payload) {
             // idempotency
             $existing = ItemReceipt::where('receipt_number', $payload['receipt_number'])->first();
@@ -223,7 +224,8 @@ class PurchaseOrderService
                 $unitCost  = (float)$rItem['unit_cost'];
 
                 if ($qty <= 0) {
-                    throw ValidationException::withMessages(['items' => 'quantity_received must be > 0']);
+                    continue;
+//                    throw ValidationException::withMessages(['items' => 'quantity_received must be > 0']);
                 }
 
                 // Validate and update PO item quantities

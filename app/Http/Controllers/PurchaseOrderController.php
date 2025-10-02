@@ -112,6 +112,7 @@ class PurchaseOrderController extends Controller
 
         return Inertia::render('PurchaseOrders/Show', [
             'purchaseOrder' => new PurchaseOrderResource($purchase_order),
+            'warehouses'    => Warehouse::select('id','name')->get(),
         ]);
     }
 
@@ -137,5 +138,83 @@ class PurchaseOrderController extends Controller
     {
         $this->service->close($purchaseOrder);
         return back()->with('success','Purchase order closed.');
+    }
+
+    public function itemReceiptsForBilling(PurchaseOrder $purchase_order)
+    {
+        // load items, receipts and vendor bills
+        $purchase_order->load(['items.productVariant', 'itemReceipts.items', 'vendorBills.items']);
+
+        // compute billed quantities per product_variant_id for this PO
+        $billedByVariant = [];
+        foreach ($purchase_order->vendorBills as $bill) {
+            foreach ($bill->items as $bi) {
+                $pv = $bi->product_variant_id;
+                if (!$pv) continue;
+                $billedByVariant[$pv] = ($billedByVariant[$pv] ?? 0) + (float)$bi->quantity;
+            }
+        }
+
+        // compute received (sum of item_receipt_items grouped by purchase_order_item_id or product_variant)
+        $receivedByPOItem = [];
+        foreach ($purchase_order->itemReceipts as $r) {
+            foreach ($r->items as $ri) {
+                // prefer purchase_order_item_id if available
+                if ($ri->purchase_order_item_id) {
+                    $receivedByPOItem[$ri->purchase_order_item_id] = ($receivedByPOItem[$ri->purchase_order_item_id] ?? 0) + (float)$ri->quantity_received;
+                } else {
+                    // fallback group by variant for calculation convenience
+                    $receivedByPOItem['variant_'.$ri->product_variant_id] = ($receivedByPOItem['variant_'.$ri->product_variant_id] ?? 0) + (float)$ri->quantity_received;
+                }
+            }
+        }
+
+        $items = [];
+        foreach ($purchase_order->items as $poItem) {
+            $variantId = $poItem->product_variant_id;
+            $ordered = (int)$poItem->quantity_ordered;
+            $received = (int)($poItem->quantity_received ?? ($receivedByPOItem[$poItem->id] ?? 0)); // migration already tracks quantity_received
+            $billed = (float)($billedByVariant[$variantId] ?? 0);
+            $remaining_ordered = max(0, $ordered - $billed);
+            $billable_received = max(0, min($received - $billed, $remaining_ordered));
+            $billable_unreceived = max(0, $remaining_ordered - $billable_received);
+
+            $items[] = [
+                'purchase_order_item_id' => $poItem->id,
+                'product_variant_id' => $variantId,
+                'sku' => optional($poItem->productVariant)->sku,
+                'title' => optional($poItem->productVariant)->title,
+                'ordered' => $ordered,
+                'received' => $received,
+                'billed' => $billed,
+                'remaining_ordered' => $remaining_ordered,
+                'billable_received' => $billable_received,
+                'billable_unreceived' => $billable_unreceived,
+                'unit_cost' => (float)$poItem->unit_cost,
+                'line_total' => (float)$poItem->line_total,
+            ];
+        }
+
+        // check if PO partially received (some items received but not all)
+        $totalOrdered = 0;
+        $totalReceived = 0;
+        foreach ($purchase_order->items as $i) {
+            $totalOrdered += $i->quantity_ordered;
+            $totalReceived += $i->quantity_received;
+        }
+        $partialMessage = null;
+        if ($totalReceived > 0 && $totalReceived < $totalOrdered) {
+            $partialMessage = 'Part of these goods have been received. You may create a bill for received items only, or include unreceived items explicitly.';
+        }
+
+        return response()->json([
+            'purchase_order' => [
+                'id' => $purchase_order->id,
+                'po_number' => $purchase_order->po_number,
+                'vendor_id' => $purchase_order->vendor_id,
+            ],
+            'items' => $items,
+            'partial_message' => $partialMessage,
+        ]);
     }
 }

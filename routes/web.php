@@ -28,7 +28,9 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\Admin\ProductVariantController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
+use App\Http\Controllers\VendorPaymentController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -142,10 +144,18 @@ Route::prefix('admin')
 
 
         Route::get('/item-receipts/create', [PurchaseOrderController::class, 'store'])->name('item-receipts.create');
-        Route::get('/purchase-orders/{purchaseOrder}/receive-items', [ItemReceiptController::class, 'store'])->name('item-receipts.store');
+        Route::post('/purchase-orders/{purchaseOrder}/receive-items', [ItemReceiptController::class, 'store'])->name('item-receipts.store');
 
         Route::post('/vendors/store', [VendorController::class, 'store'])->name('vendors.store');
         Route::get('/vendors-bills/create', [VendorController::class, 'store'])->name('vendor-bills.create');
+
+        Route::resource('vendor-bills', VendorBillController::class)->except('store');
+        Route::post('vendor-bills/store', [VendorBillController::class, 'store'])->name('vendor-bills.store');
+        Route::post('vendor-bills/{vendorBill}/payments', [VendorPaymentController::class,'store'])
+            ->name('vendor-payments.store');
+
+        Route::get('purchase-orders/{purchase_order}/item-receipts-for-billing', [PurchaseOrderController::class, 'itemReceiptsForBilling'])
+            ->name('purchase-orders.item-receipts-for-billing');
 
         // Orders
 //        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);
