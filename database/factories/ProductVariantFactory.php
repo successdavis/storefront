@@ -43,7 +43,7 @@ class ProductVariantFactory extends Factory
             'product_id'     => null,
 
             'sku'            => Str::upper('SKU-' . $this->faker->bothify('??###') . '-' . Str::random(4)),
-            'quantity_on_hand'       => $this->faker->numberBetween(0, 120),
+            'quantity'       => $this->faker->numberBetween(0, 120),
 
             // Not unique in schema; make it nullable to avoid exhaustion during big seeds
             'barcode'        => $this->faker->boolean(70) ? $this->faker->ean13() : null,

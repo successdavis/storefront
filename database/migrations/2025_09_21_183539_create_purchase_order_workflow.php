@@ -151,17 +151,42 @@ return new class extends Migration {
             $table->index(['vendor_bill_item_id']);
         });
 
-
-        /**
-         * PAYMENTS to vendor
-         */
-        Schema::create('vendor_payments', function (Blueprint $table) {
+        Schema::create('inventory_cost_adjustments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('vendor_bill_id')->constrained()->cascadeOnDelete();
-            $table->date('payment_date');
-            $table->string('payment_method')->nullable();
-            $table->decimal('amount', 15, 2);
+
+            // Link to specific product variant
+            $table->foreignId('product_variant_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
+            // Optional: link to bill and PO for traceability
+            $table->foreignId('vendor_bill_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->foreignId('purchase_order_item_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            // Adjustment details
+            $table->decimal('quantity', 15, 4)->default(0); // qty affected
+            $table->decimal('old_unit_cost', 15, 4);        // cost at receiving
+            $table->decimal('new_unit_cost', 15, 4);        // cost from bill
+            $table->decimal('difference_per_unit', 15, 4);  // new - old
+            $table->decimal('total_adjustment', 18, 4);     // difference * qty
+
+            // Accounting side (clearing account reference)
+            $table->string('clearing_account')->nullable(); // e.g., "GRNI Clearing"
+
+            $table->text('notes')->nullable();
+
             $table->timestamps();
+
+            // Indexes
+            $table->index(['product_variant_id']);
+            $table->index(['vendor_bill_id']);
         });
     }
 
@@ -175,5 +200,7 @@ return new class extends Migration {
         Schema::dropIfExists('purchase_order_items');
         Schema::dropIfExists('purchase_orders');
         Schema::dropIfExists('vendors');
+        Schema::dropIfExists('inventory_cost_adjustments');
+
     }
 };

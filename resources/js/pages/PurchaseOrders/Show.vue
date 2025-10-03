@@ -10,12 +10,12 @@
                 <p class="text-sm text-muted-foreground">
                     Vendor:
                     <span class="font-medium">{{
-                        purchaseOrder.data.vendor?.name ?? '—'
-                    }}</span>
+                            purchaseOrder.data.vendor?.name ?? '—'
+                        }}</span>
                     • Warehouse:
                     <span class="font-medium">{{
-                        purchaseOrder.data.warehouse?.name ?? '—'
-                    }}</span>
+                            purchaseOrder.data.warehouse?.name ?? '—'
+                        }}</span>
                 </p>
                 <p class="mt-1 text-sm text-muted-foreground">
                     Ordered: {{ formatDate(purchaseOrder.data.order_date) }}
@@ -80,89 +80,89 @@
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
-                                <tr>
-                                    <th
-                                        class="px-4 py-2 text-left text-sm font-medium text-gray-500"
-                                    >
-                                        SKU / Title
-                                    </th>
-                                    <th
-                                        class="px-4 py-2 text-right text-sm font-medium text-gray-500"
-                                    >
-                                        Ordered
-                                    </th>
-                                    <th
-                                        class="px-4 py-2 text-right text-sm font-medium text-gray-500"
-                                    >
-                                        Received
-                                    </th>
-                                    <th
-                                        class="px-4 py-2 text-right text-sm font-medium text-gray-500"
-                                    >
-                                        Remaining
-                                    </th>
-                                    <th
-                                        class="px-4 py-2 text-right text-sm font-medium text-gray-500"
-                                    >
-                                        Unit
-                                    </th>
-                                    <th
-                                        class="px-4 py-2 text-right text-sm font-medium text-gray-500"
-                                    >
-                                        Line total
-                                    </th>
-                                </tr>
+                            <tr>
+                                <th
+                                    class="px-4 py-2 text-left text-sm font-medium text-gray-500"
+                                >
+                                    SKU / Title
+                                </th>
+                                <th
+                                    class="px-4 py-2 text-right text-sm font-medium text-gray-500"
+                                >
+                                    Ordered
+                                </th>
+                                <th
+                                    class="px-4 py-2 text-right text-sm font-medium text-gray-500"
+                                >
+                                    Received
+                                </th>
+                                <th
+                                    class="px-4 py-2 text-right text-sm font-medium text-gray-500"
+                                >
+                                    Remaining
+                                </th>
+                                <th
+                                    class="px-4 py-2 text-right text-sm font-medium text-gray-500"
+                                >
+                                    Unit
+                                </th>
+                                <th
+                                    class="px-4 py-2 text-right text-sm font-medium text-gray-500"
+                                >
+                                    Line total
+                                </th>
+                            </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100 bg-white">
-                                <tr
-                                    v-for="item in purchaseOrder.data.items"
-                                    :key="item.id"
-                                >
-                                    <td class="px-4 py-3">
-                                        <div class="text-sm font-medium">
-                                            {{
-                                                item.product_variant?.title ||
-                                                '—'
-                                            }}
-                                        </div>
-                                        <div
-                                            class="text-xs text-muted-foreground"
-                                        >
-                                            {{
-                                                item.product_variant?.sku || '—'
-                                            }}
-                                        </div>
-                                    </td>
-                                    <td class="px-4 py-3 text-right text-sm">
-                                        {{ item.quantity_ordered }}
-                                    </td>
-                                    <td class="px-4 py-3 text-right text-sm">
-                                        {{ item.quantity_received }}
-                                    </td>
-                                    <td class="px-4 py-3 text-right text-sm">
-                                        {{ item.remaining_quantity }}
-                                    </td>
-                                    <td class="px-4 py-3 text-right text-sm">
-                                        {{ formatCurrency(item.unit_cost) }}
-                                    </td>
-                                    <td
-                                        class="px-4 py-3 text-right text-sm font-medium"
+                            <tr
+                                v-for="item in purchaseOrder.data.items"
+                                :key="item.id"
+                            >
+                                <td class="px-4 py-3">
+                                    <div class="text-sm font-medium">
+                                        {{
+                                            item.product_variant?.title ||
+                                            '—'
+                                        }}
+                                    </div>
+                                    <div
+                                        class="text-xs text-muted-foreground"
                                     >
-                                        {{ formatCurrency(item.line_total) }}
-                                    </td>
-                                </tr>
-                                <tr
-                                    v-if="
+                                        {{
+                                            item.product_variant?.sku || '—'
+                                        }}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3 text-right text-sm">
+                                    {{ item.quantity_ordered }}
+                                </td>
+                                <td class="px-4 py-3 text-right text-sm">
+                                    {{ item.quantity_received }}
+                                </td>
+                                <td class="px-4 py-3 text-right text-sm">
+                                    {{ item.remaining_quantity }}
+                                </td>
+                                <td class="px-4 py-3 text-right text-sm">
+                                    {{ formatCurrency(item.unit_cost) }}
+                                </td>
+                                <td
+                                    class="px-4 py-3 text-right text-sm font-medium"
+                                >
+                                    {{ formatCurrency(item.line_total) }}
+                                </td>
+                            </tr>
+                            <tr
+                                v-if="
                                         (purchaseOrder.items || []).length === 0
                                     "
+                            >
+                                <td
+                                    colspan="6"
+                                    class="px-4 py-6 text-center text-sm text-muted-foreground"
                                 >
-                                    <td
-                                        colspan="6"
-                                        class="px-4 py-6 text-center text-sm text-muted-foreground"
-                                    >
-                                        No items on this PO.
-                                    </td>
-                                </tr>
+                                    No items on this PO.
+                                </td>
+                            </tr>
                             </tbody>
                         </table>
                     </div>
@@ -207,35 +207,35 @@
                                 <div class="mt-3">
                                     <table class="w-full text-sm">
                                         <thead>
-                                            <tr
-                                                class="text-xs text-muted-foreground"
-                                            >
-                                                <th class="text-left">SKU</th>
-                                                <th class="text-right">Qty</th>
-                                                <th class="text-right">
-                                                    Line total
-                                                </th>
-                                            </tr>
+                                        <tr
+                                            class="text-xs text-muted-foreground"
+                                        >
+                                            <th class="text-left">SKU</th>
+                                            <th class="text-right">Qty</th>
+                                            <th class="text-right">
+                                                Line total
+                                            </th>
+                                        </tr>
                                         </thead>
                                         <tbody>
-                                            <tr
-                                                v-for="ri in r.items"
-                                                :key="ri.id"
-                                            >
-                                                <td class="py-1 text-sm">
-                                                    {{ ri.sku }}
-                                                </td>
-                                                <td class="py-1 text-right">
-                                                    {{ ri.quantity_received }}
-                                                </td>
-                                                <td class="py-1 text-right">
-                                                    {{
-                                                        formatCurrency(
-                                                            ri.line_total,
-                                                        )
-                                                    }}
-                                                </td>
-                                            </tr>
+                                        <tr
+                                            v-for="ri in r.items"
+                                            :key="ri.id"
+                                        >
+                                            <td class="py-1 text-sm">
+                                                {{ ri.sku }}
+                                            </td>
+                                            <td class="py-1 text-right">
+                                                {{ ri.quantity_received }}
+                                            </td>
+                                            <td class="py-1 text-right">
+                                                {{
+                                                    formatCurrency(
+                                                        ri.line_total,
+                                                    )
+                                                }}
+                                            </td>
+                                        </tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -327,14 +327,21 @@
 
                     <div class="mt-4 space-y-2">
                         <Button class="w-full" @click="showReceive = true"
-                            >Receive Items</Button
+                        >Receive Items</Button
                         >
                         <Button
                             variant="outline"
                             class="w-full"
                             @click="showBill = true"
-                            >Create Bill</Button
+                        >Create Bill</Button
                         >
+                        <Button
+                            variant="outline"
+                            class="w-full"
+                            @click="showPayBill = true"
+                        >
+                            Pay Bill
+                        </Button>
                     </div>
 
                     <!-- Modals -->
@@ -351,6 +358,13 @@
                         @close="showBill = false"
                         @success="refreshPage"
                     />
+                    <PayBillModal
+                        :open="showPayBill"
+                        :order-id="purchaseOrder.data.id"
+                        @close="showPayBill = false"
+                        @success="refreshPage"
+                    />
+
                 </div>
 
                 <div class="rounded-lg bg-white p-4 shadow sm:p-6">
@@ -398,6 +412,7 @@ import ReceiveItemsModal from '@/components/purchase-orders/ReceiveItemsModal.vu
 import CreateBillModal from '@/components/purchase-orders/CreateBillModal.vue';
 
 import { defineProps, ref } from 'vue';
+import PayBillModal from '@/components/PayBillModal.vue';
 
 type PurchaseOrder = any; // you can replace `any` with a stricter interface if desired
 
@@ -409,6 +424,7 @@ const purchaseOrder = props.purchaseOrder;
 
 const showReceive = ref(false);
 const showBill = ref(false);
+const showPayBill = ref(false); //
 
 function refreshPage() {
     // after success we refresh data to show new receipts/bills

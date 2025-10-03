@@ -170,9 +170,9 @@ return new class extends Migration
             $table->string('barcode')->nullable()->unique();
 
             // Inventory tracking
-            $table->integer('quantity_on_hand')->default(0); // physical stock
+            $table->integer('quantity')->default(0); // quantity_on_hand physical stock
             $table->integer('reserved')->default(0);
-            $table->integer('available')->virtualAs('GREATEST(quantity_on_hand - reserved, 0)');
+            $table->integer('available')->virtualAs('GREATEST(quantity - reserved, 0)');
 
             // Cost tracking
             $table->decimal('total_cost_on_hand', 15, 4)->default(0); // value of stock
@@ -200,7 +200,6 @@ return new class extends Migration
             $table->index(['regular_price']);
             $table->unique(['sku', 'deleted_at'], 'product_variants_sku_deleted_at_unique');
         });
-
 
         Schema::create('product_variant_values', function (Blueprint $table) {
             $table->id();
@@ -347,15 +346,6 @@ return new class extends Migration
 
         });
 
-        Schema::create('sale_payments', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('sale_id')->constrained()->cascadeOnDelete();
-            $table->enum('method', ['cash', 'card', 'transfer']);
-            $table->decimal('amount', 10, 2);
-            $table->timestamps();
-
-        });
-
         Schema::create('stock_entries', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('warehouse_id')->nullable()->index();
@@ -377,6 +367,68 @@ return new class extends Migration
             // Useful indexes for performance
             $table->index(['variant_id','effective_at']);
             $table->index(['warehouse_id','variant_id']);
+        });
+
+        Schema::create('bulk_prices', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('product_variant_id')->nullable()->constrained()->cascadeOnDelete();
+
+            // quantity threshold for this tier
+            $table->unsignedInteger('min_qty');
+
+            // the unit price when threshold is met
+            $table->decimal('unit_price', 10, 2);
+
+            // optional validity window
+            $table->timestamp('starts_at')->nullable();
+            $table->timestamp('ends_at')->nullable();
+
+            $table->timestamps();
+
+            $table->index(['product_id','min_qty']);
+            $table->index(['product_variant_id','min_qty']);
+
+            // prevent both product_id and product_variant_id being null
+            // and prevent both being set at once
+        });
+
+        Schema::create('slug_histories', function (Blueprint $table) {
+            $table->id();
+            $table->morphs('sluggable');             // sluggable_type, sluggable_id
+            $table->string('slug', 160)->unique();   // old slug
+            $table->string('locale', 8)->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('payments', function (Blueprint $table) {
+            $table->id();
+
+            // Polymorphic owner: could be Order, Sale, VendorBill, Invoice, Subscription, etc.
+            $table->morphs('payable'); // payable_type, payable_id
+
+            // Direction of money
+            $table->enum('type', ['inflow', 'outflow']);
+            // inflow = customer payment (order, sale)
+            // outflow = vendor/supplier payment, refund, expense
+
+            // Payment info
+            $table->enum('method', [
+                'cash', 'card', 'transfer', 'wallet', 'paypal', 'stripe', 'cheque'
+            ]);
+            $table->decimal('amount', 15, 2);
+            $table->string('currency', 3)->default('NGN');
+
+            // Gateway / bank tracking
+            $table->string('transaction_reference')->nullable();
+            $table->string('status')->default('pending'); // pending, paid, failed, refunded
+
+            // Metadata
+            $table->timestamp('paid_at')->nullable();
+            $table->foreignId('employee_id')->nullable()->constrained()->nullOnDelete(); // who recorded it (for POS/manual)
+            $table->json('meta')->nullable(); // gateway response, cheque number, notes
+
+            $table->timestamps();
         });
 
 //        Schema::create('stock_layers', function (Blueprint $table) {
@@ -418,37 +470,7 @@ return new class extends Migration
 //            $table->index(['stock_layer_id']);
 //        });
 
-        Schema::create('bulk_prices', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('product_id')->nullable()->constrained()->cascadeOnDelete();
-            $table->foreignId('product_variant_id')->nullable()->constrained()->cascadeOnDelete();
 
-            // quantity threshold for this tier
-            $table->unsignedInteger('min_qty');
-
-            // the unit price when threshold is met
-            $table->decimal('unit_price', 10, 2);
-
-            // optional validity window
-            $table->timestamp('starts_at')->nullable();
-            $table->timestamp('ends_at')->nullable();
-
-            $table->timestamps();
-
-            $table->index(['product_id','min_qty']);
-            $table->index(['product_variant_id','min_qty']);
-
-            // prevent both product_id and product_variant_id being null
-            // and prevent both being set at once
-        });
-
-        Schema::create('slug_histories', function (Blueprint $table) {
-            $table->id();
-            $table->morphs('sluggable');             // sluggable_type, sluggable_id
-            $table->string('slug', 160)->unique();   // old slug
-            $table->string('locale', 8)->nullable();
-            $table->timestamps();
-        });
 
     }
 

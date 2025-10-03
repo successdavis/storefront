@@ -242,10 +242,10 @@ async function submit() {
         unit_cost: Number(it.unit_cost),
     }));
 
-    if (itemsToSend.length === 0) {
-        window.alert('Please enter at least one quantity to bill.');
-        return;
-    }
+    // if (itemsToSend.length === 0) {
+    //     window.alert('Please enter at least one quantity to bill.');
+    //     return;
+    // }
 
     submitting.value = true;
     try {

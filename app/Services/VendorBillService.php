@@ -5,28 +5,20 @@ namespace App\Services;
 use App\Models\PurchaseOrder;
 use App\Models\VendorBill;
 use App\Models\VendorBillItem;
+use App\Models\ProductVariant;
+use App\Models\InventoryCostAdjustment;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class VendorBillService
 {
-    /**
-     * Create a vendor bill with items and optional expenses.
-     *
-     * @param  array  $data
-     * @return \App\Models\VendorBill
-     *
-     * @throws \Throwable|\Illuminate\Validation\ValidationException
-     */
     public function create(array $data): VendorBill
     {
-        // Locate purchase order if provided
         $purchaseOrderId = $data['purchase_order_id'] ?? null;
         $purchaseOrder   = $purchaseOrderId
             ? PurchaseOrder::with(['items', 'vendorBills.items'])->findOrFail($purchaseOrderId)
             : null;
 
-        // Validate requested item quantities
         $this->validateItemQuantities($data['items'], $purchaseOrder);
 
         return DB::transaction(function () use ($data, $purchaseOrder) {
@@ -37,7 +29,7 @@ class VendorBillService
                 'bill_date'        => $data['bill_date'],
                 'due_date'         => $data['due_date'] ?? null,
                 'status'           => 'unpaid',
-                'total_amount'     => 0, // will update below
+                'total_amount'     => 0,
             ]);
 
             $total = $this->createBillItems($bill, $data['items']);
@@ -49,16 +41,10 @@ class VendorBillService
         });
     }
 
-    /**
-     * Validate each requested item against purchase order limits.
-     */
     protected function validateItemQuantities(array $items, ?PurchaseOrder $purchaseOrder): void
     {
-        if (!$purchaseOrder) {
-            return;
-        }
+        if (!$purchaseOrder) return;
 
-        // Precompute already billed quantities
         $alreadyBilled = [];
         foreach ($purchaseOrder->vendorBills as $b) {
             foreach ($b->items as $bi) {
@@ -68,7 +54,6 @@ class VendorBillService
             }
         }
 
-        // Map PO items for quick access
         $poItemsById = $purchaseOrder->items->keyBy('id');
 
         foreach ($items as $it) {
@@ -104,29 +89,57 @@ class VendorBillService
         }
     }
 
-    /**
-     * Persist bill line items and return total.
-     */
     protected function createBillItems(VendorBill $bill, array $items): float
     {
         $total = 0.0;
 
         foreach ($items as $it) {
             $qty       = (float) $it['quantity'];
-            $unit      = (float) $it['unit_cost'];
+            $billCost  = (float) $it['unit_cost'];
             $discount  = (float) ($it['discount_amount'] ?? 0);
-            $lineTotal = $qty * $unit - $discount;
+            $lineTotal = $qty * $billCost - $discount;
 
-            $bill->items()->create([
+            $billItem = $bill->items()->create([
                 'purchase_order_item_id' => $it['purchase_order_item_id'] ?? null,
                 'product_id'             => $it['product_id'] ?? null,
                 'product_variant_id'     => $it['product_variant_id'] ?? null,
                 'description'            => $this->composeDescription($it),
                 'quantity'               => $qty,
-                'unit_cost'              => $unit,
+                'unit_cost'              => $billCost,
                 'discount_amount'        => $discount,
                 'type'                   => $it['type'] ?? 'product',
             ]);
+
+            // 🔑 Handle inventory cost adjustments
+            if ($it['product_variant_id']) {
+                $variant = ProductVariant::lockForUpdate()->find($it['product_variant_id']);
+                if ($variant) {
+                    $lastCost = (float) $variant->last_purchase_price ?? 0;
+
+                    // If bill cost differs from last recorded cost
+                    if ($lastCost > 0 && abs($billCost - $lastCost) > 0.0001) {
+                        $difference = $billCost - $lastCost;
+                        $adjustment = $difference * $qty;
+
+                        InventoryCostAdjustment::create([
+                            'product_variant_id'    => $variant->id,
+                            'vendor_bill_id'        => $bill->id,
+                            'purchase_order_item_id'=> $it['purchase_order_item_id'] ?? null,
+                            'quantity'              => $qty,
+                            'old_unit_cost'         => $lastCost,
+                            'new_unit_cost'         => $billCost,
+                            'difference_per_unit'   => $difference,
+                            'total_adjustment'      => $adjustment,
+                            'clearing_account'      => 'GRNI Clearing',
+                            'notes'                 => 'Cost adjusted from receipt to bill price',
+                        ]);
+                    }
+
+                    // Always update last purchase price to latest bill cost
+                    $variant->last_purchase_price = $billCost;
+                    $variant->save();
+                }
+            }
 
             $total += $lineTotal;
         }
@@ -134,9 +147,7 @@ class VendorBillService
         return $total;
     }
 
-    /**
-     * Save extra expenses as misc bill items and return their total.
-     */
+
     protected function createBillExpenses(VendorBill $bill, array $expenses): float
     {
         $sum = 0.0;
@@ -154,21 +165,15 @@ class VendorBillService
         return $sum;
     }
 
-    /**
-     * Add optional PO reference to description if given.
-     */
     protected function composeDescription(array $item): string
     {
-        $desc = $item['description'];
+        $desc = $item['description'] ?? '';
         if (!empty($item['purchase_order_item_id'])) {
             $desc .= " (PO Item #{$item['purchase_order_item_id']})";
         }
         return $desc;
     }
 
-    /**
-     * Basic sequential bill numbering.
-     */
     protected function generateBillNumber(): string
     {
         $prefix = 'BILL';

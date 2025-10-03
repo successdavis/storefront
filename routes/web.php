@@ -151,6 +151,10 @@ Route::prefix('admin')
 
         Route::resource('vendor-bills', VendorBillController::class)->except('store');
         Route::post('vendor-bills/store', [VendorBillController::class, 'store'])->name('vendor-bills.store');
+
+        Route::get('/vendor-bills/purchase-order/{order}', [VendorBillController::class, 'byPurchaseOrder'])
+        ->name('vendor-bills.by-purchase-order');
+
         Route::post('vendor-bills/{vendorBill}/payments', [VendorPaymentController::class,'store'])
             ->name('vendor-payments.store');
 
