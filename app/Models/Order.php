@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\HasPayments;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
-    use HasFactory;
+    use HasFactory, HasPayments;
 
     protected $fillable = [
         'user_id', 'total_amount', 'discount', 'channel', 'status'

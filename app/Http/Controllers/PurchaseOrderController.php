@@ -217,4 +217,30 @@ class PurchaseOrderController extends Controller
             'partial_message' => $partialMessage,
         ]);
     }
+
+    public function getItemReceipts(PurchaseOrder $purchase_order)
+    {
+        $receipts = $purchase_order->itemReceipts()
+            ->with(['items' => function ($q) {
+                $q->select(
+                    'id',
+                    'item_receipt_id',
+                    'purchase_order_item_id',
+                    'product_variant_id',
+                    'quantity_received',
+                    'unit_cost',
+                    'line_total'
+                )->with([
+                    'productVariant:id,product_id,sku',
+                    'productVariant.product:id,name'
+                ]);
+            }])
+            ->where('status', 'completed')
+            ->get(['id', 'receipt_number', 'received_date', 'status']);
+
+        return response()->json([
+            'purchase_order' => $purchase_order->only(['id', 'vendor_id', 'po_number']),
+            'item_receipts'  => $receipts,
+        ]);
+    }
 }

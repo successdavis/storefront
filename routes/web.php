@@ -156,10 +156,12 @@ Route::prefix('admin')
         ->name('vendor-bills.by-purchase-order');
 
         Route::post('vendor-bills/{vendorBill}/payments', [VendorPaymentController::class,'store'])
-            ->name('vendor-payments.store');
+            ->name('vendor-bill-payments.store');
 
         Route::get('purchase-orders/{purchase_order}/item-receipts-for-billing', [PurchaseOrderController::class, 'itemReceiptsForBilling'])
             ->name('purchase-orders.item-receipts-for-billing');
+        Route::get('purchase-orders/{purchase_order}/get-item-receipts', [PurchaseOrderController::class, 'getItemReceipts'])
+            ->name('purchase-orders.get-item-receipts');
 
         // Orders
 //        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);

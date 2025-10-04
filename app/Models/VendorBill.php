@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\HasPayments;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\{
@@ -22,6 +23,8 @@ use Illuminate\Support\Carbon;
  */
 class VendorBill extends Model
 {
+    use HasPayments;
+
     protected $fillable = [
         'vendor_id',
         'purchase_order_id',
@@ -52,32 +55,20 @@ class VendorBill extends Model
         return $this->belongsTo(PurchaseOrder::class);
     }
 
+    public function itemReceipt()
+    {
+        return $this->belongsTo(ItemReceipt::class);
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(VendorBillItem::class);
-    }
-
-    public function payments(): HasMany
-    {
-        return $this->hasMany(VendorPayment::class);
     }
 
     /* -----------------------------------------------------------------
      |  Business Logic
      | -----------------------------------------------------------------
      */
-
-    /** Total amount paid on this bill */
-    public function amountPaid(): float
-    {
-        return (float) $this->payments()->sum('amount');
-    }
-
-    /** Remaining balance */
-    public function balance(): float
-    {
-        return max(0, (float) $this->total_amount - $this->amountPaid());
-    }
 
     /** Update the bill status based on payments */
     public function refreshPaymentStatus(): void

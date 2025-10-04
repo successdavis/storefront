@@ -98,6 +98,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('vendor_id')->constrained()->cascadeOnDelete();
             $table->foreignId('purchase_order_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('item_receipt_id')->nullable()->constrained()->nullOnDelete();
             $table->string('bill_number')->unique();
             $table->date('bill_date');
             $table->date('due_date')->nullable();

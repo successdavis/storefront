@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\HasPayments;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Sale extends Model
 {
-    use HasFactory;
+    use HasFactory, HasPayments;
 
     protected $fillable = [
         'employee_id', 'pos_terminal_id', 'user_id', 'total_amount', 'discount'
@@ -31,10 +32,5 @@ class Sale extends Model
     public function items()
     {
         return $this->hasMany(SaleItem::class);
-    }
-
-    public function payments()
-    {
-        return $this->hasMany(SalePayment::class);
     }
 }

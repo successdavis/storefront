@@ -169,7 +169,7 @@ class DatabaseSeeder extends Seeder
             ])
             ->each(function (Sale $sale) {
                 SaleItem::factory(3)->create(['sale_id' => $sale->id]);
-                SalePayment::factory()->create(['sale_id' => $sale->id]);
+//                SalePayment::factory()->create(['sale_id' => $sale->id]);
             });
 
         // ---------- Stock ----------

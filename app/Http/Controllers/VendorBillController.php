@@ -37,9 +37,18 @@ class VendorBillController extends Controller
     {
         $bills = $order->vendorBills()
             ->select('id', 'bill_number', 'total_amount')
-            ->where('status','unpaid')
-            ->get();
+            ->whereIn('status', ['unpaid','partially_paid'])
+            ->get()
+            ->map(function ($bill) {
+                return [
+                    'id' => $bill->id,
+                    'bill_number' => $bill->bill_number,
+                    'total_amount' => $bill->total_amount,
+                    'outstanding_balance' => $bill->outstandingBalance(),
+                ];
+            });
 
         return response()->json($bills);
     }
+
 }

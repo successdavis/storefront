@@ -74,25 +74,60 @@ class PurchaseOrderResource extends JsonResource
             }),
             'vendor_bills' => $this->whenLoaded('vendorBills', function () {
                 return $this->vendorBills->map(function ($bill) {
-                    $payments = $bill->relationLoaded('payments') ? $bill->payments : $bill->payments()->get();
-                    $paid = (float)$payments->sum('amount');
+                    // Load payments
+                    $payments = $bill->relationLoaded('payments')
+                        ? $bill->payments
+                        : $bill->payments()->get();
+
+                    $paid = (float) $payments->sum('amount');
+
+                    // Load bill items
+                    $items = $bill->relationLoaded('items')
+                        ? $bill->items
+                        : $bill->items()->get();
+
                     return [
                         'id' => $bill->id,
                         'bill_number' => $bill->bill_number,
                         'bill_date' => $bill->bill_date
                             ? Carbon::parse($bill->bill_date)->format('d M Y')
                             : null,
-
                         'due_date'  => $bill->due_date
                             ? Carbon::parse($bill->due_date)->format('d M Y')
                             : null,
                         'status' => $bill->status,
-                        'total_amount' => number_format((float)$bill->total_amount, 2, '.', ''),
+                        'total_amount' => number_format((float) $bill->total_amount, 2, '.', ''),
                         'paid_amount' => number_format($paid, 2, '.', ''),
-                        'outstanding' => number_format(max(0, (float)$bill->total_amount - $paid), 2, '.', ''),
+                        'outstanding' => number_format(max(0, (float) $bill->total_amount - $paid), 2, '.', ''),
+
+                        // 👇 include payments array
+                        'payments' => $payments->map(function ($p) {
+                            return [
+                                'id' => $p->id,
+                                'payment_date' => $p->paid_at
+                                    ? Carbon::parse($p->paid_at)->format('d M Y')
+                                    : null,
+                                'method' => $p->method,
+                                'note' => $p->note,
+                                'amount' => number_format((float) $p->amount, 2, '.', ''),
+                            ];
+                        })->values(),
+
+                        // 👇 include bill items array
+                        'items' => $items->map(function ($it) {
+                            return [
+                                'id' => $it->id,
+                                'product_id' => $it->product_id,
+                                'description' => $it->description,
+                                'quantity' => (float) $it->quantity,
+                                'unit_price' => number_format((float) $it->unit_cost, 2, '.', ''),
+                                'total' => number_format((float) $it->unit_cost * $it->quantity, 2, '.', ''),
+                            ];
+                        })->values(),
                     ];
                 })->values();
             }),
+
             // Helpful computed values
             'totals' => [
                 'items_sum' => number_format(optional($this->items)->sum('line_total') ?? 0.0, 2, '.', ''),

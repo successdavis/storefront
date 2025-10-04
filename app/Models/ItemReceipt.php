@@ -39,4 +39,9 @@ class ItemReceipt extends Model
 
         return $prefix.'-'.$seq;  // e.g. IR-20250924-0001
     }
+
+    public function vendorBillItems()
+    {
+        return $this->hasMany(VendorBill::class);
+    }
 }

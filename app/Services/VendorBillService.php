@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
 use App\Models\VendorBill;
 use App\Models\VendorBillItem;
 use App\Models\ProductVariant;
@@ -97,8 +98,22 @@ class VendorBillService
             $qty       = (float) $it['quantity'];
             $billCost  = (float) $it['unit_cost'];
             $discount  = (float) ($it['discount_amount'] ?? 0);
+
+            // ✅ Check if this PO item has been received
+            $poItem = isset($it['purchase_order_item_id'])
+                ? PurchaseOrderItem::find($it['purchase_order_item_id'])
+                : null;
+
+            $hasBeenReceived = $poItem && $poItem->quantity_received > 0;
+
+            if (! $hasBeenReceived) {
+                // 🚫 Skip this item entirely if it was never received
+                continue;
+            }
+
             $lineTotal = $qty * $billCost - $discount;
 
+            // ✅ Only create bill item if received
             $billItem = $bill->items()->create([
                 'purchase_order_item_id' => $it['purchase_order_item_id'] ?? null,
                 'product_id'             => $it['product_id'] ?? null,
@@ -116,7 +131,7 @@ class VendorBillService
                 if ($variant) {
                     $lastCost = (float) $variant->last_purchase_price ?? 0;
 
-                    // If bill cost differs from last recorded cost
+                    // Only adjust if bill cost differs from last recorded receipt cost
                     if ($lastCost > 0 && abs($billCost - $lastCost) > 0.0001) {
                         $difference = $billCost - $lastCost;
                         $adjustment = $difference * $qty;

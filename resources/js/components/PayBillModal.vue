@@ -24,7 +24,7 @@
                             :value="bill.id"
                         >
                             {{ bill.bill_number }} — Outstanding:
-                            {{ formatCurrency(bill.outstanding) }}
+                            {{ formatCurrency(bill.outstanding_balance) }}
                         </option>
                     </select>
                 </div>
@@ -52,7 +52,7 @@
                         required
                     >
                         <option value="cash">Cash</option>
-                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="transfer">Bank Transfer</option>
                         <option value="cheque">Cheque</option>
                         <option value="card">Card</option>
                     </select>
@@ -139,12 +139,11 @@ async function submitPayment() {
 
     loading.value = true
     try {
-        await router.post(route('admin.vendor-bill-payments.store'), {
-            bill_id: form.value.bill_id,
+        router.post(route('admin.vendor-bill-payments.store', form.value.bill_id), {
             amount: form.value.amount,
             method: form.value.method,
             note: form.value.note,
-        })
+        }, {preserveState: false, preserveScroll: false})
 
         emit('success')
         emit('close')
@@ -158,7 +157,7 @@ async function submitPayment() {
 function formatCurrency(value: number) {
     return new Intl.NumberFormat(undefined, {
         style: 'currency',
-        currency: 'USD', // change to NGN if needed
+        currency: 'NGN', // change to NGN if needed
         minimumFractionDigits: 2,
     }).format(value || 0)
 }
