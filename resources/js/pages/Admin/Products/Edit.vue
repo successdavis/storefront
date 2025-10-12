@@ -180,9 +180,12 @@ async function handleErrorsAndFocus() {
 /* Style helper */
 function inputClass(key, extra = '') {
     return [
-        'w-full border rounded px-3 py-2',
+        'w-full border rounded px-3 py-2 transition-colors duration-200',
+        'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+        'border-gray-300 dark:border-gray-700',
+        'focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:border-blue-400 dark:focus:ring-blue-800',
         extra,
-        err(key) ? 'border-red-400 bg-red-50' : ''
+        err(key) ? 'border-red-400 bg-red-50 dark:bg-red-900/30' : ''
     ].join(' ')
 }
 
@@ -201,7 +204,10 @@ function save() {
     if (productId.value) {
         form.put(route('admin.products.update', {product: productId.value}), opts)
     } else {
-        form.post(route('admin.products.store'), opts)
+        form.post(route('admin.products.store'), {
+            preserveState: false,
+            preserveScroll: false
+        })
     }
 }
 
@@ -212,21 +218,22 @@ watch(() => form.errors, () => {
 </script>
 
 <template>
-    <div class="flex min-h-screen bg-gray-50">
+    <div class="flex min-h-screen bg-gray-50 dark:bg-gray-900 dark:text-gray-100">
         <!-- Sidebar -->
-        <aside class="w-64 bg-white border-r">
+        <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
             <nav class="p-4 space-y-2">
                 <button
                     v-for="tab in tabs"
                     :key="tab"
                     @click="activeTab = tab"
-                    class="relative block w-full text-left px-3 py-2 rounded hover:bg-gray-100"
-                    :class="{'bg-blue-50 text-blue-600 font-medium': activeTab === tab}"
+                    class="relative block w-full text-left px-3 py-2 rounded transition-colors duration-150
+                 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    :class="{'bg-blue-50 text-blue-600 font-medium dark:bg-blue-900/30 dark:text-blue-400': activeTab === tab}"
                 >
                     {{ tab }}
                     <span
                         v-if="countErrorsForTab(tab)"
-                        class="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-red-100 text-red-700 rounded px-1.5 py-0.5"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 rounded px-1.5 py-0.5"
                         aria-label="Errors in this section"
                     >
             {{ countErrorsForTab(tab) }}
@@ -250,7 +257,7 @@ watch(() => form.errors, () => {
             <!-- Error summary -->
             <div
                 v-if="Object.keys(form.errors || {}).length"
-                class="mb-4 rounded border border-red-200 bg-red-50 text-red-700"
+                class="mb-4 rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400"
             >
                 <button
                     class="w-full text-left px-3 py-2 font-medium"
@@ -283,7 +290,7 @@ watch(() => form.errors, () => {
 
             <!-- Dynamic sections -->
             <div v-if="activeTab === 'General'" class="space-y-6">
-                <div class="bg-white p-4 border rounded space-y-4">
+                <div class="bg-white dark:bg-gray-800 p-4 border border-gray-200 dark:border-gray-700 rounded space-y-4">
                     <h2 class="font-semibold">General Information</h2>
 
                     <div class="flex gap-4">
@@ -354,7 +361,7 @@ watch(() => form.errors, () => {
                                 <textarea
                                     ref="description" :ref="el => fieldRefs.description.value = el"
                                     v-model="form.description" rows="4"
-                                    class="w-full border rounded px-3 py-2"
+                                    class="w-full border border-gray-300 dark:bg-gray-800 dark:border-gray-700 rounded px-3 py-2"
                                     :class="err('description') ? 'border-red-400 bg-red-50' : ''"
                                 ></textarea>
                                 <p v-if="err('description')" class="text-xs text-red-600 mt-1">{{
@@ -418,7 +425,7 @@ watch(() => form.errors, () => {
                 <multi-select v-model="selectedVariants" :options="variantNames"></multi-select>
 
                 <div ref="variantsRef" :ref="el => variantsRef.value = el">
-                    <VariantMatrix v-model="form.variants" :variant-types="filteredVariantTypes"/>
+                    <VariantMatrix :isEdit="isEdit" v-model="form.variants" :variant-types="filteredVariantTypes"/>
                 </div>
 
                 <!-- Variants root error or any nested error -->
@@ -433,7 +440,7 @@ watch(() => form.errors, () => {
                 <div v-if="!isEdit">
                     <p>Please Create your product before adding images</p>
                 </div>
-                <div v-else class="bg-white p-4 border rounded">
+                <div v-else class="bg-white dark:bg-gray-900 p-4 border rounded">
                     <h2 class="font-semibold">Media</h2>
                     <div ref="imagesRef" :ref="el => imagesRef.value = el">
                         <ProductImageGallery :product="product"/>
@@ -448,41 +455,45 @@ watch(() => form.errors, () => {
             </div>
 
             <div v-if="activeTab === 'SEO'" class="space-y-6">
-                <div class="bg-white p-4 border rounded space-y-4">
-                    <h2 class="font-semibold">SEO</h2>
+                <div class="bg-white dark:bg-gray-800 p-4 border border-gray-200 dark:border-gray-700 rounded space-y-4">
+                    <h2 class="font-semibold text-gray-800 dark:text-gray-100">SEO</h2>
 
-                    <label class="block text-sm">Meta title</label>
+                    <!-- Meta Title -->
+                    <label class="block text-sm text-gray-700 dark:text-gray-300">Meta title</label>
                     <input
-                        ref="meta_title" :ref="el => fieldRefs.meta_title.value = el"
+                        ref="meta_title"
+                        :ref="el => fieldRefs.meta_title.value = el"
                         v-model="form.meta_title"
-                        class="w-full border rounded px-3 py-2"
-                        :class="err('meta_title') ? 'border-red-400 bg-red-50' : ''"
+                        class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        :class="err('meta_title') ? 'border-red-400 bg-red-50 dark:bg-red-900/30' : ''"
                     />
                     <p v-if="err('meta_title')" class="text-xs text-red-600 mt-1">{{ err('meta_title') }}</p>
 
-                    <label class="block text-sm">Meta description</label>
+                    <!-- Meta Description -->
+                    <label class="block text-sm text-gray-700 dark:text-gray-300">Meta description</label>
                     <textarea
-                        ref="meta_description" :ref="el => fieldRefs.meta_description.value = el"
-                        v-model="form.meta_description" rows="3"
-                        class="w-full border rounded px-3 py-2"
-                        :class="err('meta_description') ? 'border-red-400 bg-red-50' : ''"
+                        ref="meta_description"
+                        :ref="el => fieldRefs.meta_description.value = el"
+                        v-model="form.meta_description"
+                        rows="3"
+                        class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        :class="err('meta_description') ? 'border-red-400 bg-red-50 dark:bg-red-900/30' : ''"
                     ></textarea>
-                    <p v-if="err('meta_description')" class="text-xs text-red-600 mt-1">{{
-                            err('meta_description')
-                        }}</p>
+                    <p v-if="err('meta_description')" class="text-xs text-red-600 mt-1">{{ err('meta_description') }}</p>
 
-                    <label class="block text-sm">YouTube URL</label>
+                    <!-- YouTube URL -->
+                    <label class="block text-sm text-gray-700 dark:text-gray-300">YouTube URL</label>
                     <input
-                        ref="youtube_video_url" :ref="el => fieldRefs.youtube_video_url.value = el"
+                        ref="youtube_video_url"
+                        :ref="el => fieldRefs.youtube_video_url.value = el"
                         v-model="form.youtube_video_url"
-                        class="w-full border rounded px-3 py-2"
-                        :class="err('youtube_video_url') ? 'border-red-400 bg-red-50' : ''"
+                        class="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        :class="err('youtube_video_url') ? 'border-red-400 bg-red-50 dark:bg-red-900/30' : ''"
                     />
-                    <p v-if="err('youtube_video_url')" class="text-xs text-red-600 mt-1">{{
-                            err('youtube_video_url')
-                        }}</p>
+                    <p v-if="err('youtube_video_url')" class="text-xs text-red-600 mt-1">{{ err('youtube_video_url') }}</p>
                 </div>
             </div>
+
 
             <div v-if="activeTab === 'Shipping'">
                 <h2>Shipping Configuration</h2>
@@ -512,9 +523,15 @@ watch(() => form.errors, () => {
             </div>
 
             <div v-if="activeTab === 'Warranty'" class="space-y-6">
-                <div class="bg-white p-4 border rounded">
-                    <h2 class="font-semibold">Warranty & FAQs</h2>
-                    <ProductFaqEditor v-model="form.faqs" :variants="form.variants"/>
+                <div class="bg-white dark:bg-gray-800 p-4 border border-gray-200 dark:border-gray-700 rounded">
+                    <h2 class="font-semibold text-gray-800 dark:text-gray-100">Warranty & FAQs</h2>
+
+                    <ProductFaqEditor
+                        v-model="form.faqs"
+                        :variants="form.variants"
+                        class="mt-4"
+                    />
+
                     <p v-if="err('faqs')" class="text-xs text-red-600 mt-2">{{ err('faqs') }}</p>
                 </div>
             </div>

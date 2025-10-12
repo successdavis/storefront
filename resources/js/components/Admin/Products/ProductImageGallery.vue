@@ -121,7 +121,7 @@ onBeforeUnmount(() => {
     <div class="space-y-3">
         <div class="flex items-center justify-between">
             <h3 class="font-medium">Product Images</h3>
-            <button class="px-3 py-2 border rounded hover:bg-gray-50" @click.prevent="addBlank">
+            <button class="px-3 py-2 border rounded dark:hover:bg-gray-800 cursor-pointer hover:bg-gray-50 dark:bg-gray-900" @click.prevent="addBlank">
                 Add image
             </button>
         </div>
@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
                     <!-- Preview -->
                     <div class="md:col-span-2">
-                        <div class="w-full aspect-square rounded border bg-gray-50 overflow-hidden flex items-center justify-center">
+                        <div class="w-full aspect-square rounded border bg-gray-50 dark:bg-gray-500 overflow-hidden flex items-center justify-center">
                             <img
                                 v-if="previewSrc(img)"
                                 :src="previewSrc(img)"
@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
                     <!-- Fields -->
                     <div class="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label class="block">
-                            <span class="block text-xs text-gray-600 mb-1">Upload image</span>
+                            <span class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Upload image</span>
                             <input type="file" accept="image/*" @change="e => onFileChange(e, img)" class="w-full text-sm" />
                         </label>
 

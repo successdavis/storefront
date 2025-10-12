@@ -37,21 +37,20 @@ class ProductStoreRequest extends FormRequest
             'faqs.*.position' => ['integer'],
 
             'variants' => ['array'],
-            'variants.*.sku'           => ['nullable','string','max:64','unique:product_variants,sku'],
-            'variants.*.quantity'      => ['integer','min:0'],
-            'variants.*.barcode'       => ['nullable','string','max:64'],
-            'variants.*.cost_price'    => ['nullable','numeric','min:0'],
-            'variants.*.regular_price' => ['required','numeric','min:0'],
-            'variants.*.sale_price'    => ['nullable','numeric','lt:variants.*.regular_price'],
-            'variants.*.sale_starts_at'=> ['nullable','date'],
-            'variants.*.sale_ends_at'  => ['nullable','date','after_or_equal:variants.*.sale_starts_at'],
-            'variants.*.weight'        => ['nullable','numeric','min:0'],
-            'variants.*.length'        => ['nullable','numeric','min:0'],
-            'variants.*.width'         => ['nullable','numeric','min:0'],
-            'variants.*.height'        => ['nullable','numeric','min:0'],
-            'variants.*.value_ids'     => ['array'], // variant_values ids
-            'variants.*.images'        => ['array'],
-            'variants.*.images.*.path' => ['required','string'],
+            'variants.*.sku'                    => ['nullable','string','max:64','unique:product_variants,sku'],
+            'variants.*.quantity'               => ['integer','min:0'],
+            'variants.*.barcode'                => ['nullable','string','max:64'],
+            'variants.*.last_purchase_price'    => ['required','numeric','min:0'],
+            'variants.*.regular_price'             => ['required','numeric'],
+            'variants.*.sale_starts_at'         => ['nullable','date'],
+            'variants.*.sale_ends_at'           => ['nullable','date','after_or_equal:variants.*.sale_starts_at'],
+            'variants.*.weight'                 => ['nullable','numeric','min:0'],
+            'variants.*.length'                 => ['nullable','numeric','min:0'],
+            'variants.*.width'                  => ['nullable','numeric','min:0'],
+            'variants.*.height'                 => ['nullable','numeric','min:0'],
+            'variants.*.value_ids'              => ['array'], // variant_values ids
+            'variants.*.images'                 => ['array'],
+            'variants.*.images.*.path'          => ['required','string'],
         ];
     }
 }

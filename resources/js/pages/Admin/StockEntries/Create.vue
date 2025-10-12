@@ -1,7 +1,7 @@
 <template>
     <Head title="Stock In" />
 
-    <div class="max-w-3xl mx-auto py-8">
+    <div class="px-10 py-8">
         <h1 class="text-2xl font-semibold mb-6">New Stock-In</h1>
 
         <form @submit.prevent="submit" class="space-y-6 bg-white shadow rounded-lg p-6">

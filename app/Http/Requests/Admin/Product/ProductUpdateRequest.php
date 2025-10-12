@@ -42,7 +42,7 @@ class ProductUpdateRequest extends FormRequest
             'variants.*.id'            => ['nullable','integer','exists:product_variants,id'],
             'variants.*.quantity'      => ['integer','min:0'],
             'variants.*.barcode'       => ['nullable','string','max:64'],
-            'variants.*.cost_price'    => ['nullable','numeric','min:0'],
+            'variants.*.last_purchase_price'    => ['nullable','numeric','min:0'],
             'variants.*.regular_price' => ['required','numeric','min:0'],
             'variants.*.weight'        => ['nullable','numeric','min:0'],
             'variants.*.length'        => ['nullable','numeric','min:0'],
@@ -58,10 +58,10 @@ class ProductUpdateRequest extends FormRequest
         foreach ($this->input('variants', []) as $i => $variant) {
             $id = $variant['id'] ?? null;
 
-            $rules["variants.$i.sku"] = [
-                'nullable','string','max:64',
-                Rule::unique('product_variants', 'sku')->ignore($id)
-            ];
+//            $rules["variants.$i.sku"] = [
+//                'nullable','string','max:64',
+//                Rule::unique('product_variants', 'sku')->ignore($id)
+//            ];
 
             // strict sale < regular check per row
             $rules["variants.$i.sale_price"] = [

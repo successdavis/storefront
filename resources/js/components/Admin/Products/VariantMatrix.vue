@@ -13,6 +13,7 @@ const props = defineProps({
     variantTypes: { type: Array, required: true },            // [{id,name,values:[{id,value}]}]
     storageBase: { type: String, default: '/storage' },
     skuCheckUrl: { type: String, default: '/admin/skus/check' },
+    isEdit: {type: Boolean, default: false}
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -84,26 +85,28 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Error summary -->
-        <div v-if="tableErrorCount" class="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">
+        <div v-if="tableErrorCount" class="rounded border border-red-300 bg-red-50 text-red-700 px-3 py-2 text-sm
+                    dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
             {{ tableErrorCount }} issue(s) found in the table. Fields with problems are highlighted below.
         </div>
 
         <!-- Variant table -->
-        <div class="border rounded overflow-x-auto">
+        <div class="border rounded overflow-x-auto bg-white dark:bg-gray-900 dark:border-gray-700">
             <table class="w-full text-sm">
-                <thead class="bg-gray-50">
+                <thead class="bg-gray-50 dark:bg-gray-800">
                 <tr>
                     <th class="p-2 text-left">Values</th>
                     <th class="p-2">SKU</th>
-                    <th class="p-2">Regular Price</th>
+                    <th class="p-2">Purchase Price</th>
                     <th class="p-2">Sale Price</th>
+                    <th class="p-2">Quantity</th>
                     <th class="p-2">Barcode</th>
                     <th class="p-2">Actions</th>
                 </tr>
                 </thead>
 
                 <tbody>
-                <tr v-for="(r, i) in rows" :key="i" class="border-t align-top">
+                <tr v-for="(r, i) in rows" :key="i" class="border-t dark:border-gray-700 align-top">
                     <td class="p-2 align-middle">
                         <span class="text-gray-700">{{ resolveValueNames(r.value_ids).join(' / ') }}</span>
                     </td>
@@ -111,47 +114,61 @@ onBeforeUnmount(() => {
                     <td class="p-2">
                         <input
                             v-model="r.sku"
-                            class="border rounded px-2 w-full py-1"
+                            class="border rounded px-2 w-full py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                             @input="onSkuInput(i)"
                             @blur="validateTableRow(i)"
                             autocomplete="off"
+                            :disabled="r.id"
                             autocapitalize="characters"
                             spellcheck="false"
                             aria-invalid="true"
                             :aria-errormessage="errors.table[i]?.sku ? `err-sku-${i}` : undefined"
                         />
-                        <p v-if="skuStatus[i]?.loading" class="text-xs text-gray-500 mt-1">Checking…</p>
+                        <p v-if="skuStatus[i]?.loading" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Checking…</p>
                         <p v-else-if="skuStatus[i]?.available === false" :id="`err-sku-${i}`" class="text-xs text-red-600 mt-1">
                             SKU already in use.
                             <button v-if="skuStatus[i]?.suggestion" type="button" class="ml-2 underline text-blue-600" @click="applySuggestedSku(i)">
                                 Use {{ skuStatus[i].suggestion }}
                             </button>
                         </p>
-                        <p v-else-if="skuStatus[i]?.available === true && r.sku" class="text-xs text-green-600 mt-1">Available</p>
+                        <p v-else-if="skuStatus[i]?.available === true && r.sku" class="text-xs dark:text-red-400 text-green-600 mt-1">Available</p>
+                    </td>
+                    <td class="p-2">
+                        <input
+                            v-model.number="r.last_purchase_price"
+                            type="number" min="0"
+                            :disabled="r.id"
+                            class="border rounded px-2 w-full py-1"
+                            :class="errors.table[i]?.last_purchase_price ? 'border-red-400 bg-red-50' : ''"
+                            @blur="validateTableRow(i)"
+                            :aria-errormessage="errors.table[i]?.last_purchase_price ? `err-qty-${i}` : undefined"
+                        />
+                        <p v-if="errors.table[i]?.last_purchase_price" :id="`err-qty-${i}`" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.table[i].last_purchase_price }}</p>
                     </td>
 
                     <td class="p-2">
                         <input
                             v-model.number="r.regular_price"
                             type="number" step="0.01" min="0"
-                            class="border rounded w-full py-1 "
-                            :class="errors.table[i]?.regular_price ? 'border-red-400 bg-red-50' : ''"
+                            class="border rounded w-full py-1 px-2"
+                            :class="errors.table[i]?.regular_price ? 'border-red-400 ' : ''"
                             @blur="validateTableRow(i)"
                             :aria-errormessage="errors.table[i]?.regular_price ? `err-regular-${i}` : undefined"
                         />
-                        <p v-if="errors.table[i]?.regular_price" :id="`err-regular-${i}`" class="text-xs text-red-600 mt-1">{{ errors.table[i].regular_price }}</p>
+                        <p v-if="errors.table[i]?.regular_price" :id="`err-regular-${i}`" class="text-xs dark:text-red-400 text-red-600 mt-1">{{ errors.table[i].regular_price }}</p>
                     </td>
 
                     <td class="p-2">
                         <input
-                            v-model.number="r.sale_price"
+                            v-model.number="r.quantity"
                             type="number" min="0"
+                            :disabled="r.id"
                             class="border rounded px-2 w-full py-1"
-                            :class="errors.table[i]?.sale_price ? 'border-red-400 bg-red-50' : ''"
+                            :class="errors.table[i]?.quantity ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateTableRow(i)"
-                            :aria-errormessage="errors.table[i]?.sale_price ? `err-qty-${i}` : undefined"
+                            :aria-errormessage="errors.table[i]?.quantity ? `err-qty-${i}` : undefined"
                         />
-                        <p v-if="errors.table[i]?.sale_price" :id="`err-qty-${i}`" class="text-xs text-red-600 mt-1">{{ errors.table[i].sale_price }}</p>
+                        <p v-if="errors.table[i]?.quantity" :id="`err-qty-${i}`" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.table[i].quantity }}</p>
                     </td>
 
 
@@ -164,13 +181,13 @@ onBeforeUnmount(() => {
                             placeholder="Optional"
                             :aria-errormessage="errors.table[i]?.barcode ? `err-barcode-${i}` : undefined"
                         />
-                        <p v-if="errors.table[i]?.barcode" :id="`err-barcode-${i}`" class="text-xs text-red-600 mt-1">{{ errors.table[i].barcode }}</p>
+                        <p v-if="errors.table[i]?.barcode" :id="`err-barcode-${i}`" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.table[i].barcode }}</p>
                     </td>
 
                     <td class="p-2">
                         <div class="flex items-center gap-2">
-                            <button type="button" class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700" @click="openDetails(r, i)" title="Open details">Details</button>
-                            <button type="button" class="px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100" @click="removeRow(i)" aria-label="Remove variant" title="Remove">Remove</button>
+                            <button type="button" class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-500" @click="openDetails(r, i)" title="Open details">Details</button>
+                            <button type="button" class="px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50" @click="removeRow(i)" aria-label="Remove variant" title="Remove">Remove</button>
                         </div>
                     </td>
                 </tr>
@@ -190,31 +207,19 @@ onBeforeUnmount(() => {
             role="dialog"
         >
             <div class="absolute inset-0 bg-black/40" @click="closeDetails()" />
-            <div class="relative z-50 w-full max-w-2xl bg-white rounded-lg shadow-lg p-4" @keydown.esc="closeDetails()">
-                <div class="flex items-center justify-between border-b pb-2 mb-4">
+            <div class="relative z-50 w-full max-w-2xl bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 text-gray-800 dark:text-gray-200" @keydown.esc="closeDetails()">
+                <div class="flex items-center justify-between border-b pb-2 mb-4 dark:border-gray-700">
                     <h3 class="text-base font-semibold">Variant details</h3>
-                    <button class="p-1 rounded hover:bg-gray-100" @click="closeDetails()" aria-label="Close">✕</button>
+                    <button class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" @click="closeDetails()" aria-label="Close">✕</button>
                 </div>
 
                 <div v-if="errors.modal[editingIndex ?? -1] && Object.keys(errors.modal[editingIndex ?? -1]).length"
-                     class="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm mb-3">
+                     class="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm mb-3
+                            dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
                     Please correct the highlighted fields below.
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <!--          <label class="flex flex-col gap-1">-->
-                    <!--            <span class="text-xs text-gray-500">Sale price</span>-->
-                    <!--            <input-->
-                    <!--              v-model.number="draft.sale_price"-->
-                    <!--              type="number" step="0.01" min="0"-->
-                    <!--              class="border rounded px-2 py-1"-->
-                    <!--              :class="errors.modal[editingIndex ?? -1]?.sale_price ? 'border-red-400 bg-red-50' : ''"-->
-                    <!--              @blur="validateModalDraft(editingIndex ?? -1)"-->
-                    <!--            />-->
-                    <!--            <span v-if="errors.modal[editingIndex ?? -1]?.sale_price" class="text-xs text-red-600">-->
-                    <!--              {{ errors.modal[editingIndex ?? -1].sale_price }}-->
-                    <!--            </span>-->
-                    <!--          </label>-->
 
                     <label class="flex flex-col gap-1">
                         <span class="text-xs text-gray-500">Sale starts</span>
@@ -267,7 +272,7 @@ onBeforeUnmount(() => {
                             :class="errors.modal[editingIndex ?? -1]?.length ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateModalDraft(editingIndex ?? -1)"
                         />
-                        <span v-if="errors.modal[editingIndex ?? -1]?.length" class="text-xs text-red-600">
+                        <span v-if="errors.modal[editingIndex ?? -1]?.length" class="text-xs text-red-600 dark:text-red-400 mt-1">
               {{ errors.modal[editingIndex ?? -1].length }}
             </span>
                     </label>
@@ -281,7 +286,7 @@ onBeforeUnmount(() => {
                             :class="errors.modal[editingIndex ?? -1]?.width ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateModalDraft(editingIndex ?? -1)"
                         />
-                        <span v-if="errors.modal[editingIndex ?? -1]?.width" class="text-xs text-red-600">
+                        <span v-if="errors.modal[editingIndex ?? -1]?.width" class="text-xs text-red-600 dark:text-red-400 mt-1">
               {{ errors.modal[editingIndex ?? -1].width }}
             </span>
                     </label>
@@ -295,15 +300,15 @@ onBeforeUnmount(() => {
                             :class="errors.modal[editingIndex ?? -1]?.height ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateModalDraft(editingIndex ?? -1)"
                         />
-                        <span v-if="errors.modal[editingIndex ?? -1]?.height" class="text-xs text-red-600">
+                        <span v-if="errors.modal[editingIndex ?? -1]?.height" class="text-xs text-red-600 dark:text-red-400 mt-1">
               {{ errors.modal[editingIndex ?? -1].height }}
             </span>
                     </label>
 
                     <div class="md:col-span-2">
-                        <span class="block text-xs text-gray-500 mb-1">Image</span>
+                        <span class="block text-xs text-gray-500 dark:text-gray-400 mb-1">Image</span>
                         <div class="flex items-center gap-3">
-                            <input class="block" type="file" accept="image/*" @change="onModalFileChange" />
+                            <input class="block text-gray-800 dark:text-gray-200" type="file" accept="image/*" @change="onModalFileChange" />
                             <div v-if="previewSrcModal()" class="mt-1">
                                 <img :src="previewSrcModal()" alt="preview" class="w-16 h-16 object-cover rounded border" />
                             </div>
@@ -315,8 +320,10 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="mt-5 flex items-center justify-end gap-2">
-                    <button class="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200" @click="closeDetails()">Cancel</button>
-                    <button class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700" @click="applyDetails()">Save</button>
+                    <button class="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200
+                                   dark:bg-gray-800 dark:hover:bg-gray-700" @click="closeDetails()">Cancel</button>
+                    <button class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-500"
+                            @click="applyDetails()">Save</button>
                 </div>
             </div>
         </div>

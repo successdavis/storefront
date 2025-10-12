@@ -57,6 +57,11 @@ class User extends Authenticatable
         return $this->hasMany(Order::class, 'customer_id');
     }
 
+    public function employee()
+    {
+        return $this->hasOne(Employee::class);
+    }
+
     /**
      * 🔗 Carts for this user (online shopping session)
      */

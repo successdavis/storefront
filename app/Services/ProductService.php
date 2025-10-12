@@ -2,13 +2,13 @@
 
 namespace App\Services;
 
-use App\Models\{
-    Admin\ProductImage,
+use App\Models\{Admin\ProductImage,
     Admin\VariantImage,
+    OpeningBalance,
+    OpeningBalanceItem,
     Product,
     ProductFaq,
-    ProductVariant
-};
+    ProductVariant};
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -17,7 +17,10 @@ use App\Services\SkuGenerator;
 
 class ProductService
 {
-    public function __construct(private SkuGenerator $skuGen) {}
+    public function __construct(
+        private SkuGenerator $skuGen,
+        private InventoryService $inventoryService
+    ) {}
 
     public function create(array $data): Product
     {
@@ -155,8 +158,9 @@ class ProductService
 
             if (!$variant) continue;
 
+
             // Build a readable stem from product + selected attributes
-            $valueIds   = $v['value_ids'] ?? [];
+            $valueIds = $v['value_ids'] ?? [];
             $attrLabels = [];
             try {
                 // Use the relation's related model to fetch labels without saving the variant yet
@@ -173,7 +177,7 @@ class ProductService
             }
 
             $brandCode = data_get($product, 'brand.code', data_get($product, 'brand.name', ''));
-            $stem      = $this->skuGen->makeStem((string) $brandCode, (string) $product->name, $attrLabels);
+            $stem = $this->skuGen->makeStem((string)$brandCode, (string)$product->name, $attrLabels);
 
             // Decide final SKU
             $incoming = $v['sku'] ?? '';
@@ -186,30 +190,71 @@ class ProductService
 
             // Fill and save (keep sku authoritative from generator)
             $variant->fill(Arr::only($v, [
-                'barcode','cost_price','regular_price','sale_price',
-                'sale_starts_at','sale_ends_at','weight','length','width','height'
+                'barcode', 'sale_starts_at','regular_price', 'sale_ends_at', 'weight', 'length', 'width', 'height'
             ]));
             $variant->sku = $finalSku;
             $variant->save();
 
             $seen[] = $variant->id;
 
-            // Attach variant values
+            // Attach variant values & Images
             $variant->values()->sync($valueIds);
-
-            // Variant images
             $this->syncVariantImages($variant, $v['images'] ?? []);
+
+            if(isset($v['id']) && OpeningBalanceItem::where('variant_id', $v['id'])->exists()) {
+                continue;
+            }
+            // --- NEW: Handle Opening Balance if quantity > 0 ---
+            $quantity = (int)($v['quantity'] ?? 0);
+            $unitCost = (float)($v['last_purchase_price'] ?? 0);
+            if ($quantity > 0) {
+                // Create or find existing Opening Balance for this session
+                $openingBalance = OpeningBalance::firstOrCreate(
+                    ['reference' => 'AUTO-' . now()->format('Ymd-His')],
+                    [
+                        'warehouse_id' => $v['warehouse_id'] ?? null,
+                        'vendor_id' => null,
+                        'employee_id' => null,
+                        'effective_at' => now(),
+                        'note' => 'Auto created from product creation',
+                    ]
+                );
+
+                // Create Opening Balance Item
+                $item = OpeningBalanceItem::create([
+                    'opening_balance_id' => $openingBalance->id,
+                    'variant_id' => $variant->id,
+                    'quantity' => $quantity,
+                    'unit_cost' => $unitCost,
+                ]);
+
+
+                // Record in Inventory
+                $this->inventoryService->stockIn([
+                    'variant_id' => $variant->id,
+                    'quantity' => $quantity,
+                    'unit_cost' => $unitCost,
+                    'warehouse_id' => $v['warehouse_id'] ?? null,
+                    'reason' => 'Opening Balance',
+                    'employee_id' => null,
+                    'source_type' => OpeningBalanceItem::class,
+                    'source_id' => $item->id,
+                    'effective_at' => now(),
+                    'note' => 'Auto stock-in from opening balance',
+                ]);
+            }
         }
 
-        // Delete removed variants (cascade their images and pivot)
-        $product->variants()->whereNotIn('id', $seen)->get()->each(function ($var) {
-            $var->images()->delete();
-            $var->values()->detach();
-            $var->delete();
-        });
-    }
 
-    protected function syncVariantImages(ProductVariant $variant, array $images): void
+            // Delete removed variants (cascade their images and pivot)
+            $product->variants()->whereNotIn('id', $seen)->get()->each(function ($var) {
+                $var->images()->delete();
+                $var->values()->detach();
+                $var->delete();
+            });
+        }
+
+        protected function syncVariantImages(ProductVariant $variant, array $images): void
     {
         $seen = [];
 
@@ -242,7 +287,7 @@ class ProductService
         $variant->images()->whereNotIn('id', $seen)->delete();
     }
 
-    public function duplicate(Product $source): Product
+        public function duplicate(Product $source): Product
     {
         return DB::transaction(function () use ($source) {
             // product copy
@@ -319,8 +364,8 @@ class ProductService
         });
     }
 
-    private function syncCats($product, mixed $category_ids)
+        private function syncCats($product, mixed $category_ids)
     {
         $product->categories()->sync($category_ids);
     }
-}
+    }

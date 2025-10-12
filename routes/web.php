@@ -28,6 +28,7 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\Admin\ProductVariantController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorPaymentController;
@@ -132,6 +133,8 @@ Route::prefix('admin')
 
         // Inventory
         Route::resource('stock-entries', StockEntryController::class)->only(['index', 'create', 'store', 'show']);
+        Route::resource('stock-adjustments', StockAdjustmentController::class);
+
         Route::get('search-variants', [StockEntryController::class, 'search'])->name('variants.search');
 
         Route::get('purchase-order', [PurchaseOrderController::class, 'create'])->name('purchase-orders.create');

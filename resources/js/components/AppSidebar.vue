@@ -68,9 +68,30 @@ const mainNavItems: MainNavItem[] = [
                 href: '/admin/purchase-orders/index',
                 icon: ''
             },
+        ]
+    },
+    {
+        title: 'Inventory',
+        icon: Store,
+        subItems: [
             {
                 title: 'Stock Entries',
                 href: '/admin/stock-entries',
+                icon: ''
+            },
+            {
+                title: 'Create Adjustment',
+                href: '/admin/stock-adjustments/create',
+                icon: ''
+            },
+            {
+                title: 'Adjustment',
+                href: '/admin/stock-adjustments',
+                icon: ''
+            },
+            {
+                title: 'Stock Returns',
+                href: '/admin/stock-returns',
                 icon: ''
             },
         ]

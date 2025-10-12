@@ -369,6 +369,24 @@ return new class extends Migration
             $table->index(['warehouse_id','variant_id']);
         });
 
+        Schema::create('stock_adjustments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('warehouse_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->integer('previous_quantity')->default(0);
+            $table->integer('adjusted_quantity'); // Positive or negative change
+            $table->integer('new_quantity')->virtualAs('previous_quantity + adjusted_quantity');
+            $table->enum('reason', ['damage', 'loss', 'count_discrepancy', 'manual_correction', 'other'])->default('manual_correction');
+            $table->foreignId('employee_id')->nullable()->constrained('employees')->nullOnDelete();
+            $table->string('reference')->nullable()->index(); // Optional unique ref code
+            $table->text('note')->nullable();
+            $table->timestamp('adjusted_at')->useCurrent()->index();
+            $table->timestamps();
+
+            $table->index(['variant_id', 'adjusted_at']);
+            $table->index(['warehouse_id', 'variant_id']);
+        });
+
         Schema::create('bulk_prices', function (Blueprint $table) {
             $table->id();
             $table->foreignId('product_id')->nullable()->constrained()->cascadeOnDelete();
@@ -430,6 +448,27 @@ return new class extends Migration
 
             $table->timestamps();
         });
+
+        Schema::create('opening_balances', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('warehouse_id')->nullable()->index();
+            $table->unsignedBigInteger('vendor_id')->nullable()->index(); // optional
+            $table->string('reference')->nullable();
+            $table->timestamp('effective_at')->nullable();
+            $table->foreignId('employee_id')->nullable()->constrained('employees')->nullOnDelete();
+            $table->text('note')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('opening_balance_items', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('opening_balance_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->integer('quantity');
+            $table->decimal('unit_cost', 10, 2)->nullable();
+            $table->timestamps();
+        });
+
 
 //        Schema::create('stock_layers', function (Blueprint $table) {
 //            $table->id();
@@ -500,5 +539,6 @@ return new class extends Migration
         Schema::dropIfExists('states');
         Schema::dropIfExists('lgas');
         Schema::dropIfExists('warehouses');
+        Schema::dropIfExists('stock_adjustments');
     }
 };

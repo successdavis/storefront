@@ -33,12 +33,12 @@ watch(
     }
 );
 
-// Dropdown toggle
+// Toggle dropdown visibility
 const toggleDropdown = () => {
     isOpen.value = !isOpen.value;
 };
 
-// Select/unselect
+// Toggle selection
 const toggleOption = (option) => {
     if (selected.value.includes(option)) {
         selected.value = selected.value.filter((o) => o !== option);
@@ -48,14 +48,14 @@ const toggleOption = (option) => {
     emit("update:modelValue", selected.value);
 };
 
-// Display text
+// Display computed text
 const displayText = computed(() => {
     if (selected.value.length === 0) return props.placeholder;
     if (selected.value.length === 1) return selected.value[0];
     return `${selected.value.length} items selected`;
 });
 
-// Close on outside click
+// Close when clicking outside
 const handleClickOutside = (event) => {
     if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
         isOpen.value = false;
@@ -72,15 +72,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div ref="dropdownRef" class="relative">
+    <div ref="dropdownRef" class="relative w-full">
         <!-- Dropdown button -->
         <div
             @click="toggleDropdown"
-            class="border border-blue-400 rounded-md px-3 py-2 flex justify-between items-center cursor-pointer"
+            class="border border-blue-400 rounded-md px-3 py-2 flex justify-between items-center cursor-pointer
+                   bg-white text-gray-700 hover:bg-gray-50
+                   dark:bg-gray-800 dark:text-gray-200 dark:border-blue-500 dark:hover:bg-gray-700"
         >
-            <span class="text-gray-700">{{ displayText }}</span>
+            <span>{{ displayText }}</span>
             <svg
-                class="w-4 h-4 text-gray-600"
+                class="w-4 h-4 text-gray-600 dark:text-gray-300"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="2"
@@ -93,17 +95,26 @@ onBeforeUnmount(() => {
         <!-- Dropdown menu -->
         <div
             v-if="isOpen"
-            class="absolute mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-10"
+            class="absolute mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-10
+                   dark:bg-gray-800 dark:border-gray-700 dark:shadow-gray-900/50"
         >
             <div
                 v-for="option in options"
                 :key="option"
                 @click="toggleOption(option)"
-                class="px-3 py-2 flex justify-between items-center hover:bg-gray-100 cursor-pointer"
+                class="px-3 py-2 flex justify-between items-center cursor-pointer
+                       hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-                <span>{{ option }}</span>
+                <span class="text-gray-800 dark:text-gray-200">{{ option }}</span>
                 <span v-if="selected.includes(option)" class="text-blue-500">✔</span>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Optional: Smooth transition for dark mode */
+div, span, svg {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+</style>
