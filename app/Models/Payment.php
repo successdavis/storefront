@@ -10,4 +10,9 @@ class Payment extends Model {
     public function payable() {
         return $this->morphTo();
     }
+    
+    public function employee()
+    {
+        return $this->belongsTo(User::class, 'employee_id');
+    }
 }

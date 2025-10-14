@@ -76,6 +76,7 @@ class StockAdjustmentController extends Controller
 
         $validated['adjusted_at'] = $validated['adjusted_at'] ?? now();
 
+
         try {
             DB::transaction(function () use ($validated, $inventoryService) {
                 // 1️⃣ Create stock adjustment record
@@ -83,7 +84,7 @@ class StockAdjustmentController extends Controller
 
                 // 2️⃣ Fetch variant cost data
                 $variantId = $validated['variant_id'];
-                $lastPurchaseCost   = ProductVariant::find($variantId)->last_purchase_cost;
+                $lastPurchaseCost   = ProductVariant::find($variantId)->last_purchase_price;
 
                 // 3️⃣ Prepare common stock entry payload
                 $baseData = [
@@ -113,6 +114,7 @@ class StockAdjustmentController extends Controller
                     ]);
                 }
             });
+
 
             return redirect()
                 ->route('admin.stock-adjustments.index')

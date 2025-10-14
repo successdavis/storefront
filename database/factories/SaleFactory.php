@@ -18,9 +18,9 @@ class SaleFactory extends Factory
     public function definition(): array
     {
         return [
-            'employee_id' => Employee::factory(),
+            'employee_id' => 31,
             'pos_terminal_id' => PosTerminal::factory(),
-            'user_id' => User::factory(),
+            'customer_id' => User::factory(),
             'total_amount' => fake()->randomFloat(2, 100, 1000),
         ];
     }

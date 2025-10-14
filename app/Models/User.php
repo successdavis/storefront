@@ -57,10 +57,30 @@ class User extends Authenticatable
         return $this->hasMany(Order::class, 'customer_id');
     }
 
-    public function employee()
+    public function stockEntries()
     {
-        return $this->hasOne(Employee::class);
+        return $this->hasMany(StockEntry::class, 'employee_id');
     }
+
+    public function stockAdjustments()
+    {
+        return $this->hasMany(StockAdjustment::class, 'employee_id');
+    }
+
+    public function admingPaymentEntryRecords()
+    {
+        return $this->hasMany(Payment::class, 'employee_id');
+    }
+
+    public function openingBalanceEntries()
+    {
+        return $this->hasMany(OpeningBalance::class, 'employee_id');
+    }
+
+//    public function employee()
+//    {
+//        return $this->hasOne(Employee::class);
+//    }
 
     /**
      * 🔗 Carts for this user (online shopping session)

@@ -148,7 +148,7 @@ class DatabaseSeeder extends Seeder
         User::factory(20)->create();
 
         // ---------- Employees & POS ----------
-        $employees    = Employee::factory(5)->create();
+        $employees    = User::factory(5)->create();
         $posTerminals = PosTerminal::factory(3)->create();
 
         // ---------- Orders ----------
@@ -165,7 +165,7 @@ class DatabaseSeeder extends Seeder
             ->create([
                 'employee_id'    => $employees->random()->id,
                 'pos_terminal_id'=> $posTerminals->random()->id,
-                'user_id'        => User::inRandomOrder()->value('id'),
+                'customer_id'        => User::inRandomOrder()->value('id'),
             ])
             ->each(function (Sale $sale) {
                 SaleItem::factory(3)->create(['sale_id' => $sale->id]);

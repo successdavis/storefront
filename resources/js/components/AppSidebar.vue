@@ -14,7 +14,7 @@ import {
 import { dashboard } from '@/routes';
 import { type MainNavItem, NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, PackageCheck, Store  } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, PackageCheck, Store, ShoppingCart  } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: MainNavItem[] = [
@@ -22,6 +22,11 @@ const mainNavItems: MainNavItem[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutGrid,
+    },
+    {
+        title: 'POS',
+        href: '/admin/pos',
+        icon: ShoppingCart,
     },
     {
         title: 'Products',
@@ -89,11 +94,11 @@ const mainNavItems: MainNavItem[] = [
                 href: '/admin/stock-adjustments',
                 icon: ''
             },
-            {
-                title: 'Stock Returns',
-                href: '/admin/stock-returns',
-                icon: ''
-            },
+            // {
+            //     title: 'Stock Returns',
+            //     href: '/admin/stock-returns',
+            //     icon: ''
+            // },
         ]
     },
 ];

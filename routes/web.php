@@ -26,6 +26,7 @@ use App\Http\Controllers\ItemReceiptController;
 use App\Http\Controllers\OrderController;
 //use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Admin\ProductVariantController;
+use App\Http\Controllers\PosController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StockAdjustmentController;
@@ -156,7 +157,7 @@ Route::prefix('admin')
         Route::post('vendor-bills/store', [VendorBillController::class, 'store'])->name('vendor-bills.store');
 
         Route::get('/vendor-bills/purchase-order/{order}', [VendorBillController::class, 'byPurchaseOrder'])
-        ->name('vendor-bills.by-purchase-order');
+            ->name('vendor-bills.by-purchase-order');
 
         Route::post('vendor-bills/{vendorBill}/payments', [VendorPaymentController::class,'store'])
             ->name('vendor-bill-payments.store');
@@ -173,6 +174,20 @@ Route::prefix('admin')
         // POS management
 //        Route::resource('pos-terminals', PosTerminalController::class);
 //        Route::resource('employees', EmployeeController::class);
+
+        // POS UI (Inertia)
+        Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
+
+        // Cart operations (AJAX via Inertia/form)
+        Route::post('/pos/cart/add', [PosController::class, 'addToCart'])->name('pos.cart.add');
+        Route::post('/pos/cart/update', [PosController::class, 'updateCartItem'])->name('pos.cart.update');
+        Route::post('/pos/cart/remove', [PosController::class, 'removeCartItem'])->name('pos.cart.remove');
+
+        // Finalize sale
+        Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->name('pos.placeOrder');
+
+        // optional: incremental product loading API
+        Route::get('/pos/products', [PosController::class, 'productsApi'])->name('pos.products.api');
 
         // Sales and POS flow
         Route::resource('sales', SaleController::class)->only(['index', 'create', 'store', 'show']);

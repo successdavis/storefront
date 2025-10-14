@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Employee;
 use App\Models\ProductVariant;
 use App\Models\StockEntry;
+use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -18,8 +19,8 @@ class StockEntryFactory extends Factory
         $variant   = ProductVariant::query()->inRandomOrder()->first()
             ?? ProductVariant::factory()->create();
 
-        $employee  = Employee::query()->inRandomOrder()->first()
-            ?? Employee::factory()->create();
+        $employee  = User::query()->inRandomOrder()->first()
+            ?? User::factory()->create();
 
         $warehouse = Warehouse::query()->inRandomOrder()->first()
             ?? Warehouse::factory()->create();

@@ -45,7 +45,7 @@ class StockEntry extends Model
 
     public function employee(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(Employee::class, 'employee_id');
+        return $this->belongsTo(User::class, 'employee_id');
     }
 
     public function source(): \Illuminate\Database\Eloquent\Relations\MorphTo

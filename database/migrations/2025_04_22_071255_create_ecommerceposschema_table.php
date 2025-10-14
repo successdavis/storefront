@@ -318,20 +318,11 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('employees', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->nullable()->unique();
-            $table->enum('role', ['cashier', 'manager', 'admin'])->default('cashier');
-            $table->timestamps();
-
-        });
-
         Schema::create('sales', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('employee_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('employee_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('pos_terminal_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('customer_id')->nullable()->constrained('users')->nullOnDelete();
             $table->decimal('total_amount', 10, 2);
             $table->timestamps();
         });
@@ -358,7 +349,7 @@ return new class extends Migration
             $table->string('reason')->nullable()->index();
             $table->nullableMorphs('source');                                      // e.g. PurchaseOrderItem, ShipmentItem
             $table->boolean('track_inventory')->default(true);
-            $table->foreignId('employee_id')->nullable()->constrained('employees')->nullOnDelete();
+            $table->foreignId('employee_id')->nullable()->constrained('users')->nullOnDelete();
             $table->text('note')->nullable();
             $table->timestamps();
 
@@ -377,7 +368,7 @@ return new class extends Migration
             $table->integer('adjusted_quantity'); // Positive or negative change
             $table->integer('new_quantity')->virtualAs('previous_quantity + adjusted_quantity');
             $table->enum('reason', ['damage', 'loss', 'count_discrepancy', 'manual_correction', 'other'])->default('manual_correction');
-            $table->foreignId('employee_id')->nullable()->constrained('employees')->nullOnDelete();
+            $table->foreignId('employee_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('reference')->nullable()->index(); // Optional unique ref code
             $table->text('note')->nullable();
             $table->timestamp('adjusted_at')->useCurrent()->index();
@@ -443,7 +434,7 @@ return new class extends Migration
 
             // Metadata
             $table->timestamp('paid_at')->nullable();
-            $table->foreignId('employee_id')->nullable()->constrained()->nullOnDelete(); // who recorded it (for POS/manual)
+            $table->foreignId('employee_id')->nullable()->constrained('users')->nullOnDelete(); // who recorded it (for POS/manual)
             $table->json('meta')->nullable(); // gateway response, cheque number, notes
 
             $table->timestamps();
@@ -455,7 +446,7 @@ return new class extends Migration
             $table->unsignedBigInteger('vendor_id')->nullable()->index(); // optional
             $table->string('reference')->nullable();
             $table->timestamp('effective_at')->nullable();
-            $table->foreignId('employee_id')->nullable()->constrained('employees')->nullOnDelete();
+            $table->foreignId('employee_id')->nullable()->constrained('users')->nullOnDelete();
             $table->text('note')->nullable();
             $table->timestamps();
         });
