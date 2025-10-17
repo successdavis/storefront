@@ -268,6 +268,12 @@ return new class extends Migration
 
         Schema::table('users', function (Blueprint $table) {
             $table->string('phone', 20)->nullable();
+            $table->foreignId('country_id')->nullable()->constrained('countries')->nullOnDelete();
+            $table->foreignId('state_id')->nullable()->constrained('states')->nullOnDelete();
+            $table->foreignId('lga_id')->nullable()->constrained('lgas')->nullOnDelete();
+            $table->string('passport_path')->nullable();
+            $table->string('gender')->nullable();
+            $table->date('dob')->nullable();
             $table->text('address')->nullable();
         });
 

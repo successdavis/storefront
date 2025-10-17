@@ -11,7 +11,7 @@ class Sale extends Model
     use HasFactory, HasPayments;
 
     protected $fillable = [
-        'employee_id', 'pos_terminal_id', 'user_id', 'total_amount', 'discount'
+        'employee_id', 'pos_terminal_id', 'user_id', 'total_amount', 'discount', 'customer_id'
     ];
 
     public function employee()

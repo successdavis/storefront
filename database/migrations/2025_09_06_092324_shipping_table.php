@@ -106,27 +106,33 @@ return new class extends Migration
             $table->index(['state_code']);
         });
 
-        Schema::create('order_shipments', function (Blueprint $table) {
+        Schema::create('shipments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('order_id')->constrained()->cascadeOnDelete();
+
+            // Either belongs to an order (online) or a sale (POS)
+            $table->nullableMorphs('shippable');
+            // creates: shippable_id, shippable_type
+
             $table->foreignId('shipping_method_id')->nullable()->constrained()->nullOnDelete();
-            $table->enum('type', ['delivery','pickup']);
+            $table->enum('type', ['delivery', 'pickup'])->default('delivery');
+
             $table->decimal('weight', 10, 3)->nullable();
             $table->decimal('cost', 10, 2)->default(0);
             $table->char('currency', 3)->default('NGN');
+
             $table->string('status')->default('pending'); // pending, ready, shipped, completed, cancelled
             $table->timestamp('ready_at')->nullable();
             $table->timestamp('shipped_at')->nullable();
             $table->timestamp('delivered_at')->nullable();
+
             $table->timestamps();
 
-            $table->index(['order_id','type']);
+            $table->index(['shippable_id', 'shippable_type', 'type']);
         });
-
         // Only for pickup shipments
-        Schema::create('order_pickups', function (Blueprint $table) {
+        Schema::create('pickups', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('order_shipment_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('shipment_id')->constrained()->cascadeOnDelete();
             $table->foreignId('pickup_location_id')->constrained()->cascadeOnDelete();
             $table->timestamp('window_start')->nullable();
             $table->timestamp('window_end')->nullable();
@@ -137,10 +143,16 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        Schema::create('order_addresses', function (Blueprint $table) {
+        // 2️⃣ Addresses table — unified for orders and sales
+        Schema::create('addresses', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('order_id')->constrained()->cascadeOnDelete();
-            $table->enum('type', ['billing','shipping']);
+
+            // Either belongs to an order or a sale
+            $table->nullableMorphs('addressable');
+            // creates: addressable_id, addressable_type
+
+            $table->enum('type', ['billing', 'shipping'])->default('shipping');
+
             $table->string('name');
             $table->string('phone')->nullable();
             $table->string('email')->nullable();
@@ -148,12 +160,15 @@ return new class extends Migration
             $table->string('line2')->nullable();
             $table->string('state_code')->nullable();
             $table->string('postal_code')->nullable();
+
             $table->foreignId('country_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('state_id')->nullable()->constrained('states')->nullOnDelete();
             $table->foreignId('lga_id')->nullable()->constrained('lgas')->nullOnDelete();
             $table->foreignId('city_id')->nullable()->constrained('cities')->nullOnDelete();
+
             $table->timestamps();
-            $table->unique(['order_id','type']);
+
+            $table->unique(['addressable_id', 'addressable_type', 'type']);
         });
     }
 

@@ -21,8 +21,10 @@ use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CartItemController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ItemReceiptController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\OrderController;
 //use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Admin\ProductVariantController;
@@ -79,6 +81,11 @@ Route::middleware('auth')->group(function () {
     Route::patch('/orders/{order}/ship', [OrderController::class, 'markShipped'])->name('orders.ship');
     Route::patch('/orders/{order}/complete', [OrderController::class, 'markCompleted'])->name('orders.complete');
     Route::patch('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
+
+    Route::get('/locations/countries', [LocationController::class, 'countries'])->name('locations.countries');
+    Route::get('/locations/states/{country}', [LocationController::class, 'states'])->name('locations.states');
+    Route::get('/locations/lgas/{state}', [LocationController::class, 'lgas'])->name('locations.lgas');
+    Route::get('/locations/cities/{lga}', [LocationController::class, 'cities'])->name('locations.cities');
 });
 
 /*
@@ -192,6 +199,9 @@ Route::prefix('admin')
         // Sales and POS flow
         Route::resource('sales', SaleController::class)->only(['index', 'create', 'store', 'show']);
         Route::post('sales/{sale}/finalize', [SaleController::class, 'finalize'])->name('sales.finalize');
+
+        Route::get('/customers/list', [CustomerController::class, 'list'])->name('customers.list');
+        Route::post('/customers/store', [CustomerController::class, 'store'])->name('customers.store');
 
 
         // Nested under a sale
