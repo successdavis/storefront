@@ -6,6 +6,7 @@ use App\Http\Requests\StockEntryRequest;
 use App\Http\Resources\StockEntryResource;
 use App\Models\Employee;
 use App\Models\ProductVariant;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\InventoryService;
 use App\Models\StockEntry;
@@ -43,15 +44,25 @@ class StockEntryController extends Controller
             ->orderByDesc('effective_at');
 
         return Inertia::render('Admin/StockEntries/Index', [
-            'filters'    => $request->only('search','type','warehouse_id','employee_id','from','to'),
-            // Apply the Resource here
+            'filters'    => $request->only('search', 'type', 'warehouse_id', 'employee_id', 'from', 'to'),
+
+            // Paginated entries
             'entries'    => StockEntryResource::collection(
                 $query->paginate(20)->withQueryString()
             ),
-            'warehouses' => Warehouse::select('id','name')->orderBy('name')->get(),
-            'employees'  => Employee::select('id','name')->orderBy('name')->get(),
+
+            // Warehouses
+            'warehouses' => Warehouse::select('id', 'name')->orderBy('name')->get(),
+
+            // Employees = users with roles
+            // ✅ Employees = users that have any assigned role
+            'employees'  => \App\Models\User::whereHas('roles')
+                ->select('id', 'name')
+                ->orderBy('name')
+                ->get(),
         ]);
     }
+
 
     public function create()
     {

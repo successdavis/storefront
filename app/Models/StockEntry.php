@@ -38,7 +38,7 @@ class StockEntry extends Model
         return $this->belongsTo(ProductVariant::class);
     }
 
-    public function warehouse(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function warehouse(): \Illuminate\Database\Eloquent\Relatiwons\BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
     }
@@ -46,6 +46,11 @@ class StockEntry extends Model
     public function employee(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'employee_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function source(): \Illuminate\Database\Eloquent\Relations\MorphTo

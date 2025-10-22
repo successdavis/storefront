@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\ProductVariantController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\ShippingController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
@@ -86,6 +87,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/locations/states/{country}', [LocationController::class, 'states'])->name('locations.states');
     Route::get('/locations/lgas/{state}', [LocationController::class, 'lgas'])->name('locations.lgas');
     Route::get('/locations/cities/{lga}', [LocationController::class, 'cities'])->name('locations.cities');
+});
+
+
+Route::middleware(['auth'])->prefix('shipping')->name('shipping.')->group(function () {
+    Route::get('methods', [ShippingController::class, 'methods'])->name('methods');
+    Route::get('zones', [ShippingController::class, 'zones'])->name('zones');
+    Route::get('pickup-locations', [ShippingController::class, 'pickupLocations'])->name('pickup_locations');
+    Route::get('zone-by-state/{state}', [ShippingController::class, 'zoneByState'])->name('zone_by_state');
+
+
+    Route::post('calculate', [ShippingController::class, 'calculate'])->name('calculate');
+    Route::post('create', [ShippingController::class, 'createShipment'])->name('create');
 });
 
 /*

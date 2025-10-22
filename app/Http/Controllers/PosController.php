@@ -2,7 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\InsufficientStockException;
+use App\Models\Address;
+use App\Models\Shipment;
+use App\Models\User;
 use App\Services\InventoryService;
+use App\Services\SaleService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\ProductVariant;
@@ -81,7 +86,7 @@ class PosController extends Controller
         return response()->json($variants);
     }
 
-    public function placeOrder(Request $request)
+    public function placeOrder(Request $request, SaleService $saleService)
     {
         $validated = $request->validate([
             'customer_id' => 'nullable|exists:users,id',
@@ -91,62 +96,32 @@ class PosController extends Controller
             'items.*.price' => 'required|numeric|min:0',
             'total' => 'required|numeric|min:0',
             'payment_method' => 'nullable|string',
+            'shipping' => 'nullable|array',
         ]);
 
-        DB::beginTransaction();
-
         try {
-            $sale = Sale::create([
-                'employee_id' => auth()->id(),
-                'customer_id' => $validated['customer_id'] ?? null,
-                'total_amount' => $validated['total'],
-                'payment_method' => $validated['payment_method'] ?? 'cash',
-            ]);
-
-            foreach ($validated['items'] as $item) {
-                $saleItem = SaleItem::create([
-                    'sale_id' => $sale->id,
-                    'variant_id' => $item['variant_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                ]);
-
-                $this->inventoryService->stockOut([
-                    'variant_id' => $item['variant_id'],
-                    'quantity' => $item['quantity'],
-                    'employee_id' => auth()->id(),
-                    'reason' => 'Sale to customer - POS',
-                    'source_type' => Sale::class,
-                    'source_id' => $sale->id,
-                    'note' => "Sale Item #{$saleItem->id}",
-                ]);
-            }
-
-            $sale->addPayment([
-                'type' => 'inflow',
-                'method' => $validated['payment_method'] ?? 'cash',
-                'amount' => $validated['total'],
-                'status' => 'paid',
-                'note' => 'Sale to customer - POS',
-            ]);
-
-            DB::commit();
+            $sale = $saleService->handle($validated);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Sale placed successfully.',
                 'sale_id' => $sale->id,
             ]);
+        } catch (InsufficientStockException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'details' => $e->getDetails(),
+            ], 422);
         } catch (\Throwable $e) {
-            DB::rollBack();
             report($e);
-
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to place order: ' . $e->getMessage(),
             ], 500);
         }
     }
+
 
 
 

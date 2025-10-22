@@ -303,7 +303,7 @@ return new class extends Migration
             $table->char('currency', 3)->default('NGN');
             $table->enum('channel', ['online', 'pos'])->default('online');
             $table->string('order_number')->unique();
-//            $table->enum('status', ['pending', 'paid', 'shipped', 'completed', 'cancelled'])->default('pending');
+            $table->enum('status', ['pending', 'paid', 'shipped', 'completed', 'cancelled'])->default('pending');
             $table->timestamps();
         });
 

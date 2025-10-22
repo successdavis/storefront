@@ -21,8 +21,8 @@ return new class extends Migration
         Schema::create('shipping_zone_states', function (Blueprint $table) {
             $table->id();
             $table->foreignId('shipping_zone_id')->constrained()->cascadeOnDelete();
-            $table->string('state_code');           // e.g. "LA" for Lagos, or full name
-            $table->unique(['shipping_zone_id','state_code']);
+            $table->foreignId('state_id')->constrained()->cascadeOnDelete();           // e.g. "LA" for Lagos, or full name
+            $table->unique(['shipping_zone_id','state_id']);
             $table->timestamps();
         });
 
@@ -40,23 +40,23 @@ return new class extends Migration
             $table->foreignId('shipping_method_id')->constrained()->cascadeOnDelete();
             $table->foreignId('shipping_zone_id')->nullable()->constrained()->nullOnDelete();
 
-            // criteria
+            // Criteria
             $table->decimal('min_weight', 10, 3)->nullable();   // kg
             $table->decimal('max_weight', 10, 3)->nullable();   // kg
             $table->decimal('min_subtotal', 10, 2)->nullable(); // cart subtotal filter
             $table->decimal('max_subtotal', 10, 2)->nullable(); // optional
 
-            // pricing model
+            // Pricing model
             $table->enum('rate_type', ['flat','per_kg','hybrid']);  // choose a strategy
             $table->decimal('base_rate', 10, 2)->default(0);        // flat part
             $table->decimal('per_kg', 10, 2)->default(0);           // variable part
 
-            // extras
+            // Extras
             $table->decimal('surcharge', 10, 2)->default(0);        // remote area or handling
             $table->decimal('free_shipping_threshold', 10, 2)->nullable();
             $table->char('currency', 3)->default('NGN');
 
-            // validity
+            // Validity
             $table->timestamp('starts_at')->nullable();
             $table->timestamp('ends_at')->nullable();
 
@@ -114,7 +114,6 @@ return new class extends Migration
             // creates: shippable_id, shippable_type
 
             $table->foreignId('shipping_method_id')->nullable()->constrained()->nullOnDelete();
-            $table->enum('type', ['delivery', 'pickup'])->default('delivery');
 
             $table->decimal('weight', 10, 3)->nullable();
             $table->decimal('cost', 10, 2)->default(0);
@@ -127,7 +126,7 @@ return new class extends Migration
 
             $table->timestamps();
 
-            $table->index(['shippable_id', 'shippable_type', 'type']);
+            $table->index(['shippable_id', 'shippable_type']);
         });
         // Only for pickup shipments
         Schema::create('pickups', function (Blueprint $table) {
@@ -146,13 +145,8 @@ return new class extends Migration
         // 2️⃣ Addresses table — unified for orders and sales
         Schema::create('addresses', function (Blueprint $table) {
             $table->id();
-
-            // Either belongs to an order or a sale
-            $table->nullableMorphs('addressable');
-            // creates: addressable_id, addressable_type
-
+            $table->foreignId('shipment_id')->constrained()->cascadeOnDelete();
             $table->enum('type', ['billing', 'shipping'])->default('shipping');
-
             $table->string('name');
             $table->string('phone')->nullable();
             $table->string('email')->nullable();
@@ -164,11 +158,10 @@ return new class extends Migration
             $table->foreignId('country_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('state_id')->nullable()->constrained('states')->nullOnDelete();
             $table->foreignId('lga_id')->nullable()->constrained('lgas')->nullOnDelete();
-            $table->foreignId('city_id')->nullable()->constrained('cities')->nullOnDelete();
 
             $table->timestamps();
 
-            $table->unique(['addressable_id', 'addressable_type', 'type']);
+            $table->unique(['shipment_id', 'type']);
         });
     }
 
