@@ -15,144 +15,140 @@
                 </option>
             </select>
 
-            <div class="flex items-center gap-2">
-                <!-- Orders panel open button -->
-                <button
-                    @click="$emit('open-orders')"
-                    class="rounded-md px-3 py-2 text-sm border hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-                    title="View Sales Orders"
-                >
-                    Orders
-                </button>
-            </div>
-                <ShippingButton @open="showShippingModal = true" />
 
-                <ShippingModal
-                    v-show="showShippingModal"
-                    :countries="countries"
-                    :states="states"
-                    :lgas="lgas"
-                    :items="cartItems"
-                    :subtotal="subtotal"
-                    :initial-shipping="shippingInfo"
-                    :methods="shippingMethods"
-                    :zones="shippingZones"
-                    :pickup-locations="pickupLocations"
-                    @close="showShippingModal = false"
-                    @created="handleShipmentCreated"
-                    @load-states="loadStates"
-                    @load-lgas="loadLgas"
-                />
-            </div>
+            <ShippingButton @open="showShippingModal = true" />
 
-            <!-- Modal: Parent controls visibility -->
-            <CustomerModal
-                v-if="showCustomerModal"
+            <ShippingModal
+                v-show="showShippingModal"
                 :countries="countries"
                 :states="states"
                 :lgas="lgas"
-                :newCustomer="newCustomer"
-                @close="showCustomerModal = false"
-                @save="handleSaveNewCustomer"
+                :items="cartItems"
+                :subtotal="subtotal"
+                :initial-shipping="shippingInfo"
+                :methods="shippingMethods"
+                :zones="shippingZones"
+                :pickup-locations="pickupLocations"
+                @close="showShippingModal = false"
+                @created="handleShipmentCreated"
                 @load-states="loadStates"
                 @load-lgas="loadLgas"
             />
 
-            <!-- Cart items -->
-            <div class="flex-1 overflow-y-auto pr-2">
-                <div
-                    v-if="cartItems.length === 0"
-                    class="py-8 text-center text-gray-500 dark:text-gray-400"
-                >
-                    Cart is empty
-                </div>
+            <div class="flex items-center gap-2">
+                <!-- Orders panel open button -->
+                <OffcanvasOrders />
+            </div>
+        </div>
 
-                <div
-                    v-for="item in cartItems"
-                    :key="item.variant_id"
-                    class="flex items-start gap-3 border-b border-gray-200 py-3 dark:border-gray-700"
-                >
-                    <img :src="item.image" class="h-14 w-14 rounded object-cover" />
-                    <div class="flex-1">
-                        <div class="truncate font-medium">{{ item.name }}</div>
-                        <div class="text-xs text-gray-500 dark:text-gray-400">
-                            {{ item.variant_label }}
-                        </div>
+        <!-- Modal: Parent controls visibility -->
+        <CustomerModal
+            v-if="showCustomerModal"
+            :countries="countries"
+            :states="states"
+            :lgas="lgas"
+            :newCustomer="newCustomer"
+            @close="showCustomerModal = false"
+            @save="handleSaveNewCustomer"
+            @load-states="loadStates"
+            @load-lgas="loadLgas"
+        />
 
-                        <div class="mt-2 flex items-center gap-2">
-                            <button
-                                @click="decrement(item)"
-                                class="rounded border px-2 py-1"
-                            >
-                                -
-                            </button>
-                            <input
-                                type="number"
-                                v-model.number="item.quantity"
-                                @change="updateItem(item)"
-                                class="w-16 rounded border bg-white px-2 py-1 text-center"
-                            />
-                            <button
-                                @click="increment(item)"
-                                class="rounded border px-2 py-1"
-                            >
-                                +
-                            </button>
-                        </div>
+        <!-- Cart items -->
+        <div class="flex-1 overflow-y-auto pr-2">
+            <div
+                v-if="cartItems.length === 0"
+                class="py-8 text-center text-gray-500 dark:text-gray-400"
+            >
+                Cart is empty
+            </div>
+
+            <div
+                v-for="item in cartItems"
+                :key="item.variant_id"
+                class="flex items-start gap-3 border-b border-gray-200 py-3 dark:border-gray-700"
+            >
+                <img :src="item.image" class="h-14 w-14 rounded object-cover" />
+                <div class="flex-1">
+                    <div class="truncate font-medium">{{ item.name }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ item.variant_label }}
                     </div>
 
-                    <div class="text-right">
-                        <div class="font-semibold text-blue-600 dark:text-blue-400">
-                            {{ formatCurrency(item.price * item.quantity) }}
-                        </div>
+                    <div class="mt-2 flex items-center gap-2">
                         <button
-                            @click="removeItem(item)"
-                            class="mt-2 text-xs text-red-500"
+                            @click="decrement(item)"
+                            class="rounded border px-2 py-1"
                         >
-                            Remove
+                            -
+                        </button>
+                        <input
+                            type="number"
+                            v-model.number="item.quantity"
+                            @change="updateItem(item)"
+                            class="w-16 rounded border bg-white px-2 py-1 text-center"
+                        />
+                        <button
+                            @click="increment(item)"
+                            class="rounded border px-2 py-1"
+                        >
+                            +
                         </button>
                     </div>
                 </div>
-            </div>
 
-            <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-                <!-- Show shipping cost only if shippingInfo exists -->
-                <div v-if="shippingInfo" class="mb-2 flex justify-between text-sm">
-                    <div>
-                        Shipping ({{
-                            shippingInfo.shipping_method_name || 'Shipping'
-                        }})
+                <div class="text-right">
+                    <div class="font-semibold text-blue-600 dark:text-blue-400">
+                        {{ formatCurrency(item.price * item.quantity) }}
                     </div>
-                    <div>
-                        {{ formatCurrency(shippingInfo.shipping_cost || 0) }}
-                    </div>
-                </div>
-
-                <div class="flex justify-between text-sm">
-                    <div>Sub Total</div>
-                    <div>{{ formatCurrency(subtotal) }}</div>
-                </div>
-
-                <div class="mt-3 flex justify-between text-lg font-bold">
-                    <div>Total</div>
-                    <div>{{ formatCurrency(total) }}</div>
-                </div>
-
-                <div class="mt-4 flex gap-2">
                     <button
-                        @click="onPlaceOrder"
-                        class="flex-1 rounded bg-blue-600 py-2 text-white"
+                        @click="removeItem(item)"
+                        class="mt-2 text-xs text-red-500"
                     >
-                        Place Order
-                    </button>
-                    <button
-                        @click="clearCartAndShipping"
-                        class="rounded border border-gray-300 px-4 py-2"
-                    >
-                        Clear
+                        Remove
                     </button>
                 </div>
             </div>
+        </div>
+
+        <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+            <!-- Show shipping cost only if shippingInfo exists -->
+            <div v-if="shippingInfo" class="mb-2 flex justify-between text-sm">
+                <div>
+                    Shipping ({{
+                        shippingInfo.shipping_method_name || 'Shipping'
+                    }})
+                </div>
+                <div>
+                    {{ formatCurrency(shippingInfo.shipping_cost || 0) }}
+                </div>
+            </div>
+
+            <div class="flex justify-between text-sm">
+                <div>Sub Total</div>
+                <div>{{ formatCurrency(subtotal) }}</div>
+            </div>
+
+            <div class="mt-3 flex justify-between text-lg font-bold">
+                <div>Total</div>
+                <div>{{ formatCurrency(total) }}</div>
+            </div>
+
+            <div class="mt-4 flex gap-2">
+                <button
+                    @click="onPlaceOrder"
+                    class="flex-1 rounded bg-blue-600 py-2 text-white"
+                >
+                    Place Order
+                </button>
+                <button
+                    @click="clearCartAndShipping"
+                    class="rounded border border-gray-300 px-4 py-2"
+                >
+                    Clear
+                </button>
+            </div>
+        </div>
     </aside>
 </template>
 
@@ -165,7 +161,8 @@ import { useCart } from '../composables/useCart';
 import axios from 'axios';
 import { route } from 'ziggy-js';
 import debounce from 'lodash/debounce';
-import { useCurrencyFormatter } from '@/pages/Admin/Pos/composables/useCurrencyFormatter.js'; // optional: you can implement your own debounce
+import { useCurrencyFormatter } from '@/pages/Admin/Pos/composables/useCurrencyFormatter.js';
+import OffcanvasOrders from '@/pages/Admin/Pos/components/OffcanvasOrders.vue'; // optional: you can implement your own debounce
 
 // useCart provides reactive cartItems and subtotal, and item operations
 const {
@@ -358,6 +355,8 @@ async function onPlaceOrder() {
             quantity: it.quantity,
             price: it.price,
         })),
+        total: total.value,
+        subtotal: subtotal.value,
         shipping: shippingInfo.value || null,
     };
 

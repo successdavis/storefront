@@ -36,6 +36,7 @@ class OrderFactory extends Factory
             'currency'       => 'NGN',
             'channel'        => $channel,
             'order_number'   => $orderNo,
+            'total_amount' => fake()->randomFloat(2, 100, 1000),
         ];
     }
 

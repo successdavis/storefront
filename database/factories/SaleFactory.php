@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Employee;
+use App\Models\Order;
 use App\Models\PosTerminal;
 use App\Models\Sale;
 use App\Models\User;
@@ -21,6 +22,7 @@ class SaleFactory extends Factory
             'employee_id' => 31,
             'pos_terminal_id' => PosTerminal::factory(),
             'customer_id' => User::factory(),
+            'order_id' => Order::factory()->pos(),
             'total_amount' => fake()->randomFloat(2, 100, 1000),
         ];
     }

@@ -52,7 +52,8 @@ export function useCart() {
             const response = await axios.post(route('admin.pos.placeOrder'), {
                 customer_id: payload.customer_id ?? null,
                 items: cartItems.value.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity, price: i.price })),
-                total: subtotal.value,
+                total: payload.total,
+                subtotal: payload.subtotal,
                 shipping: payload.shipping
             })
 

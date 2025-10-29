@@ -300,6 +300,7 @@ return new class extends Migration
             $table->decimal('shipping_total', 10, 2)->default(0);
             $table->decimal('tax_total', 10, 2)->default(0);
             $table->decimal('discount', 10, 2)->default(0);
+            $table->decimal('total_amount', 10, 2);
             $table->char('currency', 3)->default('NGN');
             $table->enum('channel', ['online', 'pos'])->default('online');
             $table->string('order_number')->unique();
@@ -329,19 +330,20 @@ return new class extends Migration
             $table->foreignId('employee_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('pos_terminal_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('customer_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('order_id')->constrained('orders')->onDelete('cascade');
             $table->decimal('total_amount', 10, 2);
             $table->timestamps();
         });
 
-        Schema::create('sale_items', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('sale_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('variant_id')->constrained('product_variants');
-            $table->integer('quantity');
-            $table->decimal('price', 10, 2);
-            $table->timestamps();
-
-        });
+//        Schema::create('sale_items', function (Blueprint $table) {
+//            $table->id();
+//            $table->foreignId('sale_id')->constrained()->cascadeOnDelete();
+//            $table->foreignId('variant_id')->constrained('product_variants');
+//            $table->integer('quantity');
+//            $table->decimal('price', 10, 2);
+//            $table->timestamps();
+//
+//        });
 
         Schema::create('stock_entries', function (Blueprint $table) {
             $table->id();

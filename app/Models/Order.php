@@ -11,12 +11,17 @@ class Order extends Model
     use HasFactory, HasPayments;
 
     protected $fillable = [
-        'user_id', 'total_amount', 'discount', 'channel', 'status'
+        'user_id', 'total_amount', 'discount', 'channel', 'status','order_number','subtotal','shipping_total'
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function sale()
+    {
+        return $this->hasOne(Sale::class);
     }
 
     public function items()

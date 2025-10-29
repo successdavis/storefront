@@ -7,7 +7,7 @@
 
         <!-- Right: Cart Section -->
         <CartSection @open-orders="showOrders = true" />
-        <OffcanvasOrders v-model:open="showOrders" />
+
     </div>
 </template>
 

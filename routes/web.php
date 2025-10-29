@@ -205,6 +205,8 @@ Route::prefix('admin')
 
         // Finalize sale
         Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->name('pos.placeOrder');
+        Route::get('/pos/sales', [PosController::class, 'salesOrders'])->name('pos.orders');
+        Route::post('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->name('pos.orders');
 
         // optional: incremental product loading API
         Route::get('/pos/products', [PosController::class, 'productsApi'])->name('pos.products.api');

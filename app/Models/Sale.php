@@ -11,12 +11,17 @@ class Sale extends Model
     use HasFactory, HasPayments;
 
     protected $fillable = [
-        'employee_id', 'pos_terminal_id', 'user_id', 'total_amount', 'discount', 'customer_id'
+        'employee_id', 'pos_terminal_id', 'user_id', 'total_amount', 'discount', 'customer_id', 'order_id'
     ];
 
     public function employee()
     {
         return $this->belongsTo(User::class, 'employee_id');
+    }
+
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
     }
 
     public function posTerminal()

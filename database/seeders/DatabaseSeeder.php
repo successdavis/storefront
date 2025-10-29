@@ -31,6 +31,11 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call([
+            LocationSeeder::class,
+            ShippingSeeder::class,
+        ]);
+
         // ---------- Helpers as closures (no global function redeclare) ----------
         $seedVariantCatalog = function (): void {
             $color = VariantType::firstOrCreate(['name' => 'Color']);
@@ -166,11 +171,7 @@ class DatabaseSeeder extends Seeder
                 'employee_id'    => $employees->random()->id,
                 'pos_terminal_id'=> $posTerminals->random()->id,
                 'customer_id'        => User::inRandomOrder()->value('id'),
-            ])
-            ->each(function (Sale $sale) {
-                SaleItem::factory(3)->create(['sale_id' => $sale->id]);
-//                SalePayment::factory()->create(['sale_id' => $sale->id]);
-            });
+            ]);
 
         // ---------- Stock ----------
         StockEntry::factory(20)->create();
@@ -181,6 +182,11 @@ class DatabaseSeeder extends Seeder
         $admin = User::updateOrCreate(
             ['email' => 'admin@example.com'],
             ['name' => 'Admin User', 'password' => Hash::make('password')]
+        );
+
+        $walkInCustomer = User::updateOrCreate(
+            ['email' => 'walkInCustomer@example.com'],
+            ['name' => 'WalkInCustomer', 'password' => Hash::make('password')]
         );
 
         if (! $admin->hasRole('director')) {
