@@ -3,28 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\InsufficientStockException;
-use App\Models\Address;
-use App\Models\Shipment;
-use App\Models\User;
+use App\Models\Setting;
 use App\Services\InventoryService;
 use App\Services\OrderService;
-use App\Services\SaleService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Models\ProductVariant;
 use App\Models\Category;
 use App\Models\Brand;
 use App\Models\Sale;
-use Illuminate\Support\Facades\View;
-use App\Models\SaleItem;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Mike42\Escpos\Printer;
-use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
-use Mike42\Escpos\PrintConnectors\FilePrintConnector;
-use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Milon\Barcode\DNS1D;
 
 class PosController extends Controller
 {
@@ -78,7 +68,6 @@ class PosController extends Controller
         ]);
     }
 
-
     // Optional separate endpoint for infinite load or client-side fetching
     public function productsApi(Request $request)
     {
@@ -106,9 +95,13 @@ class PosController extends Controller
             'payment_method' => 'nullable|string',
             'subtotal' => 'required|numeric|min:0',
             'shipping' => 'nullable|array',
+            'coupon'   => 'nullable|string',
+            'channel'  => 'nullable|in:online,pos',
+            'checkout_token' => 'nullable|string|exists:checkout_sessions,token',
         ]);
 
         $validated['channel'] = 'pos';
+
 
         try {
             $sale = $orderService->handle($validated);
@@ -160,59 +153,51 @@ class PosController extends Controller
         return response()->json(['data' => $sales]);
     }
 
-//    public function printSaleOrder($id)
-//    {
-//        $sale = Sale::with('customer')->findOrFail($id);
-//        $printer->text("DAILY STORE\n");
-//        $printer->text("------------------------------\n");
-//        $printer->setJustification(Printer::JUSTIFY_LEFT);
-//        $printer->text("SALE ID: {$sale->id}\n");
-//        $printer->text("CUSTOMER: " . ($sale->customer?->name ?? 'Walk In Customer') . "\n");
-//        $printer->text("TOTAL: ₦" . number_format($sale->total_amount, 2) . "\n");
-//        $printer->text("TIME: " . $sale->created_at->format('h:i A') . "\n");
-//        $printer->text("------------------------------\n");
-//        $printer->setJustification(Printer::JUSTIFY_CENTER);
-//        $printer->text("Thank you for your purchase!\n");
-//        $printer->cut();
-//        $printer->close();
-//    }
 
-    public function printSaleOrder(Request $request)
+    public function printSaleOrder($id)
     {
-        $sale = Sale::with('customer')->findOrFail($id);
+        $sale = Sale::with([
+            'employee',
+            'order.user',
+            'order.items.variant.product',
+            'order.items.variant.values.type',
+        ])->findOrFail($id);
 
-        try {
-            $order = [
-                'customer'  => $sale->customer?->name ?? 'Walk In Customer',
-                'receipt_no' => 'RCP-' . now()->timestamp,
-                'date' => now()->format('d M, Y h:i A'),
-                'items' => [
-                    ['name' => 'Product A', 'qty' => 2, 'price' => 1500],
-                    ['name' => 'Product B', 'qty' => 1, 'price' => 2000],
-                ],
-                'subtotal' => 5000,
-                'discount' => 500,
-                'total' => "₦ " . number_format($sale->total_amount, 2),
-            ];
+        $order = $sale->order;
 
-            // Generate HTML content
-            $html = View::make('receipts.thermal', compact('order'))->render();
+        // 🧠 Load paper size setting from settings table
+        $paperSize = Setting::get('receipt_paper_size', '80mm');
 
-            // Return as JSON to be printed in browser
-            return response()->json([
-                'status' => 'success',
-                'html' => $html,
-            ]);
-        } catch (\Throwable $e) {
-            Log::channel('receipt')->error('Receipt print error', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+        // 🧾 Determine the paper dimension
+        $paperConfig = match ($paperSize) {
+            'A4' => [
+                'paper' => 'A4',
+                'view'  => 'receipts.a4',
+            ],
+            default => [
+                'paper' => [0, 0, 226.77, 1000],
+                'view'  => 'receipts.thermal',
+            ],
+        };
 
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to generate receipt.',
-            ], 500);
-        }
+        $data = [
+            'sale' => $sale,
+            'order' => $order,
+            'date' => Carbon::parse($sale->created_at)->format('d/m/Y H:i'),
+            'business_name' => Setting::get('business_name'),
+            'business_tagline' => Setting::get('business_tagline'),
+            'business_email' => Setting::get('business_email'),
+            'business_phone' => Setting::get('business_phone'),
+            'business_address' => Setting::get('business_address'),
+            'business_website' => Setting::get('business_website'),
+            'business_logo' => Setting::get('business_logo'),
+            'business_receipt_footer' => Setting::get('business_receipt_footer'),
+            'business_receipt_footer_refund' => Setting::get('business_receipt_footer_refund'),
+        ];
+
+        $pdf = Pdf::loadView($paperConfig['view'], $data)
+            ->setPaper($paperConfig['paper']);
+
+        return $pdf->stream("receipt-{$sale->id}.pdf");
     }
 }

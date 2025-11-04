@@ -1,8 +1,7 @@
-// useCart.js
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { route } from 'ziggy-js'
 import axios from 'axios'
-import { eventBus } from '@/eventBus.js';
+import { eventBus } from '@/eventBus.js'
 
 // module-level shared cart state (singleton)
 const cartItems = ref([])
@@ -40,8 +39,18 @@ export function useCart() {
         if (item.quantity <= 0) removeItem(item)
     }
 
-    const subtotal = computed(() => cartItems.value.reduce((sum, i) => sum + i.price * i.quantity, 0))
-
+    /**
+     * Place order with server
+     * @param {Object} payload
+     * {
+     *   customer_id,
+     *   items,
+     *   subtotal,   // from preview
+     *   total,      // from preview
+     *   shipping,   // from modal or preview
+     *   coupon      // applied coupon (optional)
+     * }
+     */
     const placeOrder = async (payload = {}) => {
         if (cartItems.value.length === 0) {
             alert('Please add at least one product.')
@@ -51,21 +60,25 @@ export function useCart() {
         try {
             const response = await axios.post(route('admin.pos.placeOrder'), {
                 customer_id: payload.customer_id ?? null,
-                items: cartItems.value.map((i) => ({ variant_id: i.variant_id, quantity: i.quantity, price: i.price })),
-                total: payload.total,
+                items: cartItems.value.map((i) => ({
+                    variant_id: i.variant_id,
+                    quantity: i.quantity,
+                    price: i.price,
+                })),
                 subtotal: payload.subtotal,
-                shipping: payload.shipping
+                total: payload.total,
+                shipping: payload.shipping,
+                coupon: payload.coupon ?? null,
+                checkout_token: payload.checkout_token,
             })
 
             if (response.data?.success) {
                 alert(response.data.message || 'Order placed.')
                 clearCart()
-
-                eventBus.emit('order-placed');
+                eventBus.emit('order-placed')
             } else {
                 alert('Something went wrong: ' + (response.data?.message ?? 'Unknown'))
                 throw new Error(response.data?.message ?? 'Unknown error')
-
             }
         } catch (err) {
             console.error('Failed to place order:', err)
@@ -76,7 +89,6 @@ export function useCart() {
 
     return {
         cartItems,
-        subtotal,
         addToCart,
         increment,
         decrement,

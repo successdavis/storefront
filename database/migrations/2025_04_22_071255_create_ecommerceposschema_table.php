@@ -69,9 +69,9 @@ return new class extends Migration
             $table->string('name');                                // Warehouse name
             $table->string('code')->unique();                       // Short unique code (e.g. "WH-NG-01")
             $table->string('address')->nullable();                  // Full address
-            $table->string('city')->nullable();
-            $table->string('state')->nullable();
-            $table->string('country')->default('Nigeria');          // Default country
+            $table->foreignId('lga_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('state_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('country_id')->constrained()->cascadeOnDelete();          // Default country
             $table->string('contact_person')->nullable();           // Manager or key contact
             $table->string('phone')->nullable();
             $table->string('email')->nullable();
@@ -322,6 +322,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->text('location')->nullable();
+            $table->foreignId('warehouse_id')->constrained()->cascadeOnDelete();
             $table->timestamps();
         });
 
@@ -334,16 +335,6 @@ return new class extends Migration
             $table->decimal('total_amount', 10, 2);
             $table->timestamps();
         });
-
-//        Schema::create('sale_items', function (Blueprint $table) {
-//            $table->id();
-//            $table->foreignId('sale_id')->constrained()->cascadeOnDelete();
-//            $table->foreignId('variant_id')->constrained('product_variants');
-//            $table->integer('quantity');
-//            $table->decimal('price', 10, 2);
-//            $table->timestamps();
-//
-//        });
 
         Schema::create('stock_entries', function (Blueprint $table) {
             $table->id();

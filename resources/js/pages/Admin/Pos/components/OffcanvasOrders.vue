@@ -46,15 +46,15 @@ async function fetchSalesOrders() {
     }
 }
 
-async function printReceipt(orderId: number) {
-    try {
-        await axios.post(`/admin/pos/sales/${orderId}/print`)
-        // replace with your toast mechanism if available
-        window.alert('Receipt sent to printer.')
-    } catch (err: any) {
-        console.error(err)
-        window.alert('Failed to print receipt.')
-    }
+async function printReceipt(saleId) {
+    const url = `/admin/pos/sales/${saleId}/print`;
+    const printWindow = window.open(url, '_blank');
+    printWindow.focus();
+
+    // Optional: trigger print automatically once loaded
+    printWindow.onload = () => {
+        printWindow.print();
+    };
 }
 </script>
 

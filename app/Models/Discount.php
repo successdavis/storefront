@@ -51,6 +51,12 @@ class Discount extends Model
         return $this->belongsToMany(ProductVariant::class, 'discount_variant', 'discount_id', 'product_variant_id')
             ->withTimestamps();
     }
+    public function products()
+    {
+        // Pivot: discount_variant(discount_id, product_variant_id)
+        return $this->belongsToMany(Product::class, 'discount_product', 'discount_id', 'product_id')
+            ->withTimestamps();
+    }
 
     public function categories()
     {

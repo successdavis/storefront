@@ -40,12 +40,14 @@ return new class extends Migration
             $table->id();
             $table->foreignId('discount_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->timestamps();
         });
 
         Schema::create('discount_variant', function (Blueprint $table) {
             $table->id();
             $table->foreignId('discount_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->timestamps();
             $table->unique(['discount_id','product_variant_id']);
         });
 
@@ -53,6 +55,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('discount_id')->constrained()->cascadeOnDelete();
             $table->foreignId('category_id')->constrained()->cascadeOnDelete();
+            $table->timestamps();
             $table->unique(['discount_id','category_id']);
         });
 

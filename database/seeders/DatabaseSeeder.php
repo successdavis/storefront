@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Discount;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -192,5 +193,16 @@ class DatabaseSeeder extends Seeder
         if (! $admin->hasRole('director')) {
             $admin->assignRole($directorRole);
         }
+
+        // Seed with 10 discounts
+        Discount::factory()
+            ->count(10)
+            ->create();
+
+        // Add some expired ones too
+        Discount::factory()
+            ->count(3)
+            ->expired()
+            ->create();
     }
 }

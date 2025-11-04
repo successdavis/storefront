@@ -42,6 +42,13 @@ class User extends Authenticatable
         'remember_token',
     ];
 
+    public function discounts()
+    {
+        return $this->belongsToMany(Discount::class, 'discount_user')
+            ->withPivot(['times_used'])
+            ->withTimestamps();
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -61,7 +68,7 @@ class User extends Authenticatable
      */
     public function orders(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
-        return $this->hasMany(Order::class, 'customer_id');
+        return $this->hasMany(Order::class);
     }
 
     public function stockEntries()

@@ -25,33 +25,33 @@
           <div>
             <label class="mb-1 block text-sm">Country</label>
             <select v-model="localNewCustomer.country_id" @change="emitLoadStates(localNewCustomer.country_id)" required class="w-full rounded border border-gray-300 px-3 py-2">
-              <option value="">Select Country</option>
-              <option v-for="c in countries" :key="c.id" :value="c.id">{{ c.name }}</option>
+              <option class="dark:text-black" value="">Select Country</option>
+              <option class="dark:text-black" v-for="c in countries" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
 
           <div>
             <label class="mb-1 block text-sm">State</label>
             <select v-model="localNewCustomer.state_id" @change="emitLoadLgas(localNewCustomer.state_id)" required class="w-full rounded border border-gray-300 px-3 py-2">
-              <option value="">Select State</option>
-              <option v-for="s in states" :key="s.id" :value="s.id">{{ s.name }}</option>
+              <option class="dark:text-black" value="">Select State</option>
+              <option class="dark:text-black" v-for="s in states" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
           </div>
 
           <div>
             <label class="mb-1 block text-sm">LGA</label>
             <select v-model="localNewCustomer.lga_id" required class="w-full rounded border border-gray-300 px-3 py-2">
-              <option value="">Select LGA</option>
-              <option v-for="l in lgas" :key="l.id" :value="l.id">{{ l.name }}</option>
+              <option class="dark:text-black" value="">Select LGA</option>
+              <option class="dark:text-black" v-for="l in lgas" :key="l.id" :value="l.id">{{ l.name }}</option>
             </select>
           </div>
 
           <div>
             <label class="mb-1 block text-sm">Gender</label>
             <select v-model="localNewCustomer.gender" class="w-full rounded border border-gray-300 px-3 py-2">
-              <option value="">Select Gender</option>
-              <option>Male</option>
-              <option>Female</option>
+              <option class="dark:text-black" value="">Select Gender</option>
+              <option class="dark:text-black">Male</option>
+              <option class="dark:text-black">Female</option>
             </select>
           </div>
 

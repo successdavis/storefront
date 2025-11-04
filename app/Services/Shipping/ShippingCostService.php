@@ -3,11 +3,9 @@
 namespace App\Services\Shipping;
 
 use App\Exceptions\ShippingRateNotFoundException;
-use App\Models\ShippingMethod;
 use App\Models\ShippingRate;
-use App\Models\ShippingZone;
-use App\Models\PickupLocation;
 use App\Models\ProductVariant;
+use App\Models\State;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -193,9 +191,13 @@ class ShippingCostService
 
     protected function resolveZoneForState(int $stateId): ?int
     {
-        $zone = ShippingZone::whereHas('states', function ($q) use ($stateId) {
-            $q->where('id', $stateId);
-        })->first();
+//        $zone = ShippingZone::whereHas('states', function ($q) use ($stateId) {
+//            $q->where('id', $stateId);
+//        })->first();
+
+        $state = State::find($stateId);
+
+        $zone = $state->shippingZone()->first();
 
         return $zone ? $zone->id : null;
     }

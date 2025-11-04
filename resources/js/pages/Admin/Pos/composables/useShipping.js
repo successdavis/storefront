@@ -21,11 +21,6 @@ export function useShipping() {
         pickupLocations.value = res.data
     }
 
-    async function calculate(payload) {
-        const res = await axios.post(route('shipping.calculate'), payload)
-        return res.data
-    }
-
     async function create(payload) {
         const res = await axios.post(route('shipping.create'), payload)
         return res.data

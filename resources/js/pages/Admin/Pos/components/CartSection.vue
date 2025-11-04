@@ -8,13 +8,12 @@
                 @change="handleCustomerChange"
                 class="w-full rounded border px-2 py-3 text-sm"
             >
-                <option value="">Walk In Customer</option>
-                <option value="__add_new__">➕ Add New Customer</option>
-                <option v-for="c in customers" :key="c.id" :value="c.id">
+                <option class="dark:text-black" value="">Walk In Customer</option>
+                <option class="dark:text-black" value="__add_new__">➕ Add New Customer</option>
+                <option class="dark:text-black" v-for="c in customers" :key="c.id" :value="c.id">
                     {{ c.name }}
                 </option>
             </select>
-
 
             <ShippingButton @open="showShippingModal = true" />
 
@@ -24,7 +23,7 @@
                 :states="states"
                 :lgas="lgas"
                 :items="cartItems"
-                :subtotal="subtotal"
+                :subtotal="previewTotals.subtotal"
                 :initial-shipping="shippingInfo"
                 :methods="shippingMethods"
                 :zones="shippingZones"
@@ -41,7 +40,7 @@
             </div>
         </div>
 
-        <!-- Modal: Parent controls visibility -->
+        <!-- Customer modal -->
         <CustomerModal
             v-if="showCustomerModal"
             :countries="countries"
@@ -78,7 +77,7 @@
                     <div class="mt-2 flex items-center gap-2">
                         <button
                             @click="decrement(item)"
-                            class="rounded border px-2 py-1"
+                            class="rounded border dark:bg-gray-500 px-2 py-1"
                         >
                             -
                         </button>
@@ -86,11 +85,11 @@
                             type="number"
                             v-model.number="item.quantity"
                             @change="updateItem(item)"
-                            class="w-16 rounded border bg-white px-2 py-1 text-center"
+                            class="w-16 rounded border dark:text-black bg-white px-2 py-1 text-center"
                         />
                         <button
                             @click="increment(item)"
-                            class="rounded border px-2 py-1"
+                            class="rounded border px-2 py-1 dark:bg-gray-500"
                         >
                             +
                         </button>
@@ -111,29 +110,59 @@
             </div>
         </div>
 
+        <!-- Totals -->
         <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-            <!-- Show shipping cost only if shippingInfo exists -->
-            <div v-if="shippingInfo" class="mb-2 flex justify-between text-sm">
+            <!-- Shipping cost -->
+            <div v-if="previewTotals.shipping_total > 0" class="mb-2 flex justify-between text-sm">
                 <div>
-                    Shipping ({{
-                        shippingInfo.shipping_method_name || 'Shipping'
-                    }})
+                    Shipping ({{ shippingInfo?.shipping_method_name || 'Shipping' }})
                 </div>
                 <div>
-                    {{ formatCurrency(shippingInfo.shipping_cost || 0) }}
+                    {{ formatCurrency(previewTotals.shipping_total) }}
                 </div>
             </div>
 
+            <!-- Subtotal -->
             <div class="flex justify-between text-sm">
                 <div>Sub Total</div>
-                <div>{{ formatCurrency(subtotal) }}</div>
+                <div>{{ formatCurrency(previewTotals.subtotal) }}</div>
             </div>
 
+            <!-- Discount -->
+            <div v-if="previewTotals.discount > 0" class="flex justify-between text-sm text-green-600 mt-1">
+                <div>
+                    Discount
+                    <span v-if="previewTotals.discount_label" class="italic">
+            ({{ previewTotals.discount_label }})
+          </span>
+                </div>
+                <div>-{{ formatCurrency(previewTotals.discount) }}</div>
+            </div>
+
+            <!-- Coupon input -->
+            <div class="mt-3 flex gap-2">
+                <input
+                    v-model="couponCode"
+                    type="text"
+                    placeholder="Enter coupon code"
+                    class="flex-1 rounded border px-2 py-2 text-sm"
+                />
+                <button
+                    @click="refreshPreview"
+                    class="rounded bg-blue-100 px-3 py-2 text-blue-700 text-sm"
+                    :disabled="loadingPreview"
+                >
+                    Apply
+                </button>
+            </div>
+
+            <!-- Total -->
             <div class="mt-3 flex justify-between text-lg font-bold">
                 <div>Total</div>
-                <div>{{ formatCurrency(total) }}</div>
+                <div>{{ formatCurrency(previewTotals.total) }}</div>
             </div>
 
+            <!-- Actions -->
             <div class="mt-4 flex gap-2">
                 <button
                     @click="onPlaceOrder"
@@ -151,6 +180,7 @@
         </div>
     </aside>
 </template>
+
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
@@ -187,6 +217,18 @@ const showCustomerModal = ref(false);
 const showShippingModal = ref(false);
 const shippingInfo = ref(null); // when modal emits 'created' we set this
 
+const couponCode = ref('');
+const previewTotals = ref({
+    subtotal: 0,
+    shipping_total: 0,
+    discount: 0,
+    discount_label: null,
+    total: 0,
+});
+
+const loadingPreview = ref(false);
+let controller = null;
+
 const newCustomer = ref({
     name: '',
     email: '',
@@ -208,6 +250,8 @@ let recalcController = null;
 const shippingMethods = ref([]);
 const shippingZones = ref([]);
 const pickupLocations = ref([]);
+
+let checkout_token = ref('');
 
 // computed total includes shipping cost if present
 const total = computed(() => {
@@ -247,6 +291,7 @@ function handleCustomerChange() {
         showCustomerModal.value = true;
         selectedCustomer.value = '';
     }
+    refreshPreview();
 }
 
 onMounted(async () => {
@@ -271,104 +316,97 @@ async function handleSaveNewCustomer(payload) {
         Object.keys(newCustomer.value).forEach(
             (k) => (newCustomer.value[k] = ''),
         );
+
+        refreshPreview();
     } catch (err) {
         alert('Failed to create customer.');
         console.error(err);
     }
 }
 
-// When shipping modal emits created (it does NOT persist to DB) we store the payload
-function handleShipmentCreated(payload) {
-    // payload expected to contain shipping_method_id, shipping_method_name (optional), shipping_cost, shipping_zone_id, address, etc.
-    shippingInfo.value = { ...payload };
-    showShippingModal.value = false;
-
-    // if cart changes, we will auto-recalculate shipping (see watcher)
-}
-
-// Recalculate shipping on cart changes if shippingInfo exists
-const recalcShippingDebounced = debounce(async () => {
-    if (!shippingInfo.value) return;
-
-    // cancel previous
-    if (recalcController) {
-        try {
-            recalcController.abort();
-        } catch {}
+// auto call /checkout/preview
+const refreshPreview = debounce(async function () {
+    if (cartItems.value.length === 0) {
+        previewTotals.value = { subtotal: 0, shipping_total: 0, discount: 0, discount_label: null, total: 0 };
+        return;
     }
-    recalcController = new AbortController();
+
+    if (controller) {
+        try { controller.abort() } catch {}
+    }
+    controller = new AbortController();
+    loadingPreview.value = true;
 
     try {
-        const res = await axios.post(
-            route('shipping.calculate'),
-            {
-                shipping_method_id: shippingInfo.value.shipping_method_id,
-                shipping_zone_id: shippingInfo.value.shipping_zone_id,
-                // include full items array and subtotal — server expects items => array
-                items: cartItems.value.map((it) => ({
-                    variant_id: it.variant_id,
-                    product_id: it.product_id,
-                    quantity: it.quantity,
-                    weight: it.weight ?? 0,
-                    price: it.price,
-                })),
-                subtotal: subtotal.value,
-            },
-            { signal: recalcController.signal },
-        );
+        const res = await axios.post(route('checkout.preview'), {
+            channel: 'pos',
+            items: cartItems.value.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })),
+            shipping: shippingInfo.value || null,
+            coupon: couponCode.value || null,
+            customer_id: selectedCustomer.value || null,
+            checkout_token: checkout_token.value
+        }, { signal: controller.signal });
 
         const data = res?.data?.data ?? res?.data;
-        if (data && data.total !== undefined && data.total !== null) {
-            shippingInfo.value.shipping_cost = Number(data.total);
-        } else {
-            // fallback: set zero and leave message in console
-            shippingInfo.value.shipping_cost = 0;
-            console.warn('Shipping calculate returned no total', res.data);
-        }
-    } catch (err) {
-        // If abort, ignore
-        if (axios.isCancel?.(err) || err.name === 'CanceledError') return;
-        console.error('Error recalculating shipping:', err);
-        // Keep existing shipping cost, but you might want to show a notification
-    } finally {
-        recalcController = null;
-    }
-}, 350); // debounce 350ms
 
-// watch cart items for recalculation
-watch(
-    () => cartItems.value.map((i) => `${i.variant_id}:${i.quantity}`), // watch items + quantities
-    () => {
-        if (shippingInfo.value) {
-            recalcShippingDebounced();
+        checkout_token.value = String(data.checkout_token) || null;
+        previewTotals.value = {
+            subtotal: Number(data.subtotal || 0),
+            shipping_total: Number(data.shipping_total || 0),
+            discount: Number(data.discount || 0),
+            discount_label: data.discount_label || null,
+            total: Number(data.total || 0),
+        };
+    } catch (err) {
+        if (err.name !== 'CanceledError') {
+            console.error('Checkout preview failed:', err);
         }
-    },
+    } finally {
+        loadingPreview.value = false;
+        controller = null;
+    }
+}, 500); // wait 500ms after the last trigger
+
+// Called when shipping modal emits created
+function handleShipmentCreated(payload) {
+    shippingInfo.value = { ...payload };
+    showShippingModal.value = false;
+    refreshPreview();
+}
+
+// Watch cart, shipping, coupon
+watch(
+    () => [
+        couponCode.value,
+        shippingInfo.value?.shipping_method_id,
+        shippingInfo.value?.shipping_zone_id,
+        ...cartItems.value.map(i => `${i.variant_id}:${i.quantity}`)
+    ],
+    refreshPreview,
+    { deep: false }
 );
+
+
 
 // place order — include shipping info & items; useCart.placeOrder should accept this payload on backend
 async function onPlaceOrder() {
     const payload = {
         customer_id: selectedCustomer.value || null,
-        items: cartItems.value.map((it) => ({
-            variant_id: it.variant_id,
-            product_id: it.product_id,
-            quantity: it.quantity,
-            price: it.price,
-        })),
-        total: total.value,
-        subtotal: subtotal.value,
+        items: cartItems.value.map(i => ({ variant_id: i.variant_id, quantity: i.quantity, price: i.price })),
+        subtotal: previewTotals.value.subtotal,
+        total: previewTotals.value.total,
         shipping: shippingInfo.value || null,
+        coupon: couponCode.value || null,
+        checkout_token: checkout_token.value,
     };
 
-
-    // delegate to useCart.placeOrder which may handle clearing cart on success
     try {
         await placeOrder(payload);
-        // clear local shipping info when order placed
         shippingInfo.value = null;
+        couponCode.value = '';
+        previewTotals.value = { subtotal: 0, shipping_total: 0, discount: 0, discount_label: null, total: 0 };
     } catch (err) {
         console.error('Order placement failed', err);
-        // Optionally show user error
     }
 }
 
@@ -376,6 +414,8 @@ async function onPlaceOrder() {
 function clearCartAndShipping() {
     clearCart();
     shippingInfo.value = null;
+    couponCode.value = '';
+    previewTotals.value = { subtotal: 0, shipping_total: 0, discount: 0, discount_label: null, total: 0 };
 }
 
 // Expose increment/decrement/update/remove already provided by useCart

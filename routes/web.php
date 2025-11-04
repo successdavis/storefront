@@ -12,7 +12,6 @@ use App\Http\Controllers\Admin\AdminVariantValueController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\EmployeeController;
-use App\Http\Controllers\Admin\PosTerminalController;
 use App\Http\Controllers\Admin\SaleController;
 use App\Http\Controllers\Admin\SaleItemController;
 use App\Http\Controllers\Admin\SalePaymentController;
@@ -21,6 +20,7 @@ use App\Http\Controllers\BrandController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CartItemController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\CheckoutPreviewController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ItemReceiptController;
@@ -29,6 +29,7 @@ use App\Http\Controllers\OrderController;
 //use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Admin\ProductVariantController;
 use App\Http\Controllers\PosController;
+use App\Http\Controllers\PosTerminalController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShippingController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorPaymentController;
+use App\Http\Controllers\WareHouseController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -87,6 +89,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/locations/states/{country}', [LocationController::class, 'states'])->name('locations.states');
     Route::get('/locations/lgas/{state}', [LocationController::class, 'lgas'])->name('locations.lgas');
     Route::get('/locations/cities/{lga}', [LocationController::class, 'cities'])->name('locations.cities');
+
+    Route::post('/checkout/preview', [CheckoutPreviewController::class, 'preview'])->name('checkout.preview');
 });
 
 
@@ -187,12 +191,16 @@ Route::prefix('admin')
         Route::get('purchase-orders/{purchase_order}/get-item-receipts', [PurchaseOrderController::class, 'getItemReceipts'])
             ->name('purchase-orders.get-item-receipts');
 
+
         // Orders
 //        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);
 //        Route::patch('orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
 
-        // POS management
-//        Route::resource('pos-terminals', PosTerminalController::class);
+//         POS management
+        Route::resource('pos-terminals', PosTerminalController::class);
+
+        Route::resource('warehouses', WarehouseController::class);
+
 //        Route::resource('employees', EmployeeController::class);
 
         // POS UI (Inertia)
@@ -206,7 +214,7 @@ Route::prefix('admin')
         // Finalize sale
         Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->name('pos.placeOrder');
         Route::get('/pos/sales', [PosController::class, 'salesOrders'])->name('pos.orders');
-        Route::post('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->name('pos.orders');
+        Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->name('pos.orders');
 
         // optional: incremental product loading API
         Route::get('/pos/products', [PosController::class, 'productsApi'])->name('pos.products.api');

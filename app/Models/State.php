@@ -18,4 +18,9 @@ class State extends Model
     {
         return $this->hasMany(Lga::class);
     }
+
+    public function shippingZone()
+    {
+        return $this->belongsToMany(ShippingZone::class, 'shipping_zone_states');
+    }
 }
