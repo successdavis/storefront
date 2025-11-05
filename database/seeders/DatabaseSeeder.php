@@ -35,6 +35,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             LocationSeeder::class,
             ShippingSeeder::class,
+            BusinessSettingsSeeder::class,
         ]);
 
         // ---------- Helpers as closures (no global function redeclare) ----------

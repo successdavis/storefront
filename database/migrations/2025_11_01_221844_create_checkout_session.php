@@ -26,9 +26,10 @@ return new class extends Migration
             $table->boolean('used')->default(false);
             $table->timestampTz('expires_at')->nullable();
             $table->timestampsTz();
+
+            $table->unique(['user_id', 'used']);
         });
 
-        $table->unique(['user_id', 'used']);
 
     }
 

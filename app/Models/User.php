@@ -71,22 +71,23 @@ class User extends Authenticatable
         return $this->hasMany(Order::class);
     }
 
-    public function stockEntries()
+    public function stockEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(StockEntry::class, 'employee_id');
     }
 
-    public function stockAdjustments()
+    public function stockAdjustments(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(StockAdjustment::class, 'employee_id');
     }
 
-    public function admingPaymentEntryRecords()
+
+    public function adminPaymentEntryRecords(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Payment::class, 'employee_id');
     }
 
-    public function openingBalanceEntries()
+    public function openingBalanceEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(OpeningBalance::class, 'employee_id');
     }
@@ -95,6 +96,11 @@ class User extends Authenticatable
 //    {
 //        return $this->hasOne(Employee::class);
 //    }
+
+    public function warehouses()
+    {
+        return $this->belongsToMany(Warehouse::class, 'employee_warehouse', 'employee_id', 'warehouse_id');
+    }
 
     /**
      * 🔗 Carts for this user (online shopping session)

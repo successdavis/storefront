@@ -15,8 +15,9 @@ class PosTerminalFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => 'POS-' . fake()->unique()->numberBetween(1, 100),
-            'location' => fake()->address(),
+            'name'         => 'POS-' . fake()->unique()->numberBetween(1, 100),
+            'location'     => fake()->optional()->address(),
+            'warehouse_id' => \App\Models\Warehouse::factory(), // or random existing ID
         ];
     }
 }

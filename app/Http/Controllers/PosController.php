@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\InsufficientStockException;
+use App\Models\PosTerminal;
 use App\Models\Setting;
 use App\Services\InventoryService;
 use App\Services\OrderService;
@@ -16,14 +17,25 @@ use App\Models\Sale;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Milon\Barcode\DNS1D;
 
+
 class PosController extends Controller
 {
     public function __construct(
         protected InventoryService $inventoryService  // ✅ Inject the inventory service
-    ) {}
+    ) {
+    }
+
 
     public function index(Request $request)
     {
+//        session()->forget('pos_terminal_id');
+        $terminalAssigned = $this->ensureTerminalAssigned();
+
+        // If selecting terminal, return early (this returns the Vue page from ensureTerminalAssigned())
+        if ($terminalAssigned instanceof \Inertia\Response) {
+            return $terminalAssigned;
+        }
+
         $q = $request->input('q');
         $categoryId = $request->input('category_id');
         $brandId = $request->input('brand_id');
@@ -200,4 +212,74 @@ class PosController extends Controller
 
         return $pdf->stream("receipt-{$sale->id}.pdf");
     }
+
+    private function ensureTerminalAssigned()
+    {
+        if (session()->has('pos_terminal_id')) {
+            return session('pos_terminal_id');
+        }
+
+        $user = auth()->user();
+        $warehouse = $user->warehouses()->first();
+
+        if (!$warehouse) {
+            abort(403, 'You are not assigned to a warehouse.');
+        }
+
+        $terminals = $warehouse->posTerminals()
+            ->where(function ($q) {
+                // Do not show terminals locked by others
+                $q->whereNull('locked_by_employee_id')
+                    ->orWhere('locked_by_employee_id', auth()->id());
+            })
+            ->orderBy('name')
+            ->get();
+
+        if ($terminals->count() === 0) {
+            abort(403, 'No POS terminal is available for use (all locked).');
+        }
+
+        if ($terminals->count() === 1) {
+            $terminal = $terminals->first();
+
+            // Auto-lock
+            $terminal->update([
+                'locked_by_employee_id' => auth()->id(),
+                'locked_at' => now(),
+            ]);
+
+            session(['pos_terminal_id' => $terminal->id]);
+
+            return $terminal->id;
+        }
+
+        return Inertia::render('Admin/Pos/SelectTerminal', [
+            'terminals' => $terminals,
+        ]);
+    }
+
+    public function assignTerminal(Request $request)
+    {
+        $request->validate(['terminal_id' => 'required|exists:pos_terminals,id']);
+
+        $terminal = PosTerminal::findOrFail($request->terminal_id);
+
+        if ($terminal->locked_by_employee_id && $terminal->locked_by_employee_id !== auth()->id()) {
+            return back()->withErrors([
+                'terminal_id' => 'This terminal is already in use by another staff.',
+            ]);
+        }
+
+        $terminal->update([
+            'locked_by_employee_id' => auth()->id(),
+            'locked_at' => now(),
+        ]);
+
+        session(['pos_terminal_id' => $terminal->id]);
+
+        return redirect()->route('admin.pos.index');
+    }
+
+
+
 }

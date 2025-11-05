@@ -54,7 +54,7 @@ class WareHouseController extends Controller
     {
         Warehouse::create($request->validated());
 
-        return redirect()->route('warehouses.index')
+        return redirect()->route('admin.warehouses.index')
             ->with('success', 'Warehouse created successfully.');
     }
 
@@ -75,7 +75,7 @@ class WareHouseController extends Controller
     {
         $warehouse->update($request->validated());
 
-        return redirect()->route('warehouses.index')
+        return redirect()->route('admin.warehouses.index')
             ->with('success', 'Warehouse updated successfully.');
     }
 
@@ -86,7 +86,7 @@ class WareHouseController extends Controller
     {
         $warehouse->delete();
 
-        return redirect()->route('warehouses.index')
+        return redirect()->route('admin.warehouses.index')
             ->with('success', 'Warehouse deleted successfully.');
     }
 }

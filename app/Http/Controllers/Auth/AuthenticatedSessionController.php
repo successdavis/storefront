@@ -55,6 +55,12 @@ class AuthenticatedSessionController extends Controller
     {
         Auth::guard('web')->logout();
 
+        \App\Models\PosTerminal::where('id', session('pos_terminal_id'))
+        ->update([
+            'locked_by_employee_id' => null,
+            'locked_at' => null,
+        ]);
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

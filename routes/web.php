@@ -33,11 +33,13 @@ use App\Http\Controllers\PosTerminalController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShippingController;
+use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorPaymentController;
 use App\Http\Controllers\WareHouseController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -200,6 +202,17 @@ Route::prefix('admin')
         Route::resource('pos-terminals', PosTerminalController::class);
 
         Route::resource('warehouses', WarehouseController::class);
+
+        Route::get('/staff/search-user', [StaffController::class, 'searchUser'])->name('staff.search-user');
+
+        Route::resource('staff', StaffController::class);
+
+        Route::get('/pos/select-terminal', [PosController::class, 'selectTerminal'])
+            ->name('pos.selectTerminal');
+
+        Route::post('/pos/select-terminal', [PosController::class, 'assignTerminal'])->name('pos.setTerminal');
+
+
 
 //        Route::resource('employees', EmployeeController::class);
 

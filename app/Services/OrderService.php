@@ -213,6 +213,7 @@ class OrderService
                     'total_amount'  => $sessionTotal,
                     'payment_method'=> $payload['payment_method'] ?? 'cash',
                     'order_id'      => $order->id,
+                    'pos_terminal_id' => session()->get('pos_terminal_id'),
                 ]);
             }
 

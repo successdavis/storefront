@@ -79,7 +79,15 @@ return new class extends Migration
             $table->timestamps();
             $table->softDeletes();                                  // For audit/logical deletion
 
-            $table->index(['name', 'city']);                        // Common search fields
+            $table->index(['name', 'lga_id']);                        // Common search fields
+        });
+
+        Schema::create('employee_warehouse', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('warehouse_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('employee_id')->constrained('users')->cascadeOnDelete();
+            $table->timestamps();
+            $table->unique(['warehouse_id','employee_id']);
         });
 
         Schema::create('categories', function (Blueprint $table) {

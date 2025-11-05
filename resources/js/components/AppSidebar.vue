@@ -14,7 +14,7 @@ import {
 import { dashboard } from '@/routes';
 import { type MainNavItem, NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, PackageCheck, Store, ShoppingCart, Warehouse, Boxes, Monitor  } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, PackageCheck, Store, ShoppingCart, Building2, Boxes, Monitor  } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: MainNavItem[] = [
@@ -79,11 +79,11 @@ const mainNavItems: MainNavItem[] = [
         title: 'Inventory',
         icon: Boxes,
         subItems: [
-            {
-                title: 'Stock Entries',
-                href: '/admin/stock-entries',
-                icon: ''
-            },
+            // {
+            //     title: 'Stock Entries',
+            //     href: '/admin/stock-entries',
+            //     icon: ''
+            // },
             {
                 title: 'Create Adjustment',
                 href: '/admin/stock-adjustments/create',
@@ -103,14 +103,30 @@ const mainNavItems: MainNavItem[] = [
     },
     {
         title: 'Warehouse',
-        icon: Warehouse,
+        icon: Building2,
         href: '/admin/warehouses'
     },
     {
         title: 'Pos Terminals',
         icon: Monitor,
-        href: '/admin/pos-terminals/index'
-    }
+        href: '/admin/pos-terminals'
+    },
+    {
+        title: 'Staffs',
+        icon: Boxes,
+        subItems: [
+            {
+                title: 'All Staffs',
+                href: '/admin/staff',
+                icon: ''
+            },
+            {
+                title: 'Roles',
+                href: '/admin/roles/create',
+                icon: ''
+            },
+        ]
+    },
 ];
 
 const footerNavItems: NavItem[] = [
