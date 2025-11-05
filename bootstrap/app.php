@@ -29,12 +29,12 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // ✅ Disable syntax highlighting that is causing "PatternSearchException"
-        $exceptions->renderable(function (\Throwable $e, $request) {
-            if (app()->environment('local')) {
-                return response()->make(
-                    "<h2>Exception: {$e->getMessage()}</h2><pre>{$e->getTraceAsString()}</pre>",
-                    500
-                );
-            }
-        });
+//        $exceptions->renderable(function (\Throwable $e, $request) {
+//            if (app()->environment('local')) {
+//                return response()->make(
+//                    "<h2>Exception: {$e->getMessage()}</h2><pre>{$e->getTraceAsString()}</pre>",
+//                    500
+//                );
+//            }
+//        });
     })->create();

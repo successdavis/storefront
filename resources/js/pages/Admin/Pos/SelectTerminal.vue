@@ -8,10 +8,15 @@ const props = defineProps({
         type: Array,
         required: true,
     },
+    use_pos_terminal_password: {
+        type: Boolean,
+        required: true,
+    }
 });
 
 const form = useForm({
     terminal_id: "",
+    supervisor_password: "",
 });
 
 const canSubmit = computed(() => form.terminal_id !== "");
@@ -69,6 +74,13 @@ const submit = () => {
 
                     <Hash class="ml-auto w-4 h-4 text-gray-400" />
                 </label>
+            </div>
+
+            <div class="mt-4" v-if="use_pos_terminal_password">
+                <div>
+                    <label for="first_name" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Supervisor Password</label>
+                    <input v-model="form.supervisor_password" type="password" id="first_name" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="Enter Password" required />
+                </div>
             </div>
 
             <!-- Submit button -->

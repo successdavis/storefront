@@ -72,7 +72,7 @@ class PurchaseOrderController extends Controller
     public function create()
     {
         $productVariants = ProductVariant::with('product:id,name') // eager load product name only
-        ->select('id', 'sku', 'product_id')                   // we need product_id to match the relation
+        ->select('id', 'sku', 'product_id','last_purchase_price')                   // we need product_id to match the relation
         ->orderByRaw('LOWER(sku)')                            // or name if you prefer
         ->get()
             ->map(function ($variant) {
@@ -80,6 +80,7 @@ class PurchaseOrderController extends Controller
                     'id'   => $variant->id,
                     'sku'  => $variant->sku,
                     'name' => $variant->product->name, // use product name
+                    'last_purchase_price' => $variant->last_purchase_price, // use product name
                 ];
             });
 

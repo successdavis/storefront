@@ -9,6 +9,7 @@ use App\Services\InventoryService;
 use App\Services\OrderService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use App\Models\ProductVariant;
 use App\Models\Category;
@@ -30,6 +31,11 @@ class PosController extends Controller
     {
 //        session()->forget('pos_terminal_id');
         $terminalAssigned = $this->ensureTerminalAssigned();
+
+        // If this returned a redirect (e.g. back()->with('error'...)), stop execution
+        if ($terminalAssigned instanceof \Illuminate\Http\RedirectResponse) {
+            return $terminalAssigned;
+        }
 
         // If selecting terminal, return early (this returns the Vue page from ensureTerminalAssigned())
         if ($terminalAssigned instanceof \Inertia\Response) {
@@ -223,23 +229,15 @@ class PosController extends Controller
         $warehouse = $user->warehouses()->first();
 
         if (!$warehouse) {
-            abort(403, 'You are not assigned to a warehouse.');
+            return back()->with('error', 'You are not assigned to a warehouse.');
         }
 
-        $terminals = $warehouse->posTerminals()
-            ->where(function ($q) {
-                // Do not show terminals locked by others
-                $q->whereNull('locked_by_employee_id')
-                    ->orWhere('locked_by_employee_id', auth()->id());
-            })
-            ->orderBy('name')
-            ->get();
-
-        if ($terminals->count() === 0) {
-            abort(403, 'No POS terminal is available for use (all locked).');
+        if (Setting::get('use_pos_terminal_password', 'true')) {
+            return redirect()->route('admin.pos.selectTerminal');
         }
 
-        if ($terminals->count() === 1) {
+        if ($warehouse->posTerminals()->count() === 1) {
+            $terminals = $warehouse->posTerminals();
             $terminal = $terminals->first();
 
             // Auto-lock
@@ -253,23 +251,44 @@ class PosController extends Controller
             return $terminal->id;
         }
 
-        return Inertia::render('Admin/Pos/SelectTerminal', [
-            'terminals' => $terminals,
-        ]);
+        $terminals = $warehouse->posTerminals()
+            ->where(function ($q) {
+                // Do not show terminals locked by others
+                $q->whereNull('locked_by_employee_id')
+                    ->orWhere('locked_by_employee_id', auth()->id());
+            })
+            ->orderBy('name')
+            ->get();
+
+        if ($terminals->count() === 0) {
+            return back()->with('error', 'No POS terminal is available for use (all locked).');
+
+        }
+
+
+        return redirect()->route('admin.pos.selectTerminal');
     }
 
     public function assignTerminal(Request $request)
     {
-        $request->validate(['terminal_id' => 'required|exists:pos_terminals,id']);
+        $request->validate([
+            'terminal_id' => 'required|exists:pos_terminals,id',
+            'supervisor_password' => 'nullable|string',
+        ]);
+
+        if (filter_var(Setting::get('use_pos_terminal_password'), FILTER_VALIDATE_BOOLEAN) === true) {
+            $dbPassword = Setting::get('pos_supervisor_password');
+
+            if (!Hash::check($request->supervisor_password, $dbPassword)) {
+                return back()->with('error', 'Incorrect Supervisor password');
+            }
+        }
 
         $terminal = PosTerminal::findOrFail($request->terminal_id);
 
         if ($terminal->locked_by_employee_id && $terminal->locked_by_employee_id !== auth()->id()) {
-            return back()->withErrors([
-                'terminal_id' => 'This terminal is already in use by another staff.',
-            ]);
+            return back()->with('error', 'This terminal is already in use by another staff.');
         }
-
         $terminal->update([
             'locked_by_employee_id' => auth()->id(),
             'locked_at' => now(),
@@ -278,6 +297,26 @@ class PosController extends Controller
         session(['pos_terminal_id' => $terminal->id]);
 
         return redirect()->route('admin.pos.index');
+    }
+
+    public function selectTerminal()
+    {
+        $user = auth()->user();
+        $warehouse = $user->warehouses()->first();
+
+        $terminals = $warehouse->posTerminals()
+            ->where(function ($q) {
+                // Do not show terminals locked by others
+                $q->whereNull('locked_by_employee_id')
+                    ->orWhere('locked_by_employee_id', auth()->id());
+            })
+            ->orderBy('name')
+            ->get();
+
+        return Inertia::render('Admin/Pos/SelectTerminal', [
+            'terminals' => $terminals,
+            'use_pos_terminal_password' => filter_var(Setting::get('use_pos_terminal_password'), FILTER_VALIDATE_BOOLEAN),
+        ]);
     }
 
 
