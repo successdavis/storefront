@@ -17,8 +17,8 @@
                         class="w-full rounded border px-3 py-2 text-sm"
                         required
                     >
-                        <option disabled value="">-- Select a bill --</option>
-                        <option
+                        <option class="dark:text-black" disabled value="">-- Select a bill --</option>
+                        <option class="dark:text-black"
                             v-for="bill in bills"
                             :key="bill.id"
                             :value="bill.id"
@@ -51,10 +51,10 @@
                         class="w-full rounded border px-3 py-2 text-sm"
                         required
                     >
-                        <option value="cash">Cash</option>
-                        <option value="transfer">Bank Transfer</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="card">Card</option>
+                        <option class="dark:text-black" value="cash">Cash</option>
+                        <option class="dark:text-black" value="transfer">Bank Transfer</option>
+                        <option class="dark:text-black" value="cheque">Cheque</option>
+                        <option class="dark:text-black" value="card">Card</option>
                     </select>
                 </div>
 

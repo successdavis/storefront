@@ -17,8 +17,8 @@
                         <label class=" text-sm font-medium">Warehouse</label>
                         <select v-model="form.warehouse_id"
                                 class="flex-1 rounded border w-full block py-2">
-                            <option value="">Select warehouse</option>
-                            <option v-for="w in warehouses" :key="w.id" :value="w.id">
+                            <option class="dark:text-black" value="">Select warehouse</option>
+                            <option class="dark:text-black" v-for="w in warehouses" :key="w.id" :value="w.id">
                                 {{ w.name }}
                             </option>
                         </select>

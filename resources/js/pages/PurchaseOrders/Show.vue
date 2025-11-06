@@ -1,5 +1,6 @@
 <template>
-    <div class="container mx-auto py-8">
+    <div class="container mx-auto py-8 text-foreground">
+
         <Head :title="`PO ${purchaseOrder.data.po_number}`" />
 
         <div class="mb-6 flex items-start justify-between gap-4">
@@ -9,13 +10,9 @@
                 </h1>
                 <p class="text-sm text-muted-foreground">
                     Vendor:
-                    <span class="font-medium">{{
-                            purchaseOrder.data.vendor?.name ?? '—'
-                        }}</span>
+                    <span class="font-medium">{{ purchaseOrder.data.vendor?.name ?? '—' }}</span>
                     • Warehouse:
-                    <span class="font-medium">{{
-                            purchaseOrder.data.warehouse?.name ?? '—'
-                        }}</span>
+                    <span class="font-medium">{{ purchaseOrder.data.warehouse?.name ?? '—' }}</span>
                 </p>
                 <p class="mt-1 text-sm text-muted-foreground">
                     Ordered: {{ formatDate(purchaseOrder.data.order_date) }}
@@ -61,23 +58,28 @@
         </div>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <!-- Items list / main -->
+
+            <!-- MAIN COLUMN -->
             <section class="space-y-4 lg:col-span-2">
-                <div class="rounded-lg bg-white just p-4 shadow sm:p-6">
+
+                <!-- ITEMS -->
+                <div class="rounded-lg bg-card p-4 shadow sm:p-6">
                     <h2 class="mb-3 text-lg font-medium">Items</h2>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+                        <table class="min-w-full divide-y divide-border">
+                            <thead class="bg-muted">
                             <tr>
-                                <th class="px-4 py-2 text-left text-sm font-medium text-gray-500">SKU / Title</th>
-                                <th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Ordered</th>
-                                <th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Received</th>
-                                <th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Remaining</th>
-                                <th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Unit</th>
-                                <th class="px-4 py-2 text-right text-sm font-medium text-gray-500">Line total</th>
+                                <th class="px-4 py-2 text-left text-sm font-medium text-muted-foreground">SKU / Title</th>
+                                <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Ordered</th>
+                                <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Received</th>
+                                <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Remaining</th>
+                                <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Unit</th>
+                                <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Line total</th>
                             </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-100 bg-white">
+
+                            <tbody class="divide-y divide-border bg-card">
                             <tr v-for="item in purchaseOrder.data.items" :key="item.id">
                                 <td class="px-4 py-3">
                                     <div class="text-sm font-medium">{{ item.product_variant?.title || '—' }}</div>
@@ -100,11 +102,15 @@
                     </div>
                 </div>
 
-                <div class="rounded-lg bg-white p-4 shadow sm:p-6">
+                <!-- SHIPMENTS -->
+                <div class="rounded-lg bg-card p-4 shadow sm:p-6">
                     <h2 class="mb-3 text-lg font-medium">Shipments (Item Receipts)</h2>
-                    <div v-if="purchaseOrder.data.item_receipts && purchaseOrder.data.item_receipts.length">
+
+                    <div v-if="purchaseOrder.data.item_receipts?.length">
                         <ul class="space-y-3">
-                            <li v-for="r in purchaseOrder.data.item_receipts" :key="r.id" class="rounded border p-3">
+                            <li v-for="r in purchaseOrder.data.item_receipts" :key="r.id"
+                                class="rounded border border-border p-3 bg-background">
+
                                 <div class="flex items-center justify-between">
                                     <div>
                                         <div class="font-medium">{{ r.receipt_number }}</div>
@@ -126,29 +132,37 @@
                                         </thead>
                                         <tbody>
                                         <tr v-for="ri in r.items" :key="ri.id">
-                                            <td class="py-1 text-sm">{{ ri.sku }}</td>
+                                            <td class="py-1">{{ ri.sku }}</td>
                                             <td class="py-1 text-right">{{ ri.quantity_received }}</td>
                                             <td class="py-1 text-right">{{ formatCurrency(ri.line_total) }}</td>
                                         </tr>
                                         </tbody>
                                     </table>
                                 </div>
+
                             </li>
                         </ul>
                     </div>
+
                     <div v-else class="text-sm text-muted-foreground">No shipments recorded yet.</div>
                 </div>
 
-                <div class="rounded-lg bg-white p-4 shadow sm:p-6">
+                <!-- VENDOR BILL PAYMENTS -->
+                <div class="rounded-lg bg-card p-4 shadow sm:p-6">
                     <h2 class="mb-3 text-lg font-medium">Vendor Bill Payments</h2>
 
-                    <div v-if="purchaseOrder.data.vendor_bills && purchaseOrder.data.vendor_bills.length">
+                    <div v-if="purchaseOrder.data.vendor_bills?.length">
                         <div class="space-y-4">
-                            <div v-for="bill in purchaseOrder.data.vendor_bills" :key="bill.id" class="rounded border p-3">
+                            <div v-for="bill in purchaseOrder.data.vendor_bills" :key="bill.id"
+                                 class="rounded border border-border p-3 bg-background">
+
+                                <!-- Header -->
                                 <div class="flex items-center justify-between mb-2">
                                     <div>
                                         <div class="font-medium">{{ bill.bill_number }}</div>
-                                        <div class="text-sm text-muted-foreground">Date: {{ formatDate(bill.bill_date) }}</div>
+                                        <div class="text-sm text-muted-foreground">
+                                            Date: {{ formatDate(bill.bill_date) }}
+                                        </div>
                                     </div>
                                     <div class="text-right">
                                         <div class="text-sm">Total: {{ formatCurrency(bill.total_amount) }}</div>
@@ -156,10 +170,10 @@
                                     </div>
                                 </div>
 
-                                <!-- ✅ Bill Items Table -->
-                                <div v-if="bill.items && bill.items.length">
+                                <!-- Bill Items -->
+                                <div v-if="bill.items?.length">
                                     <h3 class="text-sm font-medium mt-3 mb-1">Bill Items</h3>
-                                    <table class="w-full text-sm border-t">
+                                    <table class="w-full text-sm border-t border-border">
                                         <thead>
                                         <tr class="text-xs text-muted-foreground">
                                             <th class="text-left py-2">Description</th>
@@ -169,7 +183,7 @@
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        <tr v-for="item in bill.items" :key="item.id" class="border-t">
+                                        <tr v-for="item in bill.items" :key="item.id" class="border-t border-border">
                                             <td class="py-2">{{ item.description || '—' }}</td>
                                             <td class="py-2 text-right">{{ item.quantity }}</td>
                                             <td class="py-2 text-right">{{ formatCurrency(item.unit_price) }}</td>
@@ -180,10 +194,10 @@
                                 </div>
                                 <div v-else class="text-sm text-muted-foreground mt-2">No items recorded for this bill.</div>
 
-                                <!-- ✅ Payments Table -->
-                                <div v-if="bill.payments && bill.payments.length">
+                                <!-- Payments -->
+                                <div v-if="bill.payments?.length">
                                     <h3 class="text-sm font-medium mt-4 mb-1">Payments</h3>
-                                    <table class="w-full text-sm border-t">
+                                    <table class="w-full text-sm border-t border-border">
                                         <thead>
                                         <tr class="text-xs text-muted-foreground">
                                             <th class="text-left py-2">Date</th>
@@ -193,7 +207,7 @@
                                         </tr>
                                         </thead>
                                         <tbody>
-                                        <tr v-for="payment in bill.payments" :key="payment.id" class="border-t">
+                                        <tr v-for="payment in bill.payments" :key="payment.id" class="border-t border-border">
                                             <td class="py-2">{{ formatDate(payment.payment_date) }}</td>
                                             <td class="py-2">{{ payment.method }}</td>
                                             <td class="py-2">{{ payment.note || '—' }}</td>
@@ -203,6 +217,7 @@
                                     </table>
                                 </div>
                                 <div v-else class="text-sm text-muted-foreground mt-2">No payments recorded for this bill.</div>
+
                             </div>
                         </div>
                     </div>
@@ -212,10 +227,13 @@
 
             </section>
 
-            <!-- Right column: summary / actions -->
+            <!-- RIGHT PANEL -->
             <aside class="space-y-4">
-                <div class="rounded-lg bg-white p-4 shadow sm:p-6">
+
+                <!-- Summary -->
+                <div class="rounded-lg bg-card p-4 shadow sm:p-6">
                     <h3 class="text-base font-medium">Summary</h3>
+
                     <dl class="mt-3 space-y-2 text-sm">
                         <div class="flex justify-between">
                             <dt class="text-muted-foreground">Items total</dt>
@@ -227,7 +245,9 @@
                         </div>
                         <div class="flex justify-between">
                             <dt class="text-muted-foreground">Outstanding</dt>
-                            <dd class="font-semibold text-red-600">{{ formatCurrency(purchaseOrder.data.totals.outstanding) }}</dd>
+                            <dd class="font-semibold text-red-500 dark:text-red-400">
+                                {{ formatCurrency(purchaseOrder.data.totals.outstanding) }}
+                            </dd>
                         </div>
                     </dl>
 
@@ -258,24 +278,33 @@
                     />
                 </div>
 
-                <div class="rounded-lg bg-white p-4 shadow sm:p-6">
+                <!-- Vendor card -->
+                <div class="rounded-lg bg-card p-4 shadow sm:p-6">
                     <h3 class="text-base font-medium">Vendor</h3>
                     <div class="mt-2 text-sm">
                         <div class="font-medium">{{ purchaseOrder.data.vendor?.name }}</div>
-                        <div class="text-sm text-muted-foreground">{{ purchaseOrder.data.vendor?.phone }} · {{ purchaseOrder.data.vendor?.email }}</div>
+                        <div class="text-sm text-muted-foreground">
+                            {{ purchaseOrder.data.vendor?.phone }} · {{ purchaseOrder.data.vendor?.email }}
+                        </div>
                         <div class="mt-2 text-sm">{{ purchaseOrder.data.vendor?.address }}</div>
                     </div>
                 </div>
 
-                <div class="rounded-lg bg-white p-4 shadow sm:p-6">
+                <!-- Notes -->
+                <div class="rounded-lg bg-card p-4 shadow sm:p-6">
                     <h3 class="text-base font-medium">Notes</h3>
-                    <div class="mt-2 text-sm text-muted-foreground" v-if="purchaseOrder.data.note">{{ purchaseOrder.data.note }}</div>
+                    <div class="mt-2 text-sm text-muted-foreground" v-if="purchaseOrder.data.note">
+                        {{ purchaseOrder.data.note }}
+                    </div>
                     <div v-else class="text-sm text-muted-foreground">No notes.</div>
                 </div>
+
             </aside>
         </div>
+
     </div>
 </template>
+
 
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';

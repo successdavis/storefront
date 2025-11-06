@@ -109,14 +109,14 @@
                 <div class="overflow-x-auto">
                     <table class="w-full table-auto">
                         <thead class="text-left text-sm text-gray-600 dark:text-gray-300">
-                            <tr>
-                                <th class="px-3 py-2">#</th>
-                                <th class="px-3 py-2">Product</th>
-                                <th class="px-3 py-2">Qty Ordered</th>
-                                <th class="px-3 py-2">Unit Cost</th>
-                                <th class="px-3 py-2">Line Total</th>
-                                <th class="px-3 py-2">Actions</th>
-                            </tr>
+                        <tr>
+                            <th class="px-3 py-2">#</th>
+                            <th class="px-3 py-2">Product</th>
+                            <th class="px-3 py-2">Qty Ordered</th>
+                            <th class="px-3 py-2">Unit Cost</th>
+                            <th class="px-3 py-2">Line Total</th>
+                            <th class="px-3 py-2">Actions</th>
+                        </tr>
                         </thead>
 
                         <tbody>
@@ -130,6 +130,7 @@
                             <td class="min-w-[260px] px-3 py-2 align-top">
                                 <select
                                     v-model="item.product_variant_id"
+                                    @change="onVariantChange(idx)"
                                     class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
                                 >
                                     <option value="" disabled>Select product</option>
@@ -328,6 +329,15 @@ const subtotal = computed(() => {
     return form.items.reduce((sum, it) => sum + lineTotal(it), 0);
 });
 
+const variantIndex = computed(() => {
+    const map = new Map();
+    for (const v of productVariants) {
+        // keys as strings to match <select> v-model values
+        map.set(String(v.id), v);
+    }
+    return map;
+});
+
 // when subtotal changes, keep it read-only on server-side; we still submit items and total is recalculated server-side too
 watch(subtotal, (val) => {
     // Keep local cache if needed
@@ -387,6 +397,24 @@ function formatCurrency(value) {
         currency: 'USD',
         maximumFractionDigits: 2,
     }).format(num);
+}
+
+function onVariantChange(index) {
+    const it = form.items[index];
+    if (!it || !it.product_variant_id) return;
+
+    const variant = variantIndex.value.get(String(it.product_variant_id));
+    if (!variant) return;
+
+    const last = Number(variant.last_purchase_price ?? 0);
+
+    // Only auto-fill if there's no user-entered cost yet (prevents overwriting)
+    if (it.unit_cost === null || it.unit_cost === '' || Number(it.unit_cost) === 0) {
+        it.unit_cost = last;
+    }
+
+    // keep existing guardrails
+    recalcLine(index);
 }
 
 // submit

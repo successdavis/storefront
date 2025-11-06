@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { route } from 'ziggy-js'
 import axios from 'axios'
 import { eventBus } from '@/eventBus.js'
+import { router } from '@inertiajs/vue3';
 
 // module-level shared cart state (singleton)
 const cartItems = ref([])
@@ -53,39 +54,50 @@ export function useCart() {
      */
     const placeOrder = async (payload = {}) => {
         if (cartItems.value.length === 0) {
-            alert('Please add at least one product.')
+            // optional: locally show a toast or inline message
+            // but you said global toast is already set up elsewhere
             return
         }
 
-        try {
-            const response = await axios.post(route('admin.pos.placeOrder'), {
-                customer_id: payload.customer_id ?? null,
-                items: cartItems.value.map((i) => ({
-                    variant_id: i.variant_id,
-                    quantity: i.quantity,
-                    price: i.price,
-                })),
-                subtotal: payload.subtotal,
-                total: payload.total,
-                shipping: payload.shipping,
-                coupon: payload.coupon ?? null,
-                checkout_token: payload.checkout_token,
-            })
-
-            if (response.data?.success) {
-                alert(response.data.message || 'Order placed.')
-                clearCart()
-                eventBus.emit('order-placed')
-            } else {
-                alert('Something went wrong: ' + (response.data?.message ?? 'Unknown'))
-                throw new Error(response.data?.message ?? 'Unknown error')
-            }
-        } catch (err) {
-            console.error('Failed to place order:', err)
-            alert(err.response?.data?.message || 'Failed to place order.')
-            throw err // 🚀 rethrow so parent knows it failed
+        const data = {
+            customer_id: payload.customer_id ?? null,
+            items: cartItems.value.map(i => ({
+                variant_id: i.variant_id,
+                quantity: i.quantity,
+                price: i.price,
+            })),
+            subtotal: payload.subtotal,
+            total: payload.total,
+            shipping: payload.shipping,
+            coupon: payload.coupon ?? null,
+            checkout_token: payload.checkout_token,
         }
+
+        router.post(route('admin.pos.placeOrder'), data, {
+            // Keep the page in place; Inertia will still receive flash props
+            preserveScroll: true,
+            preserveState: false,
+
+            // If the server flashes "success", your global watcher will show the toast.
+            onSuccess: () => {
+                clearCart()
+                // eventBus.emit('order-placed')
+            },
+
+            // If the server flashes "error", your global watcher will show it.
+            // You can still inspect errors here if needed.
+            onError: (errors) => {
+                // validation field errors (if you add them later)
+                // leave flash to the global toast
+                console.debug('POS onError', errors)
+            },
+
+            onFinish: () => {
+                // optional cleanup/spinners
+            },
+        })
     }
+
 
     return {
         cartItems,

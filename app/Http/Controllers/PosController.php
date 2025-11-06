@@ -124,23 +124,12 @@ class PosController extends Controller
         try {
             $sale = $orderService->handle($validated);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Sale placed successfully.',
-                'sale_id' => $sale->id,
-            ]);
+            return back()->with('success', 'Sale placed successfully.');
         } catch (InsufficientStockException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'details' => $e->getDetails(),
-            ], 422);
+            return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
             report($e);
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to place order: ' . $e->getMessage(),
-            ], 500);
+            return back()->with('error', 'An unexpected error occurred while placing the order.');
         }
     }
 

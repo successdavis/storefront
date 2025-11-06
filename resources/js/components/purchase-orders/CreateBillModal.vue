@@ -29,8 +29,8 @@
                             v-model="selectedReceiptId"
                             class="mt-1 w-full rounded border px-2 py-1"
                         >
-                            <option disabled value="">-- Choose a receipt --</option>
-                            <option
+                            <option class="dark:text-black" disabled value="">-- Choose a receipt --</option>
+                            <option class="dark:text-black"
                                 v-for="receipt in payload.item_receipts"
                                 :key="receipt.id"
                                 :value="receipt.id"
@@ -55,7 +55,7 @@
                                 <table
                                     class="min-w-full table-fixed text-sm border-collapse"
                                 >
-                                    <thead class="bg-gray-50 sticky top-0 z-20">
+                                    <thead class="bg-gray-50 dark:bg-gray-600 sticky top-0 z-20">
                                     <tr>
                                         <th class="p-2 text-left w-2/5">SKU / Title</th>
                                         <th class="p-2 text-right w-1/12">Unit Cost</th>
