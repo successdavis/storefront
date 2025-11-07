@@ -1,0 +1,1 @@
+import{_ as e}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as r,o}from"./app-T8HXuT34.js";const t={};function c(n,s){return o(),r("p",null,"temporary")}const m=e(t,[["render",c]]);export{m as default};

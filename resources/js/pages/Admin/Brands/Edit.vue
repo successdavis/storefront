@@ -1,6 +1,6 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3'
-import BrandForm from '@/Components/Admin/Brands/BrandForm.vue'
+import BrandForm from '@/components/Admin/Brands/BrandForm.vue';
 
 const props = defineProps({
   brand: {
