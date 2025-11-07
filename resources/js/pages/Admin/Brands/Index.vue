@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { Link, router } from '@inertiajs/vue3'
-import Upsert from "@/Pages/Admin/Brands/Upsert.vue";
+import Upsert from "@/pages/Admin/Brands/Upsert.vue";
 
 const props = defineProps({
     brands: { type: Object, required: true }, // Laravel paginator
