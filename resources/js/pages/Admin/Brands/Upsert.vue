@@ -80,7 +80,7 @@ function destroyBrand() {
 </script>
 
 <template>
-    <div class="space-y-6">
+    <div class="space-y-6 text-gray-900 dark:text-gray-100">
         <Head :title="pageTitle" />
 
         <div class="flex items-center justify-between">
@@ -88,10 +88,13 @@ function destroyBrand() {
             <div class="flex items-center gap-2">
                 <Link
                     :href="route('admin.brands.index')"
-                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    class="rounded-lg border px-4 py-2 text-sm
+                           border-gray-300 bg-white text-gray-700 hover:bg-gray-50
+                           dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
                 >
                     Back to list
                 </Link>
+
                 <button
                     v-if="isEdit"
                     type="button"
@@ -103,28 +106,37 @@ function destroyBrand() {
             </div>
         </div>
 
-        <div class="rounded-xl border border-gray-200 bg-white p-6">
-            <form @submit.prevent="submit" class=" grid-cols-1 gap-6 lg:grid-cols-12">
+        <div class="rounded-xl border bg-white p-6 border-gray-200 dark:bg-gray-900 dark:border-gray-800">
+            <form @submit.prevent="submit" class="grid-cols-1 gap-6 lg:grid-cols-12">
+
                 <!-- Left -->
                 <div class="space-y-6 lg:col-span-8">
+
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">Name</label>
+                        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
                         <input
                             v-model="form.name"
                             type="text"
-                            class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            class="block w-full rounded-lg border px-3 py-2 text-sm
+                                   border-gray-300 bg-white text-gray-900
+                                   focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                   dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                             required
                         />
                         <p v-if="form.errors.name" class="mt-1 text-sm text-rose-600">{{ form.errors.name }}</p>
                     </div>
 
                     <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+
                         <div>
-                            <label class="mb-1 block text-sm font-medium text-gray-700">Slug</label>
+                            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Slug</label>
                             <input
                                 v-model="form.slug"
                                 type="text"
-                                class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                class="block w-full rounded-lg border px-3 py-2 text-sm
+                                       border-gray-300 bg-white text-gray-900 placeholder-gray-500
+                                       focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                       dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
                                 placeholder="auto from name if left blank"
                             />
                             <p v-if="form.errors.slug" class="mt-1 text-sm text-rose-600">{{ form.errors.slug }}</p>
@@ -135,38 +147,48 @@ function destroyBrand() {
                                 id="top_brand"
                                 v-model="form.top_brand"
                                 type="checkbox"
-                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500
+                                       dark:border-gray-600 dark:bg-gray-800"
                             />
-                            <label for="top_brand" class="text-sm text-gray-800">Top brand</label>
+                            <label for="top_brand" class="text-sm text-gray-800 dark:text-gray-300">Top brand</label>
                         </div>
                     </div>
 
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">Meta Title</label>
+                        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Meta Title</label>
                         <input
                             v-model="form.meta_title"
                             type="text"
-                            class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            class="block w-full rounded-lg border px-3 py-2 text-sm
+                                   border-gray-300 bg-white text-gray-900
+                                   focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                   dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                         />
                         <p v-if="form.errors.meta_title" class="mt-1 text-sm text-rose-600">{{ form.errors.meta_title }}</p>
                     </div>
 
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">Meta Description</label>
+                        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Meta Description</label>
                         <textarea
                             v-model="form.meta_description"
                             rows="2"
-                            class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            class="block w-full rounded-lg border px-3 py-2 text-sm
+                                   border-gray-300 bg-white text-gray-900
+                                   focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                   dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                         />
                         <p v-if="form.errors.meta_description" class="mt-1 text-sm text-rose-600">{{ form.errors.meta_description }}</p>
                     </div>
 
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
                         <textarea
                             v-model="form.description"
                             rows="5"
-                            class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            class="block w-full rounded-lg border px-3 py-2 text-sm
+                                   border-gray-300 bg-white text-gray-900
+                                   focus:outline-none focus:ring-2 focus:ring-indigo-500
+                                   dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                         />
                         <p v-if="form.errors.description" class="mt-1 text-sm text-rose-600">{{ form.errors.description }}</p>
                     </div>
@@ -175,14 +197,17 @@ function destroyBrand() {
                 <!-- Right -->
                 <div class="space-y-6 lg:col-span-4">
                     <div>
-                        <label class="mb-1 block text-sm font-medium text-gray-700">Logo</label>
+                        <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Logo</label>
                         <div class="flex items-center gap-4">
-                            <div class="h-20 w-20 overflow-hidden rounded bg-gray-100 ring-1 ring-gray-200">
+                            <div class="h-20 w-20 overflow-hidden rounded bg-gray-100 ring-1 ring-gray-200
+                                        dark:bg-gray-800 dark:ring-gray-700">
                                 <img v-if="previewUrl" :src="previewUrl" alt="Preview" class="h-20 w-20 object-cover" />
                             </div>
                             <div>
                                 <input type="file" accept="image/*" @change="onFileChange" />
-                                <p class="mt-1 text-xs text-gray-500">JPG, PNG, or WEBP up to 2MB</p>
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    JPG, PNG, or WEBP up to 2MB
+                                </p>
                                 <p v-if="form.errors.logo" class="mt-1 text-sm text-rose-600">{{ form.errors.logo }}</p>
                             </div>
                         </div>
@@ -191,10 +216,13 @@ function destroyBrand() {
                     <div class="flex items-center justify-end gap-3 pt-2">
                         <Link
                             :href="route('admin.brands.index')"
-                            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            class="rounded-lg border px-4 py-2 text-sm
+                                   border-gray-300 bg-white text-gray-700 hover:bg-gray-50
+                                   dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
                         >
                             Cancel
                         </Link>
+
                         <button
                             type="submit"
                             :disabled="form.processing"
@@ -212,3 +240,4 @@ function destroyBrand() {
         </div>
     </div>
 </template>
+

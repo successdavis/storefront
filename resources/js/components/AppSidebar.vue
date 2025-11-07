@@ -53,7 +53,7 @@ const mainNavItems: MainNavItem[] = [
                 icon: ''
             },
             {
-                title: 'Attribute',
+                title: 'Variants',
                 href: '/admin/variant-types',
                 icon: ''
             },
