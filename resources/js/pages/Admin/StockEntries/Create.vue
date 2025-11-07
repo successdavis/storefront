@@ -104,8 +104,8 @@
 <script setup>
 import { Head, Link, useForm } from '@inertiajs/vue3'
 import { ref } from 'vue'
-import InputError from '@/Components/InputError.vue'
-import axios from 'axios'
+import InputError from '@/components/InputError.vue'
+import axios from 'axios';
 
 const props = defineProps({
     warehouses: Array
