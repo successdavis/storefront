@@ -1,11 +1,11 @@
 <script setup>
 import {computed, nextTick, ref, watch} from 'vue'
 import {useForm} from '@inertiajs/vue3'
-import VariantMatrix from '@/Components/Admin/Products/VariantMatrix.vue'
-import ProductImageGallery from '@/Components/Admin/Products/ProductImageGallery.vue'
-import ProductFaqEditor from '@/Components/Admin/Products/ProductFaqEditor.vue'
-import MultiSelect from "@/Components/MultiSelect.vue";
-import CategoryTree from "@/Components/CategoryTree.vue";
+import VariantMatrix from '@/components/Admin/Products/VariantMatrix.vue'
+import ProductImageGallery from '@/components/Admin/Products/ProductImageGallery.vue'
+import ProductFaqEditor from '@/components/Admin/Products/ProductFaqEditor.vue'
+import MultiSelect from "@/components/MultiSelect.vue";
+import CategoryTree from "@/components/CategoryTree.vue";
 
 const props = defineProps({
     product: Object,
