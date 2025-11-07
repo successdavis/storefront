@@ -2,11 +2,11 @@
 import { reactive, onBeforeUnmount } from 'vue'
 
 // composables
-import { useImages } from '@/Components/composables/useImages'
-import { useValidation } from '@/Components/composables/useValidation'
-import { useSkuCheck } from '@/Components/composables/useSkuCheck'
-import { useVariantSelection } from '@/Components/composables/useVariantSelection'
-import { useVariantDetailsModal } from '@/Components/composables/useVariantDetailsModal'
+import { useImages } from '@/components/composables/useImages'
+import { useValidation } from '@/components/composables/useValidation'
+import { useSkuCheck } from '@/components/composables/useSkuCheck'
+import { useVariantSelection } from '@/components/composables/useVariantSelection'
+import { useVariantDetailsModal } from '@/components/composables/useVariantDetailsModal'
 
 const props = defineProps({
     modelValue: { type: Array, default: () => [] },          // rows
