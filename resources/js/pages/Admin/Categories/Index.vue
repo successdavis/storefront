@@ -2,7 +2,7 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3'
 import { ref, watch, computed, onMounted } from 'vue'
-import Pagination from "@/Components/Pagination.vue";
+import Pagination from "@/components/Pagination.vue";
 
 // Props from controller
 const props = defineProps({

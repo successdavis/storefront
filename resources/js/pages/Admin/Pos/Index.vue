@@ -15,7 +15,7 @@
 import { ref } from 'vue'
 import ProductSection from './components/ProductSection.vue'
 import CartSection from './components/CartSection.vue'
-import OffcanvasOrders from './components/OffcanvasOrders.vue'
+// import OffcanvasOrders from './components/OffcanvasOrders.vue'
 
 const showOrders = ref(false)
 </script>
