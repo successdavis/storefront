@@ -25,7 +25,7 @@ function submit() {
 <template>
     <Head :title="props.terminal ? 'Edit POS Terminal' : 'Create POS Terminal'" />
 
-    <div class="p-8 max-w-xl mx-auto min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+    <div class="p-8 min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
 
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-xl font-bold">

@@ -114,7 +114,7 @@ function submit() {
 <template>
   <Head :title="props.warehouse ? 'Edit Warehouse' : 'Create Warehouse'" />
 
-  <div class="max-w-4xl mx-auto p-6 text-gray-900 dark:text-gray-100">
+  <div class="p-6 text-gray-900 dark:text-gray-100">
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-2xl font-semibold">
