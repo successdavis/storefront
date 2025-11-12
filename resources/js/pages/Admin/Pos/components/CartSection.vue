@@ -54,7 +54,7 @@
         />
 
         <!-- Cart items -->
-        <div class="flex-1 overflow-y-auto pr-2">
+        <div class="py-6">
             <div
                 v-if="cartItems.length === 0"
                 class="py-8 text-center text-gray-500 dark:text-gray-400"
