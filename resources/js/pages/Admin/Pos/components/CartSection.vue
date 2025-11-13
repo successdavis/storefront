@@ -1,6 +1,6 @@
 <template>
     <aside
-        class="sticky top-0 flex h-[90] w-[26rem] flex-col bg-white p-4 shadow-lg dark:bg-gray-800"
+        class="sticky top-0 flex w-[26rem] flex-col bg-white p-4 shadow-lg dark:bg-gray-800"
     >
         <div class="mb-3 flex items-center justify-between gap-3">
             <select
@@ -54,7 +54,7 @@
         />
 
         <!-- Cart items -->
-        <div class="py-6">
+        <div style="overflow-y: auto; flex-grow: 1;" class="pr-2" >
             <div
                 v-if="cartItems.length === 0"
                 class="py-8 text-center text-gray-500 dark:text-gray-400"
@@ -69,7 +69,7 @@
             >
                 <img :src="item.image" class="h-14 w-14 rounded object-cover" />
                 <div class="flex-1">
-                    <div class="truncate font-medium">{{ item.name }}</div>
+                    <div class="font-medium">{{ item.name }}</div>
                     <div class="text-xs text-gray-500 dark:text-gray-400">
                         {{ item.variant_label }}
                     </div>

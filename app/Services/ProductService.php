@@ -14,12 +14,16 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Services\SkuGenerator;
+use Illuminate\Http\UploadedFile;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class ProductService
 {
     public function __construct(
         private SkuGenerator $skuGen,
-        private InventoryService $inventoryService
+        private InventoryService $inventoryService,
+        private ImageManager $imageManager = new ImageManager(new Driver())
     ) {}
 
     public function create(array $data): Product
@@ -74,10 +78,21 @@ class ProductService
 
                 // If a new file is provided, store it and replace any previous file
                 if ($file instanceof \Illuminate\Http\UploadedFile) {
+                    // --- START MODIFICATION ---
+
+                    // 1. Delete the OLD file if it exists
                     if ($imgModel->path && Storage::disk($disk)->exists($imgModel->path)) {
                         Storage::disk($disk)->delete($imgModel->path);
                     }
-                    $imgModel->path = $file->store($dir, $disk); // e.g. products/{id}/abc.jpg
+
+                    // 2. Convert and store the NEW file as WebP
+                    // If the conversion fails, it will throw an exception and rollback the transaction.
+                    $imgModel->path = $this->convertToWebpAndStore($file, $dir, $disk);
+
+                    // --- END MODIFICATION ---
+
+                    // IMPORTANT: You might want to strip the file key from the input array
+                    // if you are passing the entire payload back on subsequent saves.
                 }
 
                 // Fill simple attributes
@@ -95,12 +110,14 @@ class ProductService
             // Remove images not present in the payload and delete their files
             $toDelete = $product->images()->when($seen, fn($q) => $q->whereNotIn('id', $seen))->get();
             foreach ($toDelete as $del) {
+                // The file stored on disk is now guaranteed to be a WebP file.
                 if ($del->path && Storage::disk($disk)->exists($del->path)) {
                     Storage::disk($disk)->delete($del->path);
                 }
                 $del->delete();
             }
 
+            // ... (rest of the logic for ensuring one primary and normalizing sort_order remains the same)
             // Ensure exactly one primary
             if ($primaryRequested) {
                 $firstPrimary = $product->images()->where('is_primary', true)->orderBy('sort_order')->first();
@@ -246,25 +263,30 @@ class ProductService
         }
 
 
-            // Delete removed variants (cascade their images and pivot)
-            $product->variants()->whereNotIn('id', $seen)->get()->each(function ($var) {
-                $var->images()->delete();
-                $var->values()->detach();
-                $var->delete();
-            });
-        }
+        // Delete removed variants (cascade their images and pivot)
+        $product->variants()->whereNotIn('id', $seen)->get()->each(function ($var) {
+            $var->images()->delete();
+            $var->values()->detach();
+            $var->delete();
+        });
+    }
 
-        protected function syncVariantImages(ProductVariant $variant, array $images): void
+    protected function syncVariantImages(ProductVariant $variant, array $images): void
     {
         $seen = [];
+        $disk = 'public';
+        // Use a variant-specific directory for better organization
+        $dir  = "variants/{$variant->id}";
 
         foreach ($images as $img) {
             if ($img instanceof \Illuminate\Http\UploadedFile) {
-                // Handle new uploaded file
-                $path = $img->store('variants', 'public'); // store file
+                // Handle new uploaded file: Convert to WebP using the new method
+                // and store it in a variant-specific folder.
+                $path = $this->convertToWebpAndStore($img, $dir, $disk);
+
                 $imgModel = new VariantImage([
                     'product_variant_id' => $variant->id,
-                    'path' => $path,
+                    'path' => $path, // path is now guaranteed to be webp
                     'is_primary' => false,
                     'sort_order' => 0,
                 ]);
@@ -283,11 +305,17 @@ class ProductService
             }
         }
 
-        // Delete images not in seen
-        $variant->images()->whereNotIn('id', $seen)->delete();
+        // Delete images not in seen and their corresponding files (corrected logic to include file deletion)
+        $toDelete = $variant->images()->whereNotIn('id', $seen)->get();
+        foreach ($toDelete as $del) {
+            if ($del->path && Storage::disk($disk)->exists($del->path)) {
+                Storage::disk($disk)->delete($del->path);
+            }
+            $del->delete();
+        }
     }
 
-        public function duplicate(Product $source): Product
+    public function duplicate(Product $source): Product
     {
         return DB::transaction(function () use ($source) {
             // product copy
@@ -364,8 +392,28 @@ class ProductService
         });
     }
 
-        private function syncCats($product, mixed $category_ids)
+    private function syncCats($product, mixed $category_ids)
     {
         $product->categories()->sync($category_ids);
     }
+
+    protected function convertToWebpAndStore(UploadedFile $file, string $dir, string $disk): string
+    {
+        // Use the injected ImageManager to read the image
+        $image = $this->imageManager->read($file);
+
+        // Generate a unique filename and path (using .webp extension)
+        $filename = Str::random(40) . '.webp';
+        $fullPath = $dir . '/' . $filename;
+
+        // Get the full system path for saving
+        $diskPath = Storage::disk($disk)->path($fullPath);
+
+        Storage::disk($disk)->makeDirectory($dir);
+
+        $image->toWebp(70)->save($diskPath);
+
+        // Return the path *relative* to the disk root
+        return $fullPath; // e.g., products/{id}/abc.webp
     }
+}
