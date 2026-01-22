@@ -47,10 +47,9 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
-
+Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard/kpis', [DashboardController::class, 'kpis'])->name('dashboard.kpis');
+Route::get('/dashboard/sales-chart', [DashboardController::class, 'salesChart']);
 
 // Catalog browsing
 Route::get('/categories', [CategoryController::class, 'index'])->name('categories.index');
@@ -121,7 +120,7 @@ Route::prefix('admin')
     ->middleware(['auth', 'verified'])
     ->group(function () {
 
-        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+//        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
         // Catalog management
         Route::resource('categories', AdminCategoryController::class)->except(['show']);
