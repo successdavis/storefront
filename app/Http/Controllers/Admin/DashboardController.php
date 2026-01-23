@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Services\Dashboard\KpiService;
+use App\Services\Dashboard\RecentTransactionService;
 use App\Services\Dashboard\SalesChartService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request, KpiService $service)
+    public function index(Request $request, KpiService $service, RecentTransactionService  $recentTransaction, SalesChartService $chartservice)
     {
         $range = [
             'type' => $request->get('range', 'today'),
@@ -19,56 +22,9 @@ class DashboardController extends Controller
         return Inertia::render('Dashboard', [
             'stats' => $service->get($range),
 
-            'sales' => [
-                ['online' => 40,  'inStore' => 20],
-                ['online' => 80,  'inStore' => 120],
-                ['online' => 60,  'inStore' => 90],
-                ['online' => 140, 'inStore' => 160],
-                ['online' => 70,  'inStore' => 130],
-                ['online' => 120, 'inStore' => 150],
-                ['online' => 60,  'inStore' => 90],
-            ],
+            'sales' => $chartservice->get($request->range ?? 'last_7_days'),
 
-            /* -------------------------------
-               RECENT TRANSACTIONS
-            --------------------------------*/
-            'transactions' => [
-                [
-                    'id'       => 'ORD-1024',
-                    'source'   => 'POS Terminal #2',
-                    'customer' => 'Walk-in',
-                    'amount'   => 12550,
-                    'status'   => 'Completed',
-                ],
-                [
-                    'id'       => 'ORD-1025',
-                    'source'   => 'POS Terminal #1',
-                    'customer' => 'Walk-in',
-                    'amount'   => 8950,
-                    'status'   => 'Completed',
-                ],
-                [
-                    'id'       => 'WEB-5501',
-                    'source'   => 'Online Store',
-                    'customer' => 'Sarah J.',
-                    'amount'   => 8999,
-                    'status'   => 'Processing',
-                ],
-                [
-                    'id'       => 'WEB-5502',
-                    'source'   => 'Online Store',
-                    'customer' => 'Michael A.',
-                    'amount'   => 15400,
-                    'status'   => 'Completed',
-                ],
-                [
-                    'id'       => 'ORD-1026',
-                    'source'   => 'POS Terminal #3',
-                    'customer' => 'Walk-in',
-                    'amount'   => 9250,
-                    'status'   => 'Failed',
-                ],
-            ],
+            'transactions' => $recentTransaction->get(),
 
             /* -------------------------------
                INVENTORY ALERTS
@@ -116,5 +72,37 @@ class DashboardController extends Controller
         return response()->json(
             $service->get($request->range ?? 'last_7_days')
         );
+    }
+
+    public function getRecentTransactions(int $limit = 10, ?Carbon $from = null, ?Carbon $to = null): array
+    {
+        $from ??= now()->subDays(7)->startOfDay();
+        $to   ??= now()->endOfDay();
+
+        $orders = Order::query()
+            ->with([
+                'user:id,name',
+                'sales.posTerminal:id,name',
+                'sales.customer:id,name',
+                'payments' => function ($q) {
+                    $q->where('type', 'inflow')->latest();
+                }
+            ])
+            ->whereBetween('created_at', [$from, $to])
+            ->latest()
+            ->limit($limit)
+            ->get();
+
+        return $orders->map(function (Order $order) {
+            $payment = $order->payments->first();
+
+            return [
+                'id'       => $order->order_number,
+                'source'   => $this->resolveSource($order),
+                'customer' => $this->resolveCustomer($order),
+                'amount'   => (float) ($payment?->amount ?? $order->total_amount),
+                'status'   => ucfirst($payment?->status ?? $order->status),
+            ];
+        })->toArray();
     }
 }

@@ -29,7 +29,7 @@ defineProps({ transactions: Array })
                 <td>{{ t.source }}</td>
                 <td>{{ t.date }}</td>
                 <td>{{ t.customer }}</td>
-                <td class="text-right">${{ t.amount }}</td>
+                <td class="text-right">₦ {{ t.amount.toLocaleString() }}</td>
                 <td class="text-right">
             <span
                 class="px-2 py-1 rounded-full text-xs font-medium"
