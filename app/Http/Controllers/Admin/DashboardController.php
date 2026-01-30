@@ -20,33 +20,6 @@ class DashboardController extends Controller
             'type' => $request->get('range', 'today'),
         ];
 
-        dd([
-            'stats' => $service->get($range),
-
-            'sales' => $chartservice->get($request->range ?? 'last_7_days'),
-
-            'transactions' => $recentTransaction->get(),
-
-            'inventoryAlerts' => InventoryAlert::where('status','open')
-                ->orderByDesc('severity')
-                ->get(),
-
-            'terminals' => [
-                [
-                    'name'   => 'Terminal #1',
-                    'status' => 'Active',
-                ],
-                [
-                    'name'   => 'Terminal #2',
-                    'status' => 'Active',
-                ],
-                [
-                    'name'   => 'Terminal #3',
-                    'status' => 'Offline (Maintenance)',
-                ],
-            ],
-        ]);
-
         return Inertia::render('Dashboard', [
             'stats' => $service->get($range),
 
