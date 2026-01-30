@@ -42,7 +42,7 @@ watch(range, async value => {
         params: { range: value },
     })
     sales.value = chart.data
-})
+}, { immediate: true })
 
 const rangeLabels = {
     today: {
