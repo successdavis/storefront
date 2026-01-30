@@ -33,13 +33,18 @@ const form = ref({
 })
 
 const applyFilters = debounce(() => {
-    router.get(route('transactions.index'), form.value, {
+    router.get(route('admin.transactions.index'), form.value, {
         preserveState: true,
         replace: true,
     })
 }, 400)
 
-watch(form, applyFilters, { deep: true })
+watch(
+    () => ({ ...form.value }),
+    applyFilters,
+    { deep: true }
+)
+
 
 const resolveSource = (t) => {
     return t.channel === 'pos' ? 'POS' : 'Online'
