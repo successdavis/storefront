@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\InventoryAlert;
 use App\Models\Order;
 use App\Services\Dashboard\KpiService;
 use App\Services\Dashboard\RecentTransactionService;
@@ -29,30 +30,27 @@ class DashboardController extends Controller
             /* -------------------------------
                INVENTORY ALERTS
             --------------------------------*/
-            'inventoryAlerts' => [
-                "Low Stock: Premium Coffee Beans (5 units left)",
-                "Out of Stock: Ceramic Mugs – Blue",
-                "Reorder Soon: Gift Boxes",
-                "Low Stock: Laptop Chargers (8 units left)",
-            ],
+            'inventoryAlerts' => InventoryAlert::where('status','open')
+                ->orderByDesc('severity')
+                ->get(),
 
-            /* -------------------------------
-               POS TERMINAL STATUS
-            --------------------------------*/
-            'terminals' => [
-                [
-                    'name'   => 'Terminal #1',
-                    'status' => 'Active',
-                ],
-                [
-                    'name'   => 'Terminal #2',
-                    'status' => 'Active',
-                ],
-                [
-                    'name'   => 'Terminal #3',
-                    'status' => 'Offline (Maintenance)',
-                ],
-            ],
+        /* -------------------------------
+           POS TERMINAL STATUS
+        --------------------------------*/
+        'terminals' => [
+        [
+            'name'   => 'Terminal #1',
+            'status' => 'Active',
+        ],
+        [
+            'name'   => 'Terminal #2',
+            'status' => 'Active',
+        ],
+        [
+            'name'   => 'Terminal #3',
+            'status' => 'Offline (Maintenance)',
+        ],
+    ],
         ]);
     }
 

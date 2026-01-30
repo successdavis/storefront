@@ -62,4 +62,13 @@ class InventoryAlertController extends Controller
     {
         //
     }
+
+    public function close(InventoryAlert $alert)
+    {
+        $alert->update([
+            'status' => 'resolved',
+            'resolved_at' => now(),
+            'resolved_by' => auth()->id(),
+        ]);
+    }
 }

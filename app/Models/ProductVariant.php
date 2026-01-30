@@ -100,7 +100,16 @@ class ProductVariant extends Model
      */
     public function label(): string
     {
-        $values = $this->variantValues->pluck('value')->implode(', ');
+        $values = $this->values->pluck('value')->implode(', ');
         return "{$this->product->name} - {$values}";
+    }
+
+    public function getDisplayNameAttribute(): string
+    {
+        $values = $this->values
+            ->map(fn ($v) => "{$v->variantType->name} {$v->value}")
+            ->implode(' ');
+
+        return trim("{$this->product->name} {$values}");
     }
 }

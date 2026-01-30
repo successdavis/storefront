@@ -32,13 +32,13 @@ const sales = ref(props.sales);
 const stats = ref(props.stats)
 
 watch(range, async value => {
-    const { data } = await axios.get('/dashboard/kpis', {
+    const { data } = await axios.get('/admin/dashboard/kpis', {
         params: { range: value },
     })
 
     stats.value = data
 
-    const chart = await axios.get('/dashboard/sales-chart', {
+    const chart = await axios.get('/admin/dashboard/sales-chart', {
         params: { range: value },
     })
     sales.value = chart.data

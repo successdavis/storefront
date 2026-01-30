@@ -30,65 +30,65 @@ class SalesChartService
     /* ---------- RANGE ---------- */
 
     private function resolveRange(string $range): array
-{
-    if (in_array($range, ['today', 'yesterday'])) {
-        return [
-            Carbon::now()->subDays(6)->startOfDay(),
-            Carbon::now(),
-            'day',
-        ];
+    {
+        if (in_array($range, ['today', 'yesterday'])) {
+            return [
+                Carbon::now()->subDays(6)->startOfDay(),
+                Carbon::now(),
+                'day',
+            ];
+        }
+
+        return match ($range) {
+            'last_7_days' => [
+                Carbon::now()->subDays(6)->startOfDay(),
+                Carbon::now(),
+                'day',
+            ],
+
+            'this_month' => [
+                Carbon::now()->startOfMonth(),
+                Carbon::now(),            // ✅ STOP AT TODAY
+                'day',
+            ],
+
+            'last_month' => [
+                Carbon::now()->subMonth()->startOfMonth(),
+                Carbon::now()->subMonth()->endOfMonth(),
+                'day',
+            ],
+
+            'last_three_months' => [
+                Carbon::now()->subMonths(2)->startOfMonth(),
+                Carbon::now(),            // ✅ STOP AT TODAY
+                'month',
+            ],
+
+            'last_six_months' => [
+                Carbon::now()->subMonths(5)->startOfMonth(),
+                Carbon::now(),            // ✅ STOP AT TODAY
+                'month',
+            ],
+
+            'this_year' => [
+                Carbon::now()->startOfYear(),
+                Carbon::now(),            // ✅ STOP AT TODAY
+                'month',
+            ],
+
+            'all_time' => [
+                Payment::min('paid_at') ?? Carbon::now(),
+                Carbon::now(),            // ✅ ALWAYS NOW
+                'month',
+            ],
+
+            default => [
+                Carbon::now()->subDays(6)->startOfDay(),
+                Carbon::now(),
+                'day',
+            ],
+        };
     }
-
-    return match ($range) {
-        'last_7_days' => [
-            Carbon::now()->subDays(6)->startOfDay(),
-            Carbon::now(),
-            'day',
-        ],
-
-        'this_month' => [
-            Carbon::now()->startOfMonth(),
-            Carbon::now(),            // ✅ STOP AT TODAY
-            'day',
-        ],
-
-        'last_month' => [
-            Carbon::now()->subMonth()->startOfMonth(),
-            Carbon::now()->subMonth()->endOfMonth(),
-            'day',
-        ],
-
-        'last_three_months' => [
-            Carbon::now()->subMonths(2)->startOfMonth(),
-            Carbon::now(),            // ✅ STOP AT TODAY
-            'month',
-        ],
-
-        'last_six_months' => [
-            Carbon::now()->subMonths(5)->startOfMonth(),
-            Carbon::now(),            // ✅ STOP AT TODAY
-            'month',
-        ],
-
-        'this_year' => [
-            Carbon::now()->startOfYear(),
-            Carbon::now(),            // ✅ STOP AT TODAY
-            'month',
-        ],
-
-        'all_time' => [
-            Payment::min('paid_at') ?? Carbon::now(),
-            Carbon::now(),            // ✅ ALWAYS NOW
-            'month',
-        ],
-
-        default => [
-            Carbon::now()->subDays(6)->startOfDay(),
-            Carbon::now(),
-            'day',
-        ],
-    };
-}
 
 
     /* ---------- SQL ---------- */
