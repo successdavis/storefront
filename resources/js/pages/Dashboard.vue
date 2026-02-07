@@ -10,12 +10,12 @@ import {
     Calendar,
 } from 'lucide-vue-next';
 
-import KpiCard from '@/Components/Dashboard/KpiCard.vue';
-import SalesChart from '@/Components/Dashboard/SalesChart.vue';
-import TransactionsTable from '@/Components/Dashboard/TransactionsTable.vue';
-import InventoryAlerts from '@/Components/Dashboard/InventoryAlerts.vue';
-import TerminalStatus from '@/Components/Dashboard/TerminalStatus.vue';
-import DateRangeFilter from '@/Components/Dashboard/DateRangeFilter.vue';
+import KpiCard from '@/components/Dashboard/KpiCard.vue';
+import SalesChart from '@/components/Dashboard/SalesChart.vue';
+import TransactionsTable from '@/components/Dashboard/TransactionsTable.vue';
+import InventoryAlerts from '@/components/Dashboard/InventoryAlerts.vue';
+import TerminalStatus from '@/components/Dashboard/TerminalStatus.vue';
+import DateRangeFilter from '@/components/Dashboard/DateRangeFilter.vue';
 import axios from 'axios';
 
 const props = defineProps({
