@@ -19,7 +19,7 @@ watch([search, activeOnly], ([s, a]) => {
     <div class="p-6 space-y-4">
         <div class="flex items-center justify-between">
             <h1 class="text-2xl font-semibold">Products</h1>
-            <a :href="route('admin.products.create')" class="px-4 py-2 bg-blue-600 text-white rounded">New Product</a>
+            <a :href="route('admin.products.create', {}, false)" class="px-4 py-2 bg-blue-600 text-white rounded">New Product</a>
         </div>
 
         <div class="flex gap-3">
