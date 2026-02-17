@@ -23,6 +23,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\CheckoutPreviewController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\InventoryAlertController;
 use App\Http\Controllers\ItemReceiptController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\OrderController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShippingController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
+use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorPaymentController;
@@ -47,9 +49,7 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
 
 // Catalog browsing
@@ -121,7 +121,14 @@ Route::prefix('admin')
     ->middleware(['auth', 'verified'])
     ->group(function () {
 
-        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('/dashboard/kpis', [DashboardController::class, 'kpis'])->name('dashboard.kpis');
+        Route::get('/dashboard/sales-chart', [DashboardController::class, 'salesChart']);
+        Route::post('/inventory-alerts/{alert}/close', [InventoryAlertController::class, 'close'])
+            ->name('inventory-alerts.close');
+        Route::get('/transactions', [TransactionController::class, 'index'])
+            ->name('transactions.index');
+
+//        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
         // Catalog management
         Route::resource('categories', AdminCategoryController::class)->except(['show']);
