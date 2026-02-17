@@ -246,5 +246,14 @@ Route::prefix('admin')
     });
 
 
+
+Route::get('/category_products/{card_title}', function () {
+    return Inertia::render('PublicProduct/Products');
+});
+Route::get('/products/view_product/details', function () {
+    return Inertia::render('PublicProduct/ProductView');
+});
+
+
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
