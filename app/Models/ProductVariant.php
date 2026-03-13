@@ -107,7 +107,7 @@ class ProductVariant extends Model
     public function getDisplayNameAttribute(): string
     {
         $values = $this->values
-            ->map(fn ($v) => "{$v->variantType->name} {$v->value}")
+            ->map(fn ($v) => "{$v->type->name} {$v->value}")
             ->implode(' ');
 
         return trim("{$this->product->name} {$values}");
