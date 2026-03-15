@@ -122,7 +122,7 @@ class Product extends Model
      */
     public function minPrice(): float
     {
-        return (float) $this->variants()->min('price');
+        return (float) $this->variants()->min('regular_price');
     }
 
     /**
@@ -130,6 +130,8 @@ class Product extends Model
      */
     public function maxPrice(): float
     {
-        return (float) $this->variants()->max('price');
+        return (float) $this->variants()->max('regular_price');
     }
 }
+
+

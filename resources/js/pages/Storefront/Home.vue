@@ -1,0 +1,169 @@
+<script setup>
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { computed, ref } from 'vue'
+import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
+import ProductGrid from '@/components/Storefront/ProductGrid.vue'
+
+defineOptions({ layout: StorefrontLayout })
+
+const props = defineProps({
+    filters: {
+        type: Object,
+        default: () => ({}),
+    },
+    pageTitle: {
+        type: String,
+        default: 'All Products',
+    },
+    products: {
+        type: Object,
+        required: true,
+    },
+    featuredProducts: {
+        type: Array,
+        default: () => [],
+    },
+    latestProducts: {
+        type: Array,
+        default: () => [],
+    },
+    categoryPreviews: {
+        type: Array,
+        default: () => [],
+    },
+})
+
+const page = usePage()
+const categoryOptions = computed(() => Array.isArray(page.props.categories) ? page.props.categories : [])
+
+const search = ref(props.filters?.q || '')
+const selectedCategory = ref(props.filters?.category || '')
+
+function applyFilters() {
+    router.get(
+        route('store.home'),
+        {
+            q: search.value || undefined,
+            category: selectedCategory.value || undefined,
+        },
+        { preserveState: true, replace: true },
+    )
+}
+
+const hasProducts = computed(() => Array.isArray(props.products?.data) && props.products.data.length > 0)
+</script>
+
+<template>
+    <Head title="Storefront" />
+
+    <section class="relative overflow-hidden rounded-3xl bg-slate-900 px-6 py-10 text-white shadow-2xl sm:px-10">
+        <div class="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-400/40 blur-2xl" />
+        <div class="absolute -bottom-16 -left-8 h-48 w-48 rounded-full bg-teal-300/20 blur-2xl" />
+
+        <div class="relative grid gap-8 lg:grid-cols-2 lg:items-center">
+            <div class="space-y-4">
+                <p class="inline-flex rounded-full border border-white/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200">
+                    Production Ready Storefront
+                </p>
+                <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">
+                    {{ pageTitle }}
+                </h1>
+                <p class="max-w-xl text-sm text-slate-200 sm:text-base">
+                    Discover curated products, transparent pricing, stock-aware purchasing, and checkout backed by your existing service layer.
+                </p>
+            </div>
+
+            <form class="rounded-2xl bg-white p-4 text-slate-900 shadow-xl" @submit.prevent="applyFilters">
+                <div class="grid gap-3 sm:grid-cols-3">
+                    <input
+                        v-model="search"
+                        type="search"
+                        placeholder="Search products"
+                        class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-amber-300 transition focus:ring-2"
+                    >
+                    <select
+                        v-model="selectedCategory"
+                        class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-amber-300 transition focus:ring-2"
+                    >
+                        <option value="">All Categories</option>
+                        <option v-for="category in categoryOptions" :key="category.id" :value="category.id">
+                            {{ category.name }}
+                        </option>
+                    </select>
+                    <button
+                        type="submit"
+                        class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                    >
+                        Apply Filters
+                    </button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="mt-10 space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold text-slate-900">Featured Products</h2>
+            <Link :href="route('store.home')" class="text-sm font-medium text-slate-600 hover:text-slate-900">Browse all</Link>
+        </div>
+        <ProductGrid :products="featuredProducts" empty-title="No featured products yet" />
+    </section>
+
+    <section class="mt-10 space-y-4">
+        <h2 class="text-xl font-bold text-slate-900">Latest Products</h2>
+        <ProductGrid :products="latestProducts" empty-title="No recent products yet" />
+    </section>
+
+    <section class="mt-10 space-y-4">
+        <h2 class="text-xl font-bold text-slate-900">Shop Catalog</h2>
+        <ProductGrid :products="products.data" empty-title="No products matched your filters" />
+
+        <div v-if="hasProducts && products.links" class="flex flex-wrap gap-2">
+            <button
+                v-for="link in products.links"
+                :key="link.label + String(link.url)"
+                type="button"
+                :disabled="!link.url"
+                v-html="link.label"
+                :class="[
+                    'rounded-lg border px-3 py-1.5 text-sm transition',
+                    link.active
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-500',
+                    !link.url ? 'cursor-not-allowed opacity-40' : '',
+                ]"
+                @click="link.url && router.visit(link.url, { preserveState: true })"
+            />
+        </div>
+    </section>
+
+    <section class="mt-10 space-y-6">
+        <h2 class="text-xl font-bold text-slate-900">Category Highlights</h2>
+
+        <div class="space-y-6">
+            <article
+                v-for="category in categoryPreviews"
+                :key="category.id"
+                class="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm"
+            >
+                <div class="mb-4 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-900">{{ category.name }}</h3>
+                        <p class="text-xs text-slate-500">{{ category.active_products_count }} active products</p>
+                    </div>
+                    <Link
+                        :href="route('store.category', category.id)"
+                        class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500"
+                    >
+                        View Category
+                    </Link>
+                </div>
+
+                <ProductGrid
+                    :products="category.products"
+                    empty-title="No products available in this category"
+                />
+            </article>
+        </div>
+    </section>
+</template>

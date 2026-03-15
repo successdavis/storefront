@@ -107,7 +107,7 @@ class User extends Authenticatable
      */
     public function carts(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
-        return $this->hasMany(Cart::class, 'customer_id');
+        return $this->hasMany(Cart::class, 'user_id');
     }
 
     /**
@@ -119,3 +119,4 @@ class User extends Authenticatable
     }
 
 }
+

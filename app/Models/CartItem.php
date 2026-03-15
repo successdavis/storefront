@@ -16,27 +16,30 @@ class CartItem extends Model
         'quantity',
     ];
 
-    /**
-     * 🔗 The cart this item belongs to.
-     */
     public function cart(): BelongsTo
     {
         return $this->belongsTo(Cart::class);
     }
 
-    /**
-     * 🔗 The specific product variant this cart item refers to.
-     */
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
-    /**
-     * 💰 Calculate subtotal for this cart item.
-     */
     public function subtotal(): float
     {
-        return $this->variant->price * $this->quantity;
+        $variant = $this->variant;
+        if (!$variant) {
+            return 0.0;
+        }
+
+        $onSale = $variant->sale_price !== null
+            && (float) $variant->sale_price < (float) $variant->regular_price
+            && (!$variant->sale_starts_at || $variant->sale_starts_at->isPast())
+            && (!$variant->sale_ends_at || $variant->sale_ends_at->isFuture());
+
+        $price = $onSale ? (float) $variant->sale_price : (float) $variant->regular_price;
+
+        return round($price * (int) $this->quantity, 2);
     }
 }

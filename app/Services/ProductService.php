@@ -9,6 +9,10 @@ use App\Models\{Admin\ProductImage,
     Product,
     ProductFaq,
     ProductVariant};
+use App\Models\Category;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -392,6 +396,436 @@ class ProductService
         });
     }
 
+    public function paginateStorefrontProducts(int $perPage = 12, ?string $search = null, ?int $categoryId = null): LengthAwarePaginator
+    {
+        $paginator = $this->storeListQuery($search, $categoryId)
+            ->paginate(max(1, min($perPage, 48)))
+            ->withQueryString();
+
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn (Product $product) => $this->toStorefrontCard($product))
+        );
+
+        return $paginator;
+    }
+
+    public function getFeaturedProducts(int $limit = 8): array
+    {
+        return $this->storeListQuery()
+            ->where('featured', true)
+            ->limit(max(1, $limit))
+            ->get()
+            ->map(fn (Product $product) => $this->toStorefrontCard($product))
+            ->values()
+            ->all();
+    }
+
+    public function getLatestProducts(int $limit = 8): array
+    {
+        return Product::query()
+            ->active()
+            ->with($this->storeCardRelations())
+            ->latest('created_at')
+            ->limit(max(1, $limit))
+            ->get()
+            ->map(fn (Product $product) => $this->toStorefrontCard($product))
+            ->values()
+            ->all();
+    }
+
+    public function getProductsByCategory(Category|int $category, int $perPage = 12): LengthAwarePaginator
+    {
+        $categoryId = $category instanceof Category ? (int) $category->id : (int) $category;
+
+        return $this->paginateStorefrontProducts($perPage, null, $categoryId);
+    }
+
+    public function searchProducts(string $term, int $perPage = 12): LengthAwarePaginator
+    {
+        return $this->paginateStorefrontProducts($perPage, $term, null);
+    }
+
+    public function getProductDetails(Product $product): array
+    {
+        $product->loadMissing([
+            'brand:id,name',
+            'categories:id,name,slug',
+            'images:id,product_id,path,alt,is_primary,sort_order',
+            'faqs:id,product_id,product_variant_id,question,answer,is_active,position',
+            'variants' => fn ($query) => $query
+                ->select([
+                    'id',
+                    'product_id',
+                    'sku',
+                    'quantity',
+                    'reserved',
+                    'regular_price',
+                    'sale_price',
+                    'sale_starts_at',
+                    'sale_ends_at',
+                ])
+                ->with([
+                    'values:id,variant_type_id,value',
+                    'values.type:id,name',
+                    'images:id,product_variant_id,path,alt,is_primary,sort_order',
+                ])
+                ->orderBy('regular_price')
+                ->orderBy('id'),
+        ]);
+
+        $card = $this->toStorefrontCard($product);
+        $variants = $product->variants->map(fn (ProductVariant $variant) => $this->toVariantPayload($variant))->values();
+
+        $selectedVariant = $product->variants
+            ->first(fn (ProductVariant $variant) => ($variant->quantity - ($variant->reserved ?? 0)) > 0)
+            ?? $product->variants->first();
+
+        $gallerySource = $product->images;
+        if ($gallerySource->isEmpty() && $selectedVariant) {
+            $gallerySource = $selectedVariant->images;
+        }
+
+        return [
+            ...$card,
+            'description' => $product->description,
+            'brand' => [
+                'name' => $product->brand?->name,
+            ],
+            'categories' => $product->categories->map(fn (Category $category) => [
+                'id' => (int) $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+            ])->values()->all(),
+            'images' => $gallerySource
+                ->sortBy('sort_order')
+                ->map(fn ($image) => $this->toStorefrontImagePayload($image))
+                ->values()
+                ->all(),
+            'variants' => $variants->all(),
+            'default_variant_id' => $selectedVariant?->id,
+            'faqs' => $product->faqs
+                ->where('is_active', true)
+                ->sortBy('position')
+                ->map(fn (ProductFaq $faq) => [
+                    'id' => (int) $faq->id,
+                    'question' => $faq->question,
+                    'answer' => $faq->answer,
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    public function getRelatedProducts(Product $product, int $limit = 8): array
+    {
+        $product->loadMissing('categories:id');
+
+        $categoryIds = $product->categories->pluck('id')->all();
+
+        $query = Product::query()
+            ->active()
+            ->with($this->storeCardRelations())
+            ->where('id', '!=', $product->id)
+            ->when(!empty($categoryIds), function (Builder $builder) use ($categoryIds) {
+                $builder->whereHas('categories', fn (Builder $categoryQuery) => $categoryQuery->whereIn('categories.id', $categoryIds));
+            }, function (Builder $builder) use ($product) {
+                $builder->where('brand_id', $product->brand_id);
+            })
+            ->orderByDesc('featured')
+            ->latest('id')
+            ->limit(max(1, $limit));
+
+        return $query
+            ->get()
+            ->map(fn (Product $related) => $this->toStorefrontCard($related))
+            ->values()
+            ->all();
+    }
+
+    public function toStorefrontCard(Product $product): array
+    {
+        $product->loadMissing($this->storeCardRelations());
+
+        $primaryVariant = $this->pickPrimaryVariant($product->variants);
+        $stock = $this->resolveProductStock($product);
+        $pricing = $this->toStorefrontPricingFromVariants($product->variants, $primaryVariant);
+        $badges = $this->cardBadges($product, $pricing['has_discount']);
+
+        return [
+            'id' => (int) $product->id,
+            'slug' => $product->slug,
+            'name' => $product->name,
+            'description' => $product->description,
+            'image' => $this->resolveProductImage($product, $primaryVariant),
+            'price' => $pricing,
+            'stock' => $stock,
+            'categories' => $product->categories->map(fn (Category $category) => [
+                'id' => (int) $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+            ])->values()->all(),
+            'featured' => (bool) $product->featured,
+            'is_new' => $product->created_at?->gt(now()->subDays(14)) ?? false,
+            'default_variant_id' => $primaryVariant?->id,
+            'badges' => $badges,
+        ];
+    }
+
+    public function makeImageUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        if (Str::startsWith($path, ['http://', 'https://', '/'])) {
+            return $path;
+        }
+
+        return Storage::url($path);
+    }
+
+    public function resolveProductImage(Product $product, ?ProductVariant $variant = null): ?string
+    {
+        $product->loadMissing('images');
+
+        $primaryProductImage = $product->images->firstWhere('is_primary', true) ?? $product->images->first();
+
+        if ($primaryProductImage) {
+            return $this->makeImageUrl($primaryProductImage->path);
+        }
+
+        if ($variant) {
+            $variant->loadMissing('images');
+            $primaryVariantImage = $variant->images->firstWhere('is_primary', true) ?? $variant->images->first();
+
+            return $this->makeImageUrl($primaryVariantImage?->path);
+        }
+
+        return null;
+    }
+
+    public function resolveVariantPricing(ProductVariant $variant): array
+    {
+        $now = now();
+
+        $hasSaleWindow = (!$variant->sale_starts_at || $variant->sale_starts_at->lte($now))
+            && (!$variant->sale_ends_at || $variant->sale_ends_at->gte($now));
+
+        $hasDiscount = $variant->sale_price !== null
+            && (float) $variant->sale_price < (float) $variant->regular_price
+            && $hasSaleWindow;
+
+        $regular = (float) $variant->regular_price;
+        $sale = $variant->sale_price !== null ? (float) $variant->sale_price : null;
+        $current = $hasDiscount ? (float) $variant->sale_price : $regular;
+
+        $percentage = $hasDiscount && $regular > 0
+            ? (int) round((($regular - $current) / $regular) * 100)
+            : 0;
+
+        return [
+            'regular' => round($regular, 2),
+            'sale' => $sale !== null ? round($sale, 2) : null,
+            'current' => round($current, 2),
+            'has_discount' => $hasDiscount,
+            'discount_percentage' => $percentage,
+        ];
+    }
+
+    public function resolveProductStock(Product $product): array
+    {
+        $product->loadMissing('variants:id,product_id,quantity,reserved');
+
+        $onHand = (int) $product->variants->sum('quantity');
+        $reserved = (int) $product->variants->sum('reserved');
+        $available = max($onHand - $reserved, 0);
+
+        return [
+            'on_hand' => $onHand,
+            'reserved' => $reserved,
+            'available' => $available,
+            'is_in_stock' => $available > 0,
+        ];
+    }
+
+    public function resolveVariantStock(ProductVariant $variant): array
+    {
+        $onHand = (int) $variant->quantity;
+        $reserved = (int) ($variant->reserved ?? 0);
+        $available = max($onHand - $reserved, 0);
+
+        return [
+            'on_hand' => $onHand,
+            'reserved' => $reserved,
+            'available' => $available,
+            'is_in_stock' => $available > 0,
+        ];
+    }
+
+    public function listStoreCategories(): array
+    {
+        return Category::query()
+            ->select('id', 'name', 'slug', 'featured', 'order')
+            ->whereHas('products', fn (Builder $query) => $query->where('is_active', true))
+            ->orderByDesc('featured')
+            ->orderBy('order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Category $category) => [
+                'id' => (int) $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+            ])
+            ->values()
+            ->all();
+    }
+
+    protected function storeListQuery(?string $search = null, ?int $categoryId = null): Builder
+    {
+        return Product::query()
+            ->active()
+            ->with($this->storeCardRelations())
+            ->when($search, function (Builder $query, string $term) {
+                $query->where(function (Builder $searchQuery) use ($term) {
+                    $searchQuery
+                        ->where('name', 'like', "%{$term}%")
+                        ->orWhere('slug', 'like', "%{$term}%")
+                        ->orWhere('description', 'like', "%{$term}%");
+                });
+            })
+            ->when($categoryId, fn (Builder $query, int $id) => $query
+                ->whereHas('categories', fn (Builder $categoryQuery) => $categoryQuery->where('categories.id', $id)))
+            ->orderByDesc('featured')
+            ->latest('id');
+    }
+
+    protected function storeCardRelations(): array
+    {
+        return [
+            'categories:id,name,slug',
+            'images:id,product_id,path,alt,is_primary,sort_order',
+            'variants' => fn ($query) => $query
+                ->select([
+                    'id',
+                    'product_id',
+                    'sku',
+                    'quantity',
+                    'reserved',
+                    'regular_price',
+                    'sale_price',
+                    'sale_starts_at',
+                    'sale_ends_at',
+                ])
+                ->orderBy('regular_price')
+                ->orderBy('id'),
+        ];
+    }
+
+    protected function cardBadges(Product $product, bool $hasDiscount): array
+    {
+        $badges = [];
+
+        if ($hasDiscount) {
+            $badges[] = 'Discount';
+        }
+
+        if ($product->created_at?->gt(now()->subDays(14))) {
+            $badges[] = 'New';
+        }
+
+        if ((bool) $product->featured) {
+            $badges[] = 'Featured';
+        }
+
+        return $badges;
+    }
+
+    protected function toStorefrontImagePayload($image): array
+    {
+        return [
+            'id' => (int) $image->id,
+            'url' => $this->makeImageUrl($image->path),
+            'alt' => $image->alt,
+            'is_primary' => (bool) $image->is_primary,
+            'sort_order' => (int) $image->sort_order,
+        ];
+    }
+
+    protected function toVariantPayload(ProductVariant $variant): array
+    {
+        $variant->loadMissing(['values.type', 'images']);
+
+        $stock = $this->resolveVariantStock($variant);
+        $price = $this->resolveVariantPricing($variant);
+
+        $label = $variant->values
+            ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
+            ->implode(' / ');
+
+        return [
+            'id' => (int) $variant->id,
+            'sku' => $variant->sku,
+            'label' => $label ?: $variant->sku,
+            'stock' => $stock,
+            'price' => $price,
+            'images' => $variant->images
+                ->sortBy('sort_order')
+                ->map(fn ($image) => $this->toStorefrontImagePayload($image))
+                ->values()
+                ->all(),
+            'values' => $variant->values
+                ->map(fn ($value) => [
+                    'id' => (int) $value->id,
+                    'type' => $value->type?->name,
+                    'value' => $value->value,
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    protected function pickPrimaryVariant(Collection $variants): ?ProductVariant
+    {
+        if ($variants->isEmpty()) {
+            return null;
+        }
+
+        $inStockVariant = $variants->first(fn (ProductVariant $variant) => ($variant->quantity - ($variant->reserved ?? 0)) > 0);
+
+        return $inStockVariant ?? $variants->first();
+    }
+
+    protected function toStorefrontPricingFromVariants(Collection $variants, ?ProductVariant $primaryVariant): array
+    {
+        if ($variants->isEmpty()) {
+            return [
+                'regular' => 0.0,
+                'sale' => null,
+                'current' => 0.0,
+                'has_discount' => false,
+                'discount_percentage' => 0,
+                'from' => false,
+            ];
+        }
+
+        $variantPricing = $variants->map(fn (ProductVariant $variant) => $this->resolveVariantPricing($variant));
+
+        $minimumCurrent = (float) $variantPricing->min('current');
+        $maximumCurrent = (float) $variantPricing->max('current');
+
+        $primaryPricing = $primaryVariant
+            ? $this->resolveVariantPricing($primaryVariant)
+            : $variantPricing->first();
+
+        return [
+            'regular' => (float) $primaryPricing['regular'],
+            'sale' => $primaryPricing['sale'] !== null ? (float) $primaryPricing['sale'] : null,
+            'current' => round($minimumCurrent, 2),
+            'has_discount' => (bool) $variantPricing->contains(fn (array $price) => $price['has_discount'] === true),
+            'discount_percentage' => (int) ($primaryPricing['discount_percentage'] ?? 0),
+            'from' => round($minimumCurrent, 2) !== round($maximumCurrent, 2),
+        ];
+    }
     private function syncCats($product, mixed $category_ids)
     {
         $product->categories()->sync($category_ids);
@@ -417,3 +851,4 @@ class ProductService
         return $fullPath; // e.g., products/{id}/abc.webp
     }
 }
+

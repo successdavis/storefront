@@ -381,10 +381,23 @@ class OrderService
 
             $variant = $variants[$variantId];
 
-            // Prefer authoritative server-side price from variant when available
-            $unitPrice = null;
-            if (isset($variant->price) && $variant->price !== null) {
-                $unitPrice = (float) $variant->price;
+            // Prefer authoritative server-side variant price (sale-aware), then fallback to payload price.
+            $serverPrice = null;
+            $saleWindowOpen = (!$variant->sale_starts_at || $variant->sale_starts_at->isPast())
+                && (!$variant->sale_ends_at || $variant->sale_ends_at->isFuture());
+
+            if ($variant->sale_price !== null
+                && (float) $variant->sale_price > 0
+                && (float) $variant->sale_price < (float) $variant->regular_price
+                && $saleWindowOpen
+            ) {
+                $serverPrice = (float) $variant->sale_price;
+            } elseif ($variant->regular_price !== null) {
+                $serverPrice = (float) $variant->regular_price;
+            }
+
+            if ($serverPrice !== null) {
+                $unitPrice = $serverPrice;
             } elseif (isset($line['price'])) {
                 $unitPrice = (float) $line['price'];
             } else {
@@ -514,3 +527,4 @@ class OrderService
         return 0.0;
     }
 }
+

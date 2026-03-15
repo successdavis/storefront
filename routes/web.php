@@ -36,6 +36,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShippingController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
+use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
@@ -45,11 +46,26 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome');
-})->name('home');
+Route::redirect('/', '/store')->name('home');
 
 Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::prefix('store')->name('store.')->group(function () {
+    Route::get('/', [StorefrontController::class, 'home'])->name('home');
+    Route::get('/search', [StorefrontController::class, 'search'])->name('search');
+    Route::get('/product/{product:slug}', [StorefrontController::class, 'product'])->name('product');
+    Route::get('/category/{category}', [StorefrontController::class, 'category'])->name('category');
+    Route::get('/cart', [StorefrontController::class, 'cart'])->name('cart');
+
+    Route::middleware('auth')->group(function () {
+        Route::post('/cart/add', [StorefrontController::class, 'addToCart'])->name('cart.add');
+        Route::patch('/cart/items/{cartItem}', [StorefrontController::class, 'updateCartItem'])->name('cart.update');
+        Route::delete('/cart/items/{cartItem}', [StorefrontController::class, 'removeCartItem'])->name('cart.remove');
+        Route::post('/cart/coupon', [StorefrontController::class, 'applyCoupon'])->name('cart.apply-coupon');
+        Route::post('/cart/checkout', [StorefrontController::class, 'checkout'])->name('cart.checkout');
+    });
+});
+
 
 
 // Catalog browsing
@@ -254,13 +270,6 @@ Route::prefix('admin')
 
 
 
-Route::get('/category_products/{card_title}', function () {
-    return Inertia::render('PublicProduct/Products');
-});
-Route::get('/products/view_product/details', function () {
-    return Inertia::render('PublicProduct/ProductView');
-});
-
-
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+

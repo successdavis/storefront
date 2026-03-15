@@ -11,42 +11,44 @@ class Cart extends Model
 {
     use HasFactory;
 
+    public const UPDATED_AT = null;
+
     protected $fillable = [
-        'customer_id',
+        'user_id',
         'status',
     ];
 
-    /**
-     * 🔗 Customer (User) who owns this cart
-     */
-    public function customer(): BelongsTo
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'customer_id');
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    /**
-     * 🔗 Items added to the cart
-     */
     public function items(): HasMany
     {
         return $this->hasMany(CartItem::class);
     }
 
-    /**
-     * 💡 Get the total quantity of items in the cart
-     */
     public function totalQuantity(): int
     {
-        return $this->items->sum('quantity');
+        return (int) $this->items->sum('quantity');
     }
 
-    /**
-     * 💰 Get the total price of items in the cart
-     */
     public function totalPrice(): float
     {
-        return $this->items->sum(function ($item) {
-            return $item->variant->price * $item->quantity;
+        return (float) $this->items->sum(function (CartItem $item) {
+            $variant = $item->variant;
+            if (!$variant) {
+                return 0;
+            }
+
+            $onSale = $variant->sale_price !== null
+                && (float) $variant->sale_price < (float) $variant->regular_price
+                && (!$variant->sale_starts_at || $variant->sale_starts_at->isPast())
+                && (!$variant->sale_ends_at || $variant->sale_ends_at->isFuture());
+
+            $price = $onSale ? $variant->sale_price : $variant->regular_price;
+
+            return (float) $price * (int) $item->quantity;
         });
     }
 }
