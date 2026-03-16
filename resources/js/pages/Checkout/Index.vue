@@ -281,9 +281,9 @@ function payNow() {
                             class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
                         />
 
-<!--                        <p v-if="phone_error" class="mt-1 text-xs font-medium text-rose-600">-->
-<!--                            {{ phone_error }}-->
-<!--                        </p>-->
+                        <!--                        <p v-if="phone_error" class="mt-1 text-xs font-medium text-rose-600">-->
+                        <!--                            {{ phone_error }}-->
+                        <!--                        </p>-->
                     </div>
 
                     <div>
@@ -386,7 +386,14 @@ function payNow() {
 
                     <div class="flex justify-between text-slate-600">
                         <dt>Shipping</dt>
-                        <dd>{{ money(summary.shipping) }}</dd>
+
+                        <dd v-if="summary.shipping_free" class="font-semibold text-emerald-600">
+                            Free Shipping
+                        </dd>
+
+                        <dd v-else>
+                            {{ money(summary.shipping) }}
+                        </dd>
                     </div>
 
                     <div class="border-t border-slate-200 pt-3 text-base font-bold text-slate-900">

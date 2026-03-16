@@ -37,6 +37,7 @@ class CheckoutService
 
         $shippingTotal = 0.0;
         $shippingError = null;
+        $freeShippingApplied = false;
 
         if (!empty($cartItems) && !empty($selection['shipping_method_id'])) {
             if (empty($selection['state_id'])) {
@@ -45,14 +46,18 @@ class CheckoutService
                 $shippingError = 'Please select a pickup location.';
             } else {
                 try {
-                    $shippingTotal = $this->calculateShippingFromCart(
+                    $shippingCalculation = $this->calculateShippingFromCart(
                         cartItems: $cartItems,
                         subtotal: (float) ($cartData['summary']['subtotal'] ?? 0),
                         selection: $selection,
                     );
+
+                    $shippingTotal = (float) ($shippingCalculation['total'] ?? 0);
+                    $freeShippingApplied = (bool) ($shippingCalculation['free_shipping_applied'] ?? false);
+
                 } catch (\Throwable $exception) {
                     report($exception);
-                    $shippingError = 'Unable to calculate shipping with the selected options.';
+                    $shippingError = $exception->getMessage();
                 }
             }
         }
@@ -99,6 +104,7 @@ class CheckoutService
                 'discount_label' => $discountQuote['label'] ?? null,
                 'coupon' => $selection['coupon'] ?? ($cartData['summary']['coupon'] ?? null),
                 'shipping' => $shippingTotal,
+                'shipping_free' => $freeShippingApplied,
                 'tax' => 0.0,
                 'total' => $total,
             ],
@@ -315,7 +321,7 @@ class CheckoutService
         }
     }
 
-    protected function calculateShippingFromCart(array $cartItems, float $subtotal, array $selection): float
+    protected function calculateShippingFromCart(array $cartItems, float $subtotal, array $selection): array
     {
         $payload = [
             'shipping_method_id' => $selection['shipping_method_id'],
@@ -332,9 +338,9 @@ class CheckoutService
                 ->all(),
         ];
 
-        $result = $this->shippingCostService->calculate($payload);
 
-        return round((float) ($result['total'] ?? 0), 2);
+        return $this->shippingCostService->calculate($payload);
+//        return round((float) ($result['total'] ?? 0), 2);
     }
 
     protected function normalizeCheckoutSelection(array $params): array

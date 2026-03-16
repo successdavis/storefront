@@ -33,6 +33,7 @@ class ShippingCostService
             $shippingZoneId = $this->resolveZoneForState((int)$stateId);
         }
 
+
         // 1) compute volumetric weight if items provided and volumetric enabled
         $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
 
@@ -60,7 +61,7 @@ class ShippingCostService
             $rates = $this->getApplicableRates($shippingMethodId, null, $now, $subtotal, $weightKg);
         }
         if ($rates->isEmpty()) {
-            throw new ShippingRateNotFoundException('No shipping rate found for the provided criteria.');
+            throw new ShippingRateNotFoundException('We couldn’t find a shipping option for your selected location. Please Try other shipping methods');
         }
 
         // 4) select rate and compute cost
