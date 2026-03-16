@@ -7,53 +7,61 @@ use App\Models\State;
 use App\Models\Lga;
 use App\Models\City;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class LocationController extends Controller
 {
-    /**
-     * Return all countries.
-     */
     public function countries()
     {
-        $countries = Country::select('id', 'name')->orderBy('name')->get();
+        $countries = Cache::remember(
+            'locations:countries',
+            now()->addDay(),
+            fn () => Country::select('id','name')
+                ->orderBy('name')
+                ->get()
+        );
+
         return response()->json($countries);
     }
 
-    /**
-     * Return states by country ID.
-     */
     public function states($countryId)
     {
-        $states = State::where('country_id', $countryId)
-            ->select('id', 'name')
-            ->orderBy('name')
-            ->get();
+        $states = Cache::remember(
+            "locations:states:$countryId",
+            now()->addDay(),
+            fn () => State::where('country_id',$countryId)
+                ->select('id','name')
+                ->orderBy('name')
+                ->get()
+        );
 
         return response()->json($states);
     }
 
-    /**
-     * Return LGAs by state ID.
-     */
     public function lgas($stateId)
     {
-        $lgas = Lga::where('state_id', $stateId)
-            ->select('id', 'name')
-            ->orderBy('name')
-            ->get();
+        $lgas = Cache::remember(
+            "locations:lgas:$stateId",
+            now()->addDay(),
+            fn () => Lga::where('state_id',$stateId)
+                ->select('id','name')
+                ->orderBy('name')
+                ->get()
+        );
 
         return response()->json($lgas);
     }
 
-    /**
-     * Return cities by LGA ID.
-     */
     public function cities($lgaId)
     {
-        $cities = City::where('lga_id', $lgaId)
-            ->select('id', 'name')
-            ->orderBy('name')
-            ->get();
+        $cities = Cache::remember(
+            "locations:cities:$lgaId",
+            now()->addDay(),
+            fn () => City::where('lga_id',$lgaId)
+                ->select('id','name')
+                ->orderBy('name')
+                ->get()
+        );
 
         return response()->json($cities);
     }

@@ -63,6 +63,7 @@ class OrderService
             throw new InvalidArgumentException('items must be a non-empty array');
         }
 
+
         if (empty($payload['checkout_token']) || !is_string($payload['checkout_token'])) {
             throw ValidationException::withMessages(['checkout_token' => 'Missing checkout token.']);
         }
@@ -245,7 +246,8 @@ class OrderService
                     'type'   => 'inflow',
                     'method' => $payload['payment_method'] ?? 'cash',
                     'amount' => $sessionShipping,
-                    'status' => 'paid',
+                    'status' => $payload['shipping_payment_status'] ?? ($payload['payment_status'] ?? ($channel === 'pos' ? 'paid' : 'pending')),
+                    'transaction_reference' => $payload['transaction_reference'] ?? null,
                     'note'   => 'Order Shipment Charges',
                 ]);
             }
@@ -256,6 +258,7 @@ class OrderService
                 'method' => $payload['payment_method'] ?? 'cash',
                 'amount' => $sessionTotal,
                 'status' => $payload['payment_status'] ?? 'paid',
+                'transaction_reference' => $payload['transaction_reference'] ?? null,
                 'note'   => $channel === 'pos' ? 'POS Order Payment' : 'Online Order Payment',
             ]);
 
@@ -527,4 +530,7 @@ class OrderService
         return 0.0;
     }
 }
+
+
+
 

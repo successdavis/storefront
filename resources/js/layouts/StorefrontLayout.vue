@@ -20,7 +20,7 @@ function submitSearch() {
         <header class="border-b border-amber-100/60 bg-white/80 backdrop-blur">
             <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-4 px-4 py-4 sm:px-6 lg:px-8">
                 <Link :href="route('store.home')" class="text-xl font-bold tracking-tight text-slate-900">
-                    NovaMart
+                    S-Tech-Max LTD
                 </Link>
 
                 <form class="flex min-w-[240px] flex-1 items-center gap-2" @submit.prevent="submitSearch">

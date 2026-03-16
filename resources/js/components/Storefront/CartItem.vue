@@ -1,6 +1,7 @@
 <script setup>
 import { Link, router } from '@inertiajs/vue3'
 import { ref, watch } from 'vue'
+import { route } from 'ziggy-js';
 
 const props = defineProps({
     item: {
@@ -10,6 +11,7 @@ const props = defineProps({
 })
 
 const quantity = ref(Number(props.item.quantity || 1))
+const errorMessage = ref(null)
 
 watch(
     () => props.item.quantity,
@@ -28,10 +30,21 @@ function money(value) {
 }
 
 function updateQuantity() {
+    errorMessage.value = null
+
     router.patch(
-        route('store.cart.update', props.item.id),
+        route('store.cart.update', { variant: props.item.variant_id }),
         { quantity: quantity.value },
-        { preserveScroll: true },
+        {
+            preserveScroll: true,
+            onError: (errors) => {
+                if (errors.quantity) {
+                    errorMessage.value = errors.quantity
+                } else {
+                    errorMessage.value = 'Unable to update quantity.'
+                }
+            }
+        }
     )
 }
 
@@ -51,9 +64,10 @@ function decrement() {
 }
 
 function removeItem() {
-    router.delete(route('store.cart.remove', props.item.id), {
-        preserveScroll: true,
-    })
+    router.delete(
+        route('store.cart.remove', { variant: props.item.variant_id }),
+        { preserveScroll: true }
+    )
 }
 </script>
 
@@ -76,6 +90,11 @@ function removeItem() {
             </Link>
             <p class="mt-1 text-xs text-slate-500">{{ item.variant.label }}</p>
             <p class="mt-1 text-sm font-semibold text-slate-800">{{ money(item.variant.price.current) }}</p>
+
+            <!-- Validation Error -->
+            <p v-if="errorMessage" class="mt-2 text-xs font-medium text-red-600">
+                {{ errorMessage }}
+            </p>
         </div>
 
         <div class="flex items-center gap-2">
@@ -86,6 +105,7 @@ function removeItem() {
             >
                 -
             </button>
+
             <input
                 v-model.number="quantity"
                 type="number"
@@ -93,6 +113,7 @@ function removeItem() {
                 class="h-9 w-14 rounded-lg border border-slate-300 text-center text-sm"
                 @change="updateQuantity"
             >
+
             <button
                 type="button"
                 class="h-9 w-9 rounded-lg border border-slate-300 text-slate-700 transition hover:border-slate-500"

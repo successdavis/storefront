@@ -138,6 +138,13 @@ return [
             'level' => 'error',
         ],
 
+        'orders' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/orders.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+        ],
+
     ],
 
 ];
+

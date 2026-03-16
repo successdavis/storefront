@@ -3,6 +3,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import CartItem from '@/components/Storefront/CartItem.vue'
+import { route } from 'ziggy-js';
 
 defineOptions({ layout: StorefrontLayout })
 
@@ -41,6 +42,8 @@ const formatter = new Intl.NumberFormat('en-NG', {
     currency: 'NGN',
 })
 
+const emit = defineEmits(['updated'])
+
 function money(value) {
     return formatter.format(Number(value || 0))
 }
@@ -59,11 +62,9 @@ function clearCoupon() {
 }
 
 function checkout() {
-    router.post(
-        route('store.cart.checkout'),
-        { coupon: couponCode.value || null },
-        { preserveScroll: true },
-    )
+    router.get(route('checkout.index'), {
+        coupon: couponCode.value || undefined,
+    })
 }
 </script>
 
@@ -177,3 +178,4 @@ function checkout() {
         </aside>
     </section>
 </template>
+

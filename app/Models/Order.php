@@ -11,7 +11,7 @@ class Order extends Model
     use HasFactory, HasPayments;
 
     protected $fillable = [
-        'user_id', 'total_amount', 'discount', 'channel', 'status','order_number','subtotal','shipping_total'
+        'user_id', 'total_amount', 'discount', 'channel', 'status', 'order_number', 'subtotal', 'shipping_total', 'tax_total', 'currency'
     ];
 
     public function user()
@@ -30,3 +30,4 @@ class Order extends Model
     }
 
 }
+

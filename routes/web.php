@@ -59,8 +59,10 @@ Route::prefix('store')->name('store.')->group(function () {
 
     Route::middleware('auth')->group(function () {
         Route::post('/cart/add', [StorefrontController::class, 'addToCart'])->name('cart.add');
-        Route::patch('/cart/items/{cartItem}', [StorefrontController::class, 'updateCartItem'])->name('cart.update');
-        Route::delete('/cart/items/{cartItem}', [StorefrontController::class, 'removeCartItem'])->name('cart.remove');
+        Route::patch('/cart/items/{variant}', [StorefrontController::class, 'updateCartItem'])
+            ->name('cart.update');
+        Route::delete('/cart/items/{variant}', [StorefrontController::class, 'removeCartItem'])
+            ->name('cart.remove');
         Route::post('/cart/coupon', [StorefrontController::class, 'applyCoupon'])->name('cart.apply-coupon');
         Route::post('/cart/checkout', [StorefrontController::class, 'checkout'])->name('cart.checkout');
     });
@@ -91,8 +93,11 @@ Route::delete('/cart/empty', [CartController::class, 'empty'])->name('cart.empty
 
 // Checkout and orders
 Route::middleware('auth')->group(function () {
-//    Route::get('/checkout', [CheckoutController::class, 'create'])->name('checkout.create');
-//    Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
+    Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout.index');
+    Route::post('/checkout/discount', [CheckoutController::class, 'applyDiscount'])->name('checkout.discount');
+    Route::post('/checkout/pay', [CheckoutController::class, 'initializePayment'])->name('checkout.pay');
+    Route::get('/payment/verify', [CheckoutController::class, 'verifyPayment'])->name('payment.verify');
+    Route::get('/order/success', [CheckoutController::class, 'success'])->name('order.success');
 
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
@@ -272,4 +277,5 @@ Route::prefix('admin')
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+
 

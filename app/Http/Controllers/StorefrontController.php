@@ -68,20 +68,28 @@ class StorefrontController extends Controller
         return back()->with('success', 'Item added to cart successfully.');
     }
 
-    public function updateCartItem(Request $request, CartItem $cartItem): RedirectResponse
+    public function updateCartItem(Request $request, int $variant): RedirectResponse
     {
-        $validated = $request->validate([
-            'quantity' => ['required', 'integer', 'min:1'],
-        ]);
+        try {
 
-        $this->cartService->updateQuantity((int) $cartItem->id, (int) $validated['quantity']);
+            $validated = $request->validate([
+                'quantity' => ['required', 'integer', 'min:1'],
+            ]);
 
-        return back()->with('success', 'Cart updated.');
+            $this->cartService->updateQuantity($variant, (int) $validated['quantity']);
+
+            return back()->with('success', 'Cart updated.');
+        }catch(\Exception $e){
+            return back()
+                ->withErrors($e->errors())
+                ->with('error', collect($e->errors())->flatten()->first());
+        }
+
     }
 
-    public function removeCartItem(CartItem $cartItem): RedirectResponse
+    public function removeCartItem(int $variant): RedirectResponse
     {
-        $this->cartService->removeItem((int) $cartItem->id);
+        $this->cartService->removeItem($variant);
 
         return back()->with('success', 'Item removed from cart.');
     }
@@ -111,14 +119,11 @@ class StorefrontController extends Controller
     public function checkout(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'payment_method' => ['nullable', 'string', 'max:32'],
             'coupon' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $order = $this->cartService->checkout($validated);
-
-        return redirect()
-            ->route('store.cart')
-            ->with('success', "Order {$order->order_number} placed successfully.");
+        return redirect()->route('checkout.index', [
+            'coupon' => $validated['coupon'] ?? null,
+        ]);
     }
 }
