@@ -85,11 +85,29 @@ const form = useForm({
     line1: selected_shipping?.line1 || '',
 })
 
+const currentMethod = computed(() => {
+    const selected = Number(form.shipping_method_id || 0)
+    return shipping_methods.find(method => Number(method.id) === selected) || null
+})
+
+const isPickupMethod = computed(() => {
+    const methodName = String(currentMethod.value?.name || '').toLowerCase()
+    return methodName.includes('pickup')
+})
+
+const pickupLocations = ref([])
+const loadingPickupLocations = ref(false)
+
 watch(() => form.state_id, async (state) => {
 
     form.lga_id = ''
 
     if (!state) {
+        lgas.value = []
+        return
+    }
+
+    if (!state || isPickupMethod.value) {
         lgas.value = []
         return
     }
@@ -104,19 +122,34 @@ watch(() => form.state_id, async (state) => {
 
 })
 
+watch([() => form.state_id, isPickupMethod], async ([state, isPickup]) => {
+
+    form.pickup_location_id = ''
+    pickupLocations.value = []
+
+    if (!state || !isPickup) return
+
+    loadingPickupLocations.value = true
+
+    try {
+        const { data } = await axios.get(route('shipping.locations.pickups', state))
+        pickupLocations.value = data
+    } catch (error) {
+        console.error('Failed loading pickup locations', error)
+        pickupLocations.value = []
+    } finally {
+        loadingPickupLocations.value = false
+    }
+
+})
+
 const hasItems = computed(() => {
     return Array.isArray(cart?.items) && cart.items.length > 0
 })
 
-const currentMethod = computed(() => {
-    const selected = Number(form.shipping_method_id || 0)
-    return shipping_methods.find(method => Number(method.id) === selected) || null
-})
 
-const isPickupMethod = computed(() => {
-    const methodName = String(currentMethod.value?.name || '').toLowerCase()
-    return methodName.includes('pickup')
-})
+
+
 
 const formatter = new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -277,7 +310,7 @@ function payNow() {
                         <input
                             v-model="form.phone"
                             type="text"
-                            placeholder="Enter coupon code"
+                            placeholder="Enter Phone Number"
                             class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
                         />
 
@@ -309,7 +342,7 @@ function payNow() {
                         </select>
                     </div>
 
-                    <div>
+                    <div v-if="!isPickupMethod">
                         <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
                             City / LGA
                         </label>
@@ -332,7 +365,35 @@ function payNow() {
                         </select>
                     </div>
 
-                    <div>
+                    <div v-if="isPickupMethod">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                            Pickup Location
+                        </label>
+
+                        <select
+                            v-model="form.pickup_location_id"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                        >
+                            <option value="">
+                                {{ loadingPickupLocations ? 'Loading...' : 'Select pickup location' }}
+                            </option>
+
+                            <option
+                                v-for="location in pickupLocations"
+                                :key="location.id"
+                                :value="location.id"
+                            >
+                                {{ location.name }} - {{ location.address_line1 }}
+                            </option>
+                        </select>
+
+                        <p v-if="!loadingPickupLocations && !pickupLocations.length && form.state_id"
+                           class="mt-1 text-xs text-slate-500">
+                            No pickup locations available for this state
+                        </p>
+                    </div>
+
+                    <div v-if="!isPickupMethod">
                         <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
                             Address
                         </label>

@@ -40,24 +40,38 @@ class CheckoutService
         $freeShippingApplied = false;
 
         if (!empty($cartItems) && !empty($selection['shipping_method_id'])) {
-            if (empty($selection['state_id'])) {
-                $shippingError = 'Please select a state to calculate shipping.';
-            } elseif ($isPickupMethod && empty($selection['pickup_location_id'])) {
-                $shippingError = 'Please select a pickup location.';
+
+            if ($isPickupMethod) {
+
+                // ✅ Pickup logic (NO shipping calculation)
+                if (empty($selection['state_id'])) {
+                    $shippingError = 'Please select a state.';
+                } elseif (empty($selection['pickup_location_id'])) {
+                    $shippingError = 'Please select a pickup location.';
+                }
+
+                // shippingTotal remains 0
+
             } else {
-                try {
-                    $shippingCalculation = $this->calculateShippingFromCart(
-                        cartItems: $cartItems,
-                        subtotal: (float) ($cartData['summary']['subtotal'] ?? 0),
-                        selection: $selection,
-                    );
 
-                    $shippingTotal = (float) ($shippingCalculation['total'] ?? 0);
-                    $freeShippingApplied = (bool) ($shippingCalculation['free_shipping_applied'] ?? false);
+                // ✅ Normal shipping logic
+                if (empty($selection['state_id'])) {
+                    $shippingError = 'Please select a state to calculate shipping.';
+                } else {
+                    try {
+                        $shippingCalculation = $this->calculateShippingFromCart(
+                            cartItems: $cartItems,
+                            subtotal: (float) ($cartData['summary']['subtotal'] ?? 0),
+                            selection: $selection,
+                        );
 
-                } catch (\Throwable $exception) {
-                    report($exception);
-                    $shippingError = $exception->getMessage();
+                        $shippingTotal = (float) ($shippingCalculation['total'] ?? 0);
+                        $freeShippingApplied = (bool) ($shippingCalculation['free_shipping_applied'] ?? false);
+
+                    } catch (\Throwable $exception) {
+                        report($exception);
+                        $shippingError = $exception->getMessage();
+                    }
                 }
             }
         }

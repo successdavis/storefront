@@ -121,6 +121,7 @@ Route::middleware(['auth'])->prefix('shipping')->name('shipping.')->group(functi
     Route::get('methods', [ShippingController::class, 'methods'])->name('methods');
     Route::get('zones', [ShippingController::class, 'zones'])->name('zones');
     Route::get('pickup-locations', [ShippingController::class, 'pickupLocations'])->name('pickup_locations');
+    Route::get('pickup-locations-by-state/{stateId}', [ShippingController::class, 'pickupLocationsByState'])->name('locations.pickups');
     Route::get('zone-by-state/{state}', [ShippingController::class, 'zoneByState'])->name('zone_by_state');
 
 

@@ -11,6 +11,7 @@ use App\Models\Pickup;
 use App\Models\ShippingZoneState;
 use App\Services\Shipping\ShippingCostService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
@@ -38,6 +39,37 @@ class ShippingController extends Controller
     {
         $locations = PickupLocation::where('is_active', true)->get();
         return response()->json($locations);
+    }
+
+    public function pickupLocationsByState($stateId)
+    {
+        $cacheKey = "pickup_locations_state_{$stateId}";
+
+        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($stateId) {
+
+            // Get zones for this state
+            $zoneIds = ShippingZoneState::where('state_id', $stateId)
+                ->pluck('shipping_zone_id');
+
+            return PickupLocation::query()
+                ->where('is_active', true)
+                ->where(function ($q) use ($stateId, $zoneIds) {
+                    $q->where('state_id', $stateId)
+                        ->orWhereIn('shipping_zone_id', $zoneIds);
+                })
+                ->select([
+                    'id',
+                    'name',
+                    'address_line1',
+                    'address_line2',
+                    'state_id',
+                    'lga_id',
+                    'latitude',
+                    'longitude'
+                ])
+                ->orderBy('name')
+                ->get();
+        });
     }
 
     public function calculate(Request $request)
