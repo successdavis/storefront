@@ -70,6 +70,7 @@ class OrderService
 
             [$items, $computedSubtotal] = $this->processItems($payload['items']);
 
+
             $computedShipping = $this->computeShipping($payload, $computedSubtotal);
 
             [$serverDiscountAmount, $serverTotalAmount] = $this->computeDiscountAndTotals(
@@ -86,7 +87,8 @@ class OrderService
                 $computedSubtotal,
                 $computedShipping,
                 $serverDiscountAmount,
-                $serverTotalAmount
+                $serverTotalAmount,
+                $channel
             );
 
             $order = $this->createOrderFromSession($session, $payload, $userId, $channel);
@@ -238,7 +240,7 @@ class OrderService
         return [$discount, round($totals['total_amount'], 2)];
     }
 
-    private function assertSessionIntegrity($session, $subtotal, $shipping, $discount, $total): void
+    private function assertSessionIntegrity($session, $subtotal, $shipping, $discount, $total, $channel): void
     {
         $tol = $this->discountService->getMoneyTolerance();
 
@@ -248,9 +250,29 @@ class OrderService
             abs($session->discount_amount - $discount) > $tol ||
             abs($session->total - $total) > $tol
         ) {
-            throw ValidationException::withMessages([
-                'checkout' => 'Pricing changed since checkout preview. Please refresh checkout and pay again.'
-            ]);
+            if ($channel === 'online') {
+                // DO NOT FAIL
+                Log::warning('Checkout session mismatch after payment — honoring session snapshot', [
+                    'session_id' => $session->id,
+                    'expected' => [
+                        'subtotal' => $session->subtotal,
+                        'shipping' => $session->shipping_total,
+                        'discount' => $session->discount_amount,
+                        'total'    => $session->total,
+                    ],
+                    'computed' => [
+                        'subtotal' => $subtotal,
+                        'shipping' => $shipping,
+                        'discount' => $discount,
+                        'total'    => $total,
+                    ],
+                ]);
+            } else {
+                // POS → strict validation
+                throw ValidationException::withMessages([
+                    'checkout' => 'Pricing changed since checkout preview. Please refresh checkout and pay again.'
+                ]);
+            }
         }
     }
 
