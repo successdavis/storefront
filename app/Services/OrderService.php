@@ -59,241 +59,345 @@ class OrderService
      */
     public function handle(array $payload): Order
     {
-        if (empty($payload['items']) || !is_array($payload['items'])) {
-            throw new InvalidArgumentException('items must be a non-empty array');
-        }
+        $this->validatePayload($payload);
 
+        $channel = $this->resolveChannel($payload);
 
-        if (empty($payload['checkout_token']) || !is_string($payload['checkout_token'])) {
-            throw ValidationException::withMessages(['checkout_token' => 'Missing checkout token.']);
-        }
-
-        $channel = isset($payload['channel']) && strtolower($payload['channel']) === 'pos'
-            ? 'pos'
-            : 'online';
-
-        // top-level transaction for order creation + marking session used + discount commit
         return DB::transaction(function () use ($payload, $channel) {
-            // 1) Load checkout session snapshot
-            $token = $payload['checkout_token'];
+            $session = $this->getValidCheckoutSession($payload['checkout_token']);
 
-            $session = DB::table('checkout_sessions')->where('token', $token)->lockForUpdate()->first();
-            if (!$session) {
-                throw ValidationException::withMessages(['checkout_token' => 'Invalid or expired checkout token.']);
-            }
+            [$userId, $user] = $this->resolveUser($payload, $channel);
 
-            if ($session->used) {
-                throw ValidationException::withMessages(['checkout_token' => 'This checkout session has already been used.']);
-            }
+            [$items, $computedSubtotal] = $this->processItems($payload['items']);
 
-            if ($session->expires_at && \Carbon\Carbon::parse($session->expires_at)->isPast()) {
-                throw ValidationException::withMessages(['checkout_token' => 'Checkout session expired. Please refresh checkout.']);
-            }
+            $computedShipping = $this->computeShipping($payload, $computedSubtotal);
 
-            // 2) Resolve user & compute items/subtotal server-side as a safety check
-            $userId = $this->resolveUserId($payload, $channel);
-            $user = $userId ? User::find($userId) : null;
-
-            // Validate items match the session snapshot (defensive)
-            // Here we recompute items & subtotal using the payload items provided (you may prefer to use server product prices)
-            $variants = $this->lockAndValidateStock($payload['items']);
-            $items = $this->buildOrderItems($payload['items'], $variants);
-            $computedSubtotal = $this->calculateSubtotalFromItems($items);
-
-            // 3) Recompute shipping on server
-            $computedShipping = 0.0;
-            if (!empty($payload['shipping']) && is_array($payload['shipping'])) {
-                $shippingParams = [
-                    'shipping_method_id' => $payload['shipping']['shipping_method_id'] ?? null,
-                    'shipping_zone_id'   => $payload['shipping']['shipping_zone_id'] ?? null,
-                    'pickup_location_id' => $payload['shipping']['pickup_location_id'] ?? null,
-                    'state_id'           => $payload['shipping']['state_id'] ?? null,
-                    'subtotal'           => $computedSubtotal,
-                    'items'              => $payload['items'] ?? [],
-                ];
-
-                $computed = $this->shippingService->calculate($shippingParams);
-                if (!isset($computed['total'])) {
-                    Log::channel('orders')->error('ShippingService returned invalid data', [
-                        'params' => $shippingParams,
-                        'result' => $computed
-                    ]);
-                    throw new \RuntimeException('Failed to compute shipping cost');
-                }
-
-                $computedShipping = (float) $computed['total'];
-            }
-
-            // 4) Recompute discount on server (to detect any changes)
-            $taxTotal = isset($payload['tax_total']) ? (float) $payload['tax_total'] : 0.0;
-
-            $serverQuote = $this->discountService->previewQuote(
+            [$serverDiscountAmount, $serverTotalAmount] = $this->computeDiscountAndTotals(
                 $user,
                 $items,
                 $computedSubtotal,
                 $computedShipping,
-                $taxTotal,
-                $channel,
-                $payload['coupon'] ?? null
+                $payload,
+                $channel
             );
 
-            $serverDiscountAmount = round($serverQuote['amount'] ?? 0.0, 2);
-            $serverTotals = $this->calculateTotals(
-                subtotal: $computedSubtotal,
-                taxTotal: $taxTotal,
-                shippingTotal: $computedShipping,
-                discount: $serverDiscountAmount
+            $this->assertSessionIntegrity(
+                $session,
+                $computedSubtotal,
+                $computedShipping,
+                $serverDiscountAmount,
+                $serverTotalAmount
             );
-            $serverTotalAmount = round($serverTotals['total_amount'], 2);
 
-            // 5) Compare server recomputed values to the checkout session snapshot (authoritative)
-            $sessionSubtotal = (float) $session->subtotal;
-            $sessionShipping = (float) $session->shipping_total;
-            $sessionDiscount = (float) $session->discount_amount;
-            $sessionTotal = (float) $session->total;
+            $order = $this->createOrderFromSession($session, $payload, $userId, $channel);
 
-            // Tolerance for floats
-            $tol = $this->discountService->getMoneyTolerance();
+            $this->createOrderItemsAndAdjustInventory($order, $items, $channel);
 
-            // If server recomputed differs from session snapshot -> reject (force a refresh)
-            if (abs($sessionSubtotal - round($computedSubtotal,2)) > $tol
-                || abs($sessionShipping - round($computedShipping,2)) > $tol
-                || abs($sessionDiscount - $serverDiscountAmount) > $tol
-                || abs($sessionTotal - $serverTotalAmount) > $tol
-            ) {
-                // Mismatch: cannot place order using stale snapshot
-                throw ValidationException::withMessages([
-                    'checkout' => 'Pricing changed since checkout preview. Please refresh checkout and pay again.'
-                ]);
-            }
+            $this->handlePosSale($order, $userId, $payload, $channel);
 
-            // 6) All good — create the Order using the SNAPSHOT values (what the user paid)
-            $orderNumber = $this->generateOrderNumber($channel);
+            $this->handleShipping($order, $payload, $sessionShipping = (float) $session->shipping_total, $userId, $channel);
 
-            $order = Order::create([
-                'user_id'       => $userId,
-                'subtotal'      => $sessionSubtotal,
-                'tax_total'     => $taxTotal,
-                'discount'      => $sessionDiscount,
-                'currency'      => $payload['currency'] ?? 'NGN',
-                'channel'       => $channel,
-                'order_number'  => $orderNumber,
-                'status'        => $payload['status'] ?? 'pending',
-                'total_amount'  => $sessionTotal,
-                'shipping_total'=> $sessionShipping,
-            ]);
+            $this->recordPayment($order, $payload, (float) $session->total, $channel);
 
-            // 7) Create order items + inventory adjustments (use computed $items)
-            foreach ($items as $line) {
-                $orderItem = OrderItem::create([
-                    'order_id'   => $order->id,
-                    'variant_id' => $line['variant_id'],
-                    'quantity'   => $line['quantity'],
-                    'price'      => $line['unit_price'],
-                    'line_total' => $line['line_total'],
-                ]);
+            $this->finalizeOrderStatus($order, $channel);
 
-                if ($channel === 'pos') {
-                    $this->inventoryService->stockOut([
-                        'variant_id'  => $line['variant_id'],
-                        'quantity'    => $line['quantity'],
-                        'employee_id' => auth()->id(),
-                        'reason'      => 'Sale created from POS Order',
-                        'source_type' => Order::class,
-                        'source_id'   => $order->id,
-                        'note'        => "Order Item #{$orderItem->id}",
-                    ]);
-                }
-            }
+            $this->commitDiscount($order, $session);
 
-            // 8) POS sale record
-            if ($channel === 'pos') {
-                Sale::create([
-                    'employee_id'   => auth()->id(),
-                    'customer_id'   => $userId,
-                    'total_amount'  => $sessionTotal,
-                    'payment_method'=> $payload['payment_method'] ?? 'cash',
-                    'order_id'      => $order->id,
-                    'pos_terminal_id' => session()->get('pos_terminal_id'),
-                ]);
-            }
+            $this->markSessionUsed($session);
 
-            // 9) Shipping + address
-            if (!empty($payload['shipping']) && is_array($payload['shipping'])) {
-                $shipping = $payload['shipping'];
-                $shipment = Shipment::create([
-                    'shippable_type'   => Order::class,
-                    'shippable_id'     => $order->id,
-                    'shipping_method_id'=> $shipping['shipping_method_id'] ?? null,
-                    'weight'           => $shipping['weight'] ?? 0,
-                    'cost'             => $sessionShipping,
-                ]);
-
-                if (!empty($shipping['address']) && is_array($shipping['address'])) {
-                    $addr = $shipping['address'];
-                    Address::create([
-                        'shipment_id' => $shipment->id,
-                        'name'        => $userId ? optional(User::find($userId))->name : 'Walk-In Customer',
-                        'phone'       => $addr['phone'] ?? null,
-                        'line1'       => $addr['line1'] ?? null,
-                        'country_id'  => $addr['country_id'] ?? null,
-                        'state_id'    => $addr['state_id'] ?? null,
-                        'lga_id'      => $addr['lga_id'] ?? null,
-                    ]);
-                }
-
-                $shipment->addPayment([
-                    'type'   => 'inflow',
-                    'method' => $payload['payment_method'] ?? 'cash',
-                    'amount' => $sessionShipping,
-                    'status' => $payload['shipping_payment_status'] ?? ($payload['payment_status'] ?? ($channel === 'pos' ? 'paid' : 'pending')),
-                    'transaction_reference' => $payload['transaction_reference'] ?? null,
-                    'note'   => 'Order Shipment Charges',
-                ]);
-            }
-
-            // 10) Payments (the client should have already charged the user; just record it)
-            $order->addPayment([
-                'type'   => 'inflow',
-                'method' => $payload['payment_method'] ?? 'cash',
-                'amount' => $sessionTotal,
-                'status' => $payload['payment_status'] ?? 'paid',
-                'transaction_reference' => $payload['transaction_reference'] ?? null,
-                'note'   => $channel === 'pos' ? 'POS Order Payment' : 'Online Order Payment',
-            ]);
-
-            if ($channel === 'pos') {
-                $order->status = 'completed';
-                $order->save();
-            }
-
-            // 11) Commit discount using the stored snapshot (no recompute)
-            $discountSnapshot = json_decode($session->discount_snapshot, true) ?? [
-                'discount_id' => $session->discount_id,
-                'amount' => $session->discount_amount,
-            ];
-
-            if (!empty($discountSnapshot['discount_id'])) {
-                $this->discountService->commitFromSnapshot($order, $discountSnapshot);
-            }
-
-            // 12) Mark checkout session used (prevent replay)
-            DB::table('checkout_sessions')->where('id', $session->id)->update([
-                'used' => true,
-                'updated_at' => now(),
-            ]);
-
-            Log::channel('orders')->info('Order placed', [
-                'order_id'     => $order->id,
-                'order_number' => $order->order_number,
-                'channel'      => $order->channel,
-                'employee_id'  => auth()->id(),
-            ]);
+            $this->logOrder($order);
 
             return $order;
-        }, 5); // outer transaction
+        }, 5);
     }
 
+    private function validatePayload(array $payload): void
+    {
+        if (empty($payload['items']) || !is_array($payload['items'])) {
+            throw new InvalidArgumentException('items must be a non-empty array');
+        }
+
+        if (empty($payload['checkout_token']) || !is_string($payload['checkout_token'])) {
+            throw ValidationException::withMessages([
+                'checkout_token' => 'Missing checkout token.'
+            ]);
+        }
+    }
+
+    private function resolveChannel(array $payload): string
+    {
+        return isset($payload['channel']) && strtolower($payload['channel']) === 'pos'
+            ? 'pos'
+            : 'online';
+    }
+
+    private function getValidCheckoutSession(string $token)
+    {
+        $session = DB::table('checkout_sessions')
+            ->where('token', $token)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$session) {
+            throw ValidationException::withMessages([
+                'checkout_token' => 'Invalid or expired checkout token.'
+            ]);
+        }
+
+        if ($session->used) {
+            throw ValidationException::withMessages([
+                'checkout_token' => 'This checkout session has already been used.'
+            ]);
+        }
+
+        if ($session->expires_at && \Carbon\Carbon::parse($session->expires_at)->isPast()) {
+            throw ValidationException::withMessages([
+                'checkout_token' => 'Checkout session expired. Please refresh checkout.'
+            ]);
+        }
+
+        return $session;
+    }
+
+    private function resolveUser(array $payload, string $channel): array
+    {
+        $userId = $this->resolveUserId($payload, $channel);
+        $user = $userId ? User::find($userId) : null;
+
+        return [$userId, $user];
+    }
+
+    private function processItems(array $payloadItems): array
+    {
+        $variants = $this->lockAndValidateStock($payloadItems);
+        $items = $this->buildOrderItems($payloadItems, $variants);
+        $subtotal = $this->calculateSubtotalFromItems($items);
+
+        return [$items, $subtotal];
+    }
+
+    private function computeShipping(array $payload, float $subtotal): float
+    {
+        if (empty($payload['shipping']) || !is_array($payload['shipping'])) {
+            return 0.0;
+        }
+
+        $shippingParams = [
+            'shipping_method_id' => $payload['shipping']['shipping_method_id'] ?? null,
+            'shipping_zone_id'   => $payload['shipping']['shipping_zone_id'] ?? null,
+            'pickup_location_id' => $payload['shipping']['pickup_location_id'] ?? null,
+            'state_id'           => $payload['shipping']['state_id'] ?? null,
+            'subtotal'           => $subtotal,
+            'items'              => $payload['items'] ?? [],
+        ];
+
+        $computed = $this->shippingService->calculate($shippingParams);
+
+        if (!isset($computed['total'])) {
+            Log::channel('orders')->error('ShippingService returned invalid data', [
+                'params' => $shippingParams,
+                'result' => $computed
+            ]);
+
+            throw new \RuntimeException('Failed to compute shipping cost');
+        }
+
+        return (float) $computed['total'];
+    }
+
+
+    private function computeDiscountAndTotals(
+        $user,
+        array $items,
+        float $subtotal,
+        float $shipping,
+        array $payload,
+        string $channel
+    ): array {
+        $taxTotal = (float) ($payload['tax_total'] ?? 0);
+
+        $quote = $this->discountService->previewQuote(
+            $user,
+            $items,
+            $subtotal,
+            $shipping,
+            $taxTotal,
+            $channel,
+            $payload['coupon'] ?? null
+        );
+
+        $discount = round($quote['amount'] ?? 0, 2);
+
+        $totals = $this->calculateTotals(
+            subtotal: $subtotal,
+            taxTotal: $taxTotal,
+            shippingTotal: $shipping,
+            discount: $discount
+        );
+
+        return [$discount, round($totals['total_amount'], 2)];
+    }
+
+    private function assertSessionIntegrity($session, $subtotal, $shipping, $discount, $total): void
+    {
+        $tol = $this->discountService->getMoneyTolerance();
+
+        if (
+            abs($session->subtotal - round($subtotal, 2)) > $tol ||
+            abs($session->shipping_total - round($shipping, 2)) > $tol ||
+            abs($session->discount_amount - $discount) > $tol ||
+            abs($session->total - $total) > $tol
+        ) {
+            throw ValidationException::withMessages([
+                'checkout' => 'Pricing changed since checkout preview. Please refresh checkout and pay again.'
+            ]);
+        }
+    }
+
+    private function createOrderFromSession($session, array $payload, $userId, string $channel): Order
+    {
+        return Order::create([
+            'user_id'       => $userId,
+            'subtotal'      => (float) $session->subtotal,
+            'tax_total'     => (float) ($payload['tax_total'] ?? 0),
+            'discount'      => (float) $session->discount_amount,
+            'currency'      => $payload['currency'] ?? 'NGN',
+            'channel'       => $channel,
+            'order_number'  => $this->generateOrderNumber($channel),
+            'status'        => $payload['status'] ?? 'pending',
+            'total_amount'  => (float) $session->total,
+            'shipping_total'=> (float) $session->shipping_total,
+        ]);
+    }
+
+    private function createOrderItemsAndAdjustInventory(Order $order, array $items, string $channel): void
+    {
+        foreach ($items as $line) {
+            $orderItem = OrderItem::create([
+                'order_id'   => $order->id,
+                'variant_id' => $line['variant_id'],
+                'quantity'   => $line['quantity'],
+                'price'      => $line['unit_price'],
+                'line_total' => $line['line_total'],
+            ]);
+
+            if ($channel === 'pos') {
+                $this->inventoryService->stockOut([
+                    'variant_id'  => $line['variant_id'],
+                    'quantity'    => $line['quantity'],
+                    'employee_id' => auth()->id(),
+                    'reason'      => 'Sale created from POS Order',
+                    'source_type' => Order::class,
+                    'source_id'   => $order->id,
+                    'note'        => "Order Item #{$orderItem->id}",
+                ]);
+            }
+        }
+    }
+
+    private function handlePosSale(Order $order, $userId, array $payload, string $channel): void
+    {
+        if ($channel !== 'pos') return;
+
+        Sale::create([
+            'employee_id'   => auth()->id(),
+            'customer_id'   => $userId,
+            'total_amount'  => $order->total_amount,
+            'payment_method'=> $payload['payment_method'] ?? 'cash',
+            'order_id'      => $order->id,
+            'pos_terminal_id' => session()->get('pos_terminal_id'),
+        ]);
+    }
+
+    private function handleShipping(Order $order, array $payload, float $shippingTotal, $userId): void
+    {
+        if (empty($payload['shipping'])) return;
+
+        $shipping = $payload['shipping'];
+
+        $shipment = Shipment::create([
+            'shippable_type'   => Order::class,
+            'shippable_id'     => $order->id,
+            'shipping_method_id'=> $shipping['shipping_method_id'] ?? null,
+            'weight'           => $shipping['weight'] ?? 0,
+            'cost'             => $shippingTotal,
+        ]);
+
+
+        if (!empty($shipping['address'])) {
+            Address::create([
+                'shipment_id' => $shipment->id,
+                'name'        => $userId ? optional(User::find($userId))->name : 'Walk-In Customer',
+                'phone'       => $shipping['phone'] ?? null,
+                'line1'       => $shipping['address']?? null,
+                'country_id'  => $shipping['country_id'] ?? null,
+                'state_id'    => $shipping['state_id'] ?? null,
+                'lga_id'      => $shipping['lga_id'] ?? null,
+            ]);
+        }
+
+        $shipment->addPayment([
+            'type'   => 'inflow',
+            'method' => $payload['payment_method'] ?? 'cash',
+            'amount' => $shippingTotal,
+            'status' => $payload['shipping_payment_status']
+                ?? ($payload['payment_status'] ?? 'pending'),
+            'transaction_reference' => $payload['transaction_reference'] ?? null,
+            'note' => 'Order Shipment Charges',
+        ]);
+    }
+
+    private function recordPayment(Order $order, array $payload, float $amount, string $channel): void
+    {
+        $order->addPayment([
+            'type'   => 'inflow',
+            'method' => $payload['payment_method'] ?? 'cash',
+            'amount' => $amount,
+            'status' => $payload['payment_status'] ?? 'paid',
+            'transaction_reference' => $payload['transaction_reference'] ?? null,
+            'note'   => $channel === 'pos'
+                ? 'POS Order Payment'
+                : 'Online Order Payment',
+        ]);
+    }
+
+    private function finalizeOrderStatus(Order $order, string $channel): void
+    {
+        if ($channel === 'pos') {
+            $order->status = 'completed';
+            $order->save();
+        }
+    }
+
+    private function commitDiscount(Order $order, $session): void
+    {
+        $snapshot = json_decode($session->discount_snapshot, true) ?? [
+            'discount_id' => $session->discount_id,
+            'amount' => $session->discount_amount,
+        ];
+
+        if (!empty($snapshot['discount_id'])) {
+            $this->discountService->commitFromSnapshot($order, $snapshot);
+        }
+    }
+
+    private function markSessionUsed($session): void
+    {
+        DB::table('checkout_sessions')->where('id', $session->id)->update([
+            'used' => true,
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function logOrder(Order $order): void
+    {
+        Log::channel('orders')->info('Order placed', [
+            'order_id'     => $order->id,
+            'order_number' => $order->order_number,
+            'channel'      => $order->channel,
+            'employee_id'  => auth()->id(),
+        ]);
+    }
     /**
      * Resolve user id for order creation.
      *
