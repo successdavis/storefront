@@ -8,6 +8,7 @@ use App\Services\CheckoutService;
 use App\Services\ProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -94,6 +95,13 @@ class CheckoutController extends Controller
             $result = $this->checkoutService->verifyPayment($request->user(), $reference);
 
             if (!$result['success']) {
+
+                Log::warning('Payment verification failed', [
+                    'user_id'   => $request->user()?->id,
+                    'reference' => $reference,
+                    'message'   => $result['message'],
+                ]);
+
                 return redirect()
                     ->route('checkout.index')
                     ->with('error', $result['message']);
@@ -103,10 +111,22 @@ class CheckoutController extends Controller
                 ->route('order.success', ['order' => $result['order']->id])
                 ->with('success', $result['message']);
         } catch (ValidationException $exception) {
+            Log::notice('Payment validation error', [
+                'user_id'   => $request->user()?->id,
+                'reference' => $reference,
+                'errors'    => $exception->errors(),
+            ]);
             return redirect()
                 ->route('checkout.index')
                 ->withErrors($exception->errors());
         } catch (\Throwable $exception) {
+            Log::error('Payment verification exception', [
+                'user_id'   => $request->user()?->id,
+                'reference' => $reference,
+                'error'     => $exception->getMessage(),
+                'trace'     => $exception->getTraceAsString(),
+            ]);
+
             report($exception);
 
             return redirect()
