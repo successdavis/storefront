@@ -2,23 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProductVariant;
 use App\Models\User;
-use App\Services\DiscountService;
-use App\Services\OrderService;
-use App\Services\Shipping\ShippingCostService;
+use App\Services\PricingQuoteService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
-// app/Http/Controllers/CheckoutPreviewController.php
 class CheckoutPreviewController extends Controller
 {
     public function __construct(
-        protected ShippingCostService $shipping,
-        protected DiscountService $discounts
+        protected PricingQuoteService $pricingQuoteService,
     ) {}
 
     public function preview(Request $request)
@@ -31,134 +26,88 @@ class CheckoutPreviewController extends Controller
             'coupon'   => 'nullable|string',
             'channel'  => 'nullable|in:online,pos',
             'customer_id' => 'nullable|integer|exists:users,id',
-            'checkout_token' => 'nullable|string|exists:checkout_sessions,token'
+            'checkout_token' => 'nullable|string|exists:checkout_sessions,token',
         ]);
 
         $channel = $data['channel'] ?? 'online';
+        $user = $this->resolveUserId($data, $channel);
 
-        // 1) Subtotal (map items with unit price fetched from DB, etc.)
-        [$items, $subtotal] = $this->buildItemsAndSubtotal($data['items']);
+        $quote = $this->pricingQuoteService->quote([
+            'items' => $data['items'],
+            'shipping' => $data['shipping'] ?? null,
+            'coupon' => $data['coupon'] ?? null,
+            'channel' => $channel,
+            'user' => $user,
+            'tax_total' => 0.0,
+        ]);
 
+        $now = Carbon::now();
+        $expiresAt = $now->copy()->addMinutes(30);
+        $token = DB::transaction(function () use ($data, $quote, $channel, $user, $now, $expiresAt) {
+            $existing = null;
+            if (!empty($data['checkout_token'])) {
+                $existing = DB::table('checkout_sessions')
+                    ->where('token', $data['checkout_token'])
+                    ->where('used', false)
+                    ->lockForUpdate()
+                    ->first();
+            }
 
-        // 2) Shipping
-        $shippingTotal = 0.0;
-        if (!empty($data['shipping'])) {
-            $shippingTotal = $this->shipping->calculate([
-                'subtotal' => $subtotal,
-                'items'    => $items,
-                'shipping_method_id' => $data['shipping']['shipping_method_id'] ?? null,
-                'shipping_zone_id'   => $data['shipping']['shipping_zone_id'] ?? null,
-                'state_id'           => $data['shipping']['state_id'] ?? null,
-            ])['total'] ?? 0.0;
-        }
+            if ($existing) {
+                DB::table('checkout_sessions')->where('id', $existing->id)->update([
+                    'user_id' => $user?->id,
+                    'items' => json_encode($quote['items']),
+                    'subtotal' => $quote['summary']['subtotal'],
+                    'shipping_total' => $quote['summary']['shipping_total'],
+                    'discount_amount' => $quote['summary']['discount_amount'],
+                    'discount_id' => $quote['summary']['discount_id'],
+                    'discount_snapshot' => json_encode($quote['discount_snapshot']),
+                    'shipping_snapshot' => json_encode($quote['shipping_snapshot']),
+                    'total' => $quote['summary']['total'],
+                    'channel' => $channel,
+                    'expires_at' => $expiresAt,
+                    'updated_at' => $now,
+                ]);
 
-        // Resolve user (null for guest)
-        $user = $this->resolveUserId($data, 'pos');
+                return $existing->token;
+            }
 
-
-        // 3) Discount preview
-        $discount = $this->discounts->previewQuote(
-            user: $user,
-            items: $items,
-            subtotal: $subtotal,
-            shippingTotal: $shippingTotal,
-            taxTotal: 0.0,
-            channel: $channel,
-            couponCode: $data['coupon'] ?? null
-        );
-
-        // 4) Compose snapshot (exact values used for payment)
-        $subtotalRounded = round($subtotal, 2);
-        $shippingRounded = round($shippingTotal, 2);
-        $discountAmount = round($discount['amount'] ?? 0.0, 2);
-        $total = round($subtotalRounded + $shippingRounded - $discountAmount, 2);
-
-        // 5) Create a server-side checkout session and return token
-
-        $existing = DB::table('checkout_sessions')
-            ->where('token', $data['checkout_token'])
-            ->where('used', false)
-            ->orderByDesc('id')
-            ->first();
-
-        if($existing){
-            $token = $existing->token;
-            $now = Carbon::now();
-            DB::table('checkout_sessions')->where('id', $existing->id)->update([
-                'user_id' => $user?->id,
-                'items' => json_encode($items),
-                'subtotal' => $subtotalRounded,
-                'shipping_total' => $shippingRounded,
-                'discount_amount' => $discountAmount,
-                'discount_id' => $discount['discount_id'] ?? null,
-                'discount_snapshot' => json_encode($discount),
-                'total' => $total,
-                'channel' => $channel,
-                'expires_at' => $now->addMinutes(30),
-                'updated_at' => $now,
-            ]);
-        }else {
-            $token = hash_hmac('sha256', Str::uuid()->toString() . now()->timestamp, config('app.key'));
-
+            $token = hash_hmac('sha256', Str::uuid()->toString() . now()->timestamp, (string) config('app.key'));
             DB::table('checkout_sessions')->insert([
                 'token' => $token,
                 'user_id' => $user?->id,
-                'items' => json_encode($items),
-                'subtotal' => $subtotalRounded,
-                'shipping_total' => $shippingRounded,
-                'discount_amount' => $discountAmount,
-                'discount_id' => $discount['discount_id'] ?? null,
-                'discount_snapshot' => json_encode($discount),
-                'total' => $total,
+                'items' => json_encode($quote['items']),
+                'subtotal' => $quote['summary']['subtotal'],
+                'shipping_total' => $quote['summary']['shipping_total'],
+                'discount_amount' => $quote['summary']['discount_amount'],
+                'discount_id' => $quote['summary']['discount_id'],
+                'discount_snapshot' => json_encode($quote['discount_snapshot']),
+                'shipping_snapshot' => json_encode($quote['shipping_snapshot']),
+                'total' => $quote['summary']['total'],
                 'channel' => $channel,
-                'expires_at' => Carbon::now()->addMinutes(30), // tune as needed
-                'created_at' => now(),
-                'updated_at' => now(),
+                'used' => false,
+                'payment_status' => 'pending',
+                'expires_at' => $expiresAt,
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
-        }
 
+            return $token;
+        });
 
         return response()->json([
-            'subtotal'       => $subtotalRounded,
-            'shipping_total' => $shippingRounded,
-            'discount'       => $discountAmount,
-            'discount_label' => $discount['label'],
-            'total'          => $total,
+            'subtotal'       => $quote['summary']['subtotal'],
+            'shipping_total' => $quote['summary']['shipping_total'],
+            'discount'       => $quote['summary']['discount_amount'],
+            'discount_label' => $quote['summary']['discount_label'],
+            'total'          => $quote['summary']['total'],
             'checkout_token' => $token,
         ]);
     }
 
-    protected function buildItemsAndSubtotal(array $payloadItems): array
-    {
-        $variants = ProductVariant::with(['product.categories'])
-            ->whereIn('id', collect($payloadItems)->pluck('variant_id'))
-            ->get()
-            ->keyBy('id');
-
-        $subtotal = 0;
-        $items = [];
-
-        foreach ($payloadItems as $line) {
-            $v = $variants[$line['variant_id']];
-            $unit = $v->sale_price ?? $v->regular_price;
-            $qty  = (float)$line['quantity'];
-            $subtotal += $unit * $qty;
-
-            $items[] = [
-                'variant_id'   => $v->id,
-                'quantity'     => $qty,
-                'unit_price'   => $unit,
-                'product_id'   => $v->product_id,
-                'category_ids' => $v->product?->categories?->pluck('id')->all() ?? [],
-            ];
-        }
-
-        return [$items, round($subtotal, 2)];
-    }
-
     protected function resolveUserId(array $payload, string $channel)
     {
-        $user = $payload['customer_id'] ? User::find($payload['customer_id']) : null;
+        $user = !empty($payload['customer_id']) ? User::find($payload['customer_id']) : null;
 
         if ($channel === 'pos' && empty($user)) {
             $walkInEmail = 'walkInCustomer@example.com';
@@ -173,4 +122,3 @@ class CheckoutPreviewController extends Controller
         return $user;
     }
 }
-

@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AdminProductController;
 use App\Http\Controllers\Admin\AdminProductVariantController;
 use App\Http\Controllers\Admin\AdminSkuController;
 use App\Http\Controllers\Admin\ProductImageController;
+use App\Http\Controllers\Admin\PaymentRecoveryController;
 use App\Http\Controllers\Admin\VariantTypeController;
 use App\Http\Controllers\Admin\AdminVariantValueController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -38,6 +39,7 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\PaystackWebhookController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorPaymentController;
@@ -47,6 +49,9 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::redirect('/', '/store')->name('home');
+
+Route::post('/webhooks/paystack', [PaystackWebhookController::class, 'handle'])
+    ->name('webhooks.paystack');
 
 Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 
@@ -97,6 +102,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/checkout/discount', [CheckoutController::class, 'applyDiscount'])->name('checkout.discount');
     Route::post('/checkout/pay', [CheckoutController::class, 'initializePayment'])->name('checkout.pay');
     Route::get('/payment/verify', [CheckoutController::class, 'verifyPayment'])->name('payment.verify');
+    Route::post('/payment/reverify', [CheckoutController::class, 'reverifyPayment'])->name('payment.reverify');
     Route::get('/order/success', [CheckoutController::class, 'success'])->name('order.success');
 
     Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
@@ -149,6 +155,13 @@ Route::prefix('admin')
             ->name('inventory-alerts.close');
         Route::get('/transactions', [TransactionController::class, 'index'])
             ->name('transactions.index');
+
+        Route::get('/payment-recovery', [PaymentRecoveryController::class, 'index'])
+            ->name('payment-recovery.index');
+        Route::post('/payment-recovery/reverify', [PaymentRecoveryController::class, 'reverify'])
+            ->name('payment-recovery.reverify');
+        Route::post('/payment-recovery/refund', [PaymentRecoveryController::class, 'refund'])
+            ->name('payment-recovery.refund');
 
 //        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -278,5 +291,3 @@ Route::prefix('admin')
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
-
-

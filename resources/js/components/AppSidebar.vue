@@ -112,6 +112,17 @@ const mainNavItems: MainNavItem[] = [
         href: '/admin/pos-terminals'
     },
     {
+        title: 'Payments',
+        icon: BookOpen,
+        subItems: [
+            {
+                title: 'Recovery',
+                href: '/admin/payment-recovery',
+                icon: ''
+            },
+        ]
+    },
+    {
         title: 'Staffs',
         icon: Boxes,
         subItems: [

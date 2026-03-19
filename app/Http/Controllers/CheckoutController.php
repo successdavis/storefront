@@ -135,6 +135,42 @@ class CheckoutController extends Controller
         }
     }
 
+    public function reverifyPayment(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'reference' => ['required', 'string', 'max:100'],
+        ]);
+
+        $reference = trim((string) $data['reference']);
+        $user = $request->user();
+
+        $allowCrossUserReverify = method_exists($user, 'hasRole') && (
+            $user->hasRole('admin') || (method_exists($user, 'can') && $user->can('manage orders'))
+        );
+
+        try {
+            $result = $allowCrossUserReverify
+                ? $this->checkoutService->reverifyPayment($reference)
+                : $this->checkoutService->verifyPayment($user, $reference);
+
+            return redirect()
+                ->route('order.success', ['order' => $result['order']->id])
+                ->with('success', $result['message']);
+        } catch (ValidationException $exception) {
+            return back()->withErrors($exception->errors());
+        } catch (\Throwable $exception) {
+            Log::error('Manual payment re-verification failed', [
+                'user_id' => $user?->id,
+                'reference' => $reference,
+                'error' => $exception->getMessage(),
+            ]);
+
+            report($exception);
+
+            return back()->with('error', 'Unable to re-verify payment at the moment.');
+        }
+    }
+
     public function success(Request $request): InertiaResponse
     {
         $orderId = $request->integer('order');

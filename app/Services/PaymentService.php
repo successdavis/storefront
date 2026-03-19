@@ -41,6 +41,18 @@ class PaymentService
 
         return DB::transaction(function () use ($data) {
             $status = $data['status'] ?? 'pending';
+            $reference = isset($data['transaction_reference']) && $data['transaction_reference'] !== ''
+                ? (string) $data['transaction_reference']
+                : $this->generateReference();
+
+            $existing = $this->payable->payments()
+                ->where('transaction_reference', $reference)
+                ->where('type', $data['type'])
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
 
             $payment = new Payment();
             $payment->fill([
@@ -48,7 +60,7 @@ class PaymentService
                 'method' => $data['method'],
                 'amount' => $data['amount'],
                 'currency' => $data['currency'] ?? 'NGN',
-                'transaction_reference' => $data['transaction_reference'] ?? $this->generateReference(),
+                'transaction_reference' => $reference,
                 'status' => $status,
                 'paid_at' => $data['paid_at'] ?? ($status === 'paid' ? now() : null),
                 'employee_id' => $data['employee_id'] ?? null,

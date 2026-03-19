@@ -115,7 +115,7 @@ class PosController extends Controller
             'shipping' => 'nullable|array',
             'coupon'   => 'nullable|string',
             'channel'  => 'nullable|in:online,pos',
-            'checkout_token' => 'nullable|string|exists:checkout_sessions,token',
+            'checkout_token' => 'required|string|exists:checkout_sessions,token',
         ]);
 
         $validated['channel'] = 'pos';

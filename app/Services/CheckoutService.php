@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\InsufficientStockException;
 use App\Models\Lga;
 use App\Models\Order;
 use App\Models\Payment;
@@ -9,7 +10,7 @@ use App\Models\PickupLocation;
 use App\Models\ShippingMethod;
 use App\Models\State;
 use App\Models\User;
-use App\Services\Shipping\ShippingCostService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +21,12 @@ class CheckoutService
 {
     public function __construct(
         protected CartService $cartService,
-        protected DiscountService $discountService,
-        protected ShippingCostService $shippingCostService,
+        protected PricingQuoteService $pricingQuoteService,
         protected OrderService $orderService,
         protected PaystackService $paystackService,
         protected ProductService $productService,
+        protected StockReservationService $stockReservationService,
+        protected DiscountService $discountService,
     ) {}
 
     public function getCheckoutData(User $user, array $params = []): array
@@ -35,74 +37,73 @@ class CheckoutService
         $cartData = $this->cartService->getDetailedCart($selection['coupon'], (int) $user->id);
         $cartItems = $cartData['cart']['items'] ?? [];
 
-        $shippingTotal = 0.0;
-        $shippingError = null;
-        $freeShippingApplied = false;
-
-        if (!empty($cartItems) && !empty($selection['shipping_method_id'])) {
-
-            if ($isPickupMethod) {
-
-                // ✅ Pickup logic (NO shipping calculation)
-                if (empty($selection['state_id'])) {
-                    $shippingError = 'Please select a state.';
-                } elseif (empty($selection['pickup_location_id'])) {
-                    $shippingError = 'Please select a pickup location.';
-                }
-
-                // shippingTotal remains 0
-
-            } else {
-
-                // ✅ Normal shipping logic
-                if (empty($selection['state_id'])) {
-                    $shippingError = 'Please select a state to calculate shipping.';
-                } else {
-                    try {
-                        $shippingCalculation = $this->calculateShippingFromCart(
-                            cartItems: $cartItems,
-                            subtotal: (float) ($cartData['summary']['subtotal'] ?? 0),
-                            selection: $selection,
-                        );
-
-                        $shippingTotal = (float) ($shippingCalculation['total'] ?? 0);
-                        $freeShippingApplied = (bool) ($shippingCalculation['free_shipping_applied'] ?? false);
-
-                    } catch (\Throwable $exception) {
-                        report($exception);
-                        $shippingError = $exception->getMessage();
-                    }
-                }
-            }
-        }
-
-        $discountQuote = [
-            'discount_id' => null,
-            'label' => null,
-            'amount' => 0.0,
-        ];
         $couponError = $cartData['coupon_error'] ?? null;
+        $shippingError = null;
 
+        $quoteSummary = [
+            'item_count' => (int) collect($cartItems)->sum('quantity'),
+            'subtotal' => round((float) ($cartData['summary']['subtotal'] ?? 0), 2),
+            'discount' => round((float) ($cartData['summary']['discount'] ?? 0), 2),
+            'discount_id' => null,
+            'discount_label' => null,
+            'coupon' => $selection['coupon'] ?? ($cartData['summary']['coupon'] ?? null),
+            'shipping' => round((float) ($cartData['summary']['shipping'] ?? 0), 2),
+            'shipping_free' => false,
+            'tax' => 0.0,
+            'total' => round((float) ($cartData['summary']['total'] ?? 0), 2),
+        ];
+
+        $pricingQuote = null;
         if (!empty($cartItems)) {
+            $shippingPayload = $this->buildQuoteShippingPayload($selection);
+            if (!empty($selection['shipping_method_id'])) {
+                if ($isPickupMethod) {
+                    if (empty($selection['state_id'])) {
+                        $shippingError = 'Please select a state.';
+                    } elseif (empty($selection['pickup_location_id'])) {
+                        $shippingError = 'Please select a pickup location.';
+                    }
+                } elseif (empty($selection['state_id'])) {
+                    $shippingError = 'Please select a state to calculate shipping.';
+                }
+            }
+
             try {
-                $discountQuote = $this->discountService->previewQuote(
-                    user: $user,
-                    items: $this->toDiscountItems($cartItems),
-                    subtotal: (float) ($cartData['summary']['subtotal'] ?? 0),
-                    shippingTotal: $shippingTotal,
-                    taxTotal: 0.0,
-                    channel: 'online',
-                    couponCode: $selection['coupon'] ?? ($cartData['summary']['coupon'] ?? null),
-                );
+                $pricingQuote = $this->pricingQuoteService->quote([
+                    'user' => $user,
+                    'channel' => 'online',
+                    'coupon' => $selection['coupon'] ?? ($cartData['summary']['coupon'] ?? null),
+                    'items' => collect($cartItems)->map(fn (array $item) => [
+                        'variant_id' => (int) ($item['variant']['id'] ?? 0),
+                        'quantity' => (float) ($item['quantity'] ?? 0),
+                    ])->values()->all(),
+                    'shipping' => $shippingError ? null : $shippingPayload,
+                    'tax_total' => 0.0,
+                ]);
+
+                $quoteSummary = [
+                    'item_count' => (int) $pricingQuote['summary']['item_count'],
+                    'subtotal' => (float) $pricingQuote['summary']['subtotal'],
+                    'discount' => (float) $pricingQuote['summary']['discount_amount'],
+                    'discount_id' => $pricingQuote['summary']['discount_id'],
+                    'discount_label' => $pricingQuote['summary']['discount_label'],
+                    'coupon' => $pricingQuote['summary']['coupon'],
+                    'shipping' => (float) $pricingQuote['summary']['shipping_total'],
+                    'shipping_free' => (bool) $pricingQuote['summary']['shipping_free'],
+                    'tax' => (float) $pricingQuote['summary']['tax_total'],
+                    'total' => (float) $pricingQuote['summary']['total'],
+                ];
             } catch (ValidationException $exception) {
-                $couponError = collect($exception->errors())->flatten()->first() ?: 'Invalid coupon code.';
+                $firstError = collect($exception->errors())->flatten()->first();
+
+                if ($firstError) {
+                    $couponError = $couponError ?: $firstError;
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
+                $shippingError = $shippingError ?: 'Unable to calculate shipping right now.';
             }
         }
-
-        $subtotal = round((float) ($cartData['summary']['subtotal'] ?? 0), 2);
-        $discountAmount = round((float) ($discountQuote['amount'] ?? 0), 2);
-        $shippingTotal = round($shippingTotal, 2);
-        $total = max(round($subtotal + $shippingTotal - $discountAmount, 2), 0);
 
         return [
             'cart' => [
@@ -110,33 +111,22 @@ class CheckoutService
                 'status' => $cartData['cart']['status'] ?? 'active',
                 'items' => $cartItems,
             ],
-            'summary' => [
-                'item_count' => (int) collect($cartItems)->sum('quantity'),
-                'subtotal' => $subtotal,
-                'discount' => $discountAmount,
-                'discount_id' => $discountQuote['discount_id'] ?? null,
-                'discount_label' => $discountQuote['label'] ?? null,
-                'coupon' => $selection['coupon'] ?? ($cartData['summary']['coupon'] ?? null),
-                'shipping' => $shippingTotal,
-                'shipping_free' => $freeShippingApplied,
-                'tax' => 0.0,
-                'total' => $total,
-            ],
+            'summary' => $quoteSummary,
             'coupon_error' => $couponError,
             'shipping_error' => $shippingError,
             'selected_shipping' => $selection,
             'is_pickup_method' => $isPickupMethod,
             'shipping_methods' => $this->listShippingMethods(),
             'states' => $this->listStates(),
-//            'lgas' => $this->listLgas($selection['state_id']),
             'pickup_locations' => $this->listPickupLocations($selection['state_id'], $selection['shipping_method_id']),
             'cartCount' => $this->cartService->getCartCount((int) $user->id),
             'categories' => $this->productService->listStoreCategories(),
+            'pricing_quote' => $pricingQuote,
         ];
     }
 
     /**
-     * @return array{authorization_url:string,reference:string,order_id:int}
+     * @return array{authorization_url:string,reference:string,checkout_token:string}
      */
     public function initializePayment(User $user, array $params): array
     {
@@ -157,25 +147,46 @@ class CheckoutService
         $this->assertCheckoutCanProceed($checkoutData);
 
         $reference = $this->generateReference();
+        $session = $this->createCheckoutSessionToken($user, $checkoutData, $reference);
+        $sessionItems = DB::table('checkout_sessions')->where('id', $session['session_id'])->value('items');
+        $items = is_string($sessionItems) ? (json_decode($sessionItems, true) ?? []) : [];
 
-        $token = $this->createCheckoutSessionToken($user, $checkoutData, $reference);
+        try {
+            $this->stockReservationService->reserveForSession(
+                checkoutSessionId: (int) $session['session_id'],
+                items: collect($items)->map(fn (array $line) => [
+                    'variant_id' => (int) ($line['variant_id'] ?? 0),
+                    'quantity' => (int) ($line['quantity'] ?? 0),
+                ])->values()->all(),
+                expiresAt: Carbon::parse($session['expires_at'])
+            );
+        } catch (InsufficientStockException $exception) {
+            throw ValidationException::withMessages([
+                'stock' => $exception->getMessage(),
+            ]);
+        }
 
-        $gateway = $this->paystackService->initializePayment([
-            'amount' => (int) round(((float) $checkoutData['summary']['total']) * 100),
-            'email' => $user->email,
-            'reference' => $reference,
-            'callback_url' => route('payment.verify'),
-            'metadata' => [
-                'checkout_token' => $token,
-                'user_id' => $user->id,
-                'source' => 'storefront_checkout',
-            ],
-        ]);
+        try {
+            $gateway = $this->paystackService->initializePayment([
+                'amount' => (int) round(((float) $checkoutData['summary']['total']) * 100),
+                'email' => $user->email,
+                'reference' => $reference,
+                'callback_url' => route('payment.verify'),
+                'metadata' => [
+                    'checkout_token' => $session['token'],
+                    'user_id' => $user->id,
+                    'source' => 'storefront_checkout',
+                ],
+            ]);
+        } catch (\Throwable $exception) {
+            $this->stockReservationService->releaseForSession((int) $session['session_id'], 'payment_initialization_failed');
+            throw $exception;
+        }
 
         return [
             'authorization_url' => $gateway['authorization_url'],
             'reference' => $reference,
-            'checkout_token' => $token,
+            'checkout_token' => $session['token'],
         ];
     }
 
@@ -184,9 +195,37 @@ class CheckoutService
      */
     public function verifyPayment(User $user, string $reference): array
     {
-        $verification = $this->paystackService->verifyPayment($reference);
+        $result = $this->finalizeVerifiedPayment($reference, (int) $user->id);
+        $this->cartService->clearCart((int) $user->id);
 
-        $status = strtolower($verification['status'] ?? '');
+        return $result;
+    }
+
+    /**
+     * Manual re-verification entry point (for admin/support tooling).
+     *
+     * @return array{success:bool,message:string,order:Order}
+     */
+    public function reverifyPayment(string $reference): array
+    {
+        return $this->finalizeVerifiedPayment($reference, null);
+    }
+
+    public function processPaystackWebhook(string $reference, array $payload = []): void
+    {
+        $this->finalizeVerifiedPayment($reference, null, $payload);
+    }
+
+    protected function finalizeVerifiedPayment(string $reference, ?int $expectedUserId = null, array $webhookPayload = []): array
+    {
+        if (trim($reference) === '') {
+            throw ValidationException::withMessages([
+                'reference' => 'Missing payment reference.',
+            ]);
+        }
+
+        $verification = $this->paystackService->verifyPayment($reference);
+        $status = strtolower((string) ($verification['status'] ?? ''));
 
         if ($status !== 'success') {
             throw ValidationException::withMessages([
@@ -194,68 +233,135 @@ class CheckoutService
             ]);
         }
 
-        $session = DB::table('checkout_sessions')
-            ->where('reference', $reference)
-            ->where('used', false)
-            ->lockForUpdate()
-            ->first();
+        $session = DB::transaction(function () use ($reference, $expectedUserId, $verification, $webhookPayload) {
+            $session = DB::table('checkout_sessions')
+                ->where('reference', $reference)
+                ->lockForUpdate()
+                ->first();
 
-        if (!$session) {
-            throw ValidationException::withMessages([
-                'payment' => 'Invalid or expired checkout session.',
-            ]);
-        }
+            if (!$session) {
+                throw ValidationException::withMessages([
+                    'payment' => 'Invalid checkout session for this payment.',
+                ]);
+            }
 
-        if ((int) $session->user_id !== (int) $user->id) {
-            throw ValidationException::withMessages([
-                'payment' => 'Unauthorized checkout session.',
-            ]);
-        }
+            if ($expectedUserId !== null && (int) $session->user_id !== $expectedUserId) {
+                throw ValidationException::withMessages([
+                    'payment' => 'Unauthorized checkout session.',
+                ]);
+            }
 
+            if (!empty($session->order_id)) {
+                return $session;
+            }
 
-        if ($session->expires_at && now()->isAfter($session->expires_at)) {
-            throw ValidationException::withMessages([
-                'payment' => 'Checkout session expired.',
-            ]);
-        }
-        return DB::transaction(function () use ($session, $verification, $user, $reference) {
-
-            $items = json_decode($session->items, true);
-
-            $order = $this->orderService->handle([
-                'customer_id' => $user->id,
-                'channel' => 'online',
-                'items' => collect($items)->map(fn ($i) => [
-                    'variant_id' => $i['variant_id'],
-                    'quantity' => $i['quantity'],
-                    'price' => $i['unit_price'],
-                ])->values()->all(),
-
-                'subtotal' => $session->subtotal,
-                'tax_total' => 0,
-                'coupon' => data_get(json_decode($session->discount_snapshot, true), 'code'),
-
-                'payment_method' => 'card',
-                'payment_status' => 'paid',
-
-                'transaction_reference' => $reference,
-                'checkout_token' => $session->token,
-            ]);
-
+            $paidAmount = round(((float) ($verification['amount'] ?? 0)) / 100, 2);
+            $expectedTotal = round((float) $session->total, 2);
+            if ($paidAmount > 0 && abs($paidAmount - $expectedTotal) > $this->discountService->getMoneyTolerance()) {
+                throw ValidationException::withMessages([
+                    'payment' => 'Payment amount does not match checkout amount.',
+                ]);
+            }
 
             DB::table('checkout_sessions')
                 ->where('id', $session->id)
-                ->update(['used' => true]);
+                ->update([
+                    'payment_status' => 'paid',
+                    'payment_verified_at' => now(),
+                    'payment_amount' => $paidAmount > 0 ? $paidAmount : null,
+                    'payment_currency' => strtoupper((string) ($verification['currency'] ?? 'NGN')),
+                    'verification_payload' => json_encode([
+                        'verify' => $verification,
+                        'webhook' => $webhookPayload,
+                    ]),
+                    'processing_error' => null,
+                    'updated_at' => now(),
+                ]);
 
-            // clear redis cart
-            $this->cartService->clearCart($user->id);
+            return DB::table('checkout_sessions')->where('id', $session->id)->first();
+        }, 3);
+
+        if (!empty($session->order_id)) {
+            $order = Order::query()->findOrFail((int) $session->order_id);
+
+            return [
+                'success' => true,
+                'message' => 'Payment already processed.',
+                'order' => $order,
+            ];
+        }
+
+        try {
+            $method = $this->mapPaystackMethod((string) ($verification['channel'] ?? 'card'));
+
+            $order = $this->orderService->handle([
+                'customer_id' => (int) $session->user_id,
+                'channel' => 'online',
+                'payment_method' => $method,
+                'payment_status' => 'paid',
+                'transaction_reference' => $reference,
+                'checkout_token' => (string) $session->token,
+            ]);
+
+            DB::table('checkout_sessions')
+                ->where('id', $session->id)
+                ->update([
+                    'order_id' => $order->id,
+                    'payment_status' => 'fulfilled',
+                    'processed_at' => now(),
+                    'processing_error' => null,
+                    'used' => true,
+                    'updated_at' => now(),
+                ]);
 
             return [
                 'success' => true,
                 'message' => 'Payment verified successfully.',
                 'order' => $order,
             ];
-        });
+        } catch (InsufficientStockException $exception) {
+            $this->stockReservationService->releaseForSession((int) $session->id, 'insufficient_stock_after_payment');
+
+            $refundPayload = null;
+            try {
+                $refundPayload = $this->paystackService->refundPayment(
+                    reference: $reference,
+                    amountKobo: null,
+                    reason: 'Auto refund: items unavailable at order finalization'
+                );
+            } catch (\Throwable $refundException) {
+                $refundPayload = [
+                    'error' => $refundException->getMessage(),
+                ];
+            }
+
+            DB::table('checkout_sessions')
+                ->where('id', $session->id)
+                ->update([
+                    'payment_status' => 'refund_initiated',
+                    'processing_error' => $exception->getMessage(),
+                    'verification_payload' => json_encode([
+                        'verify' => $verification,
+                        'refund' => $refundPayload,
+                    ]),
+                    'retry_count' => DB::raw('retry_count + 1'),
+                    'updated_at' => now(),
+                ]);
+
+            throw ValidationException::withMessages([
+                'payment' => 'Payment was received but stock became unavailable. Refund has been initiated.',
+            ]);
+        } catch (\Throwable $exception) {
+            DB::table('checkout_sessions')
+                ->where('id', $session->id)
+                ->update([
+                    'processing_error' => $exception->getMessage(),
+                    'retry_count' => DB::raw('retry_count + 1'),
+                    'updated_at' => now(),
+                ]);
+
+            throw $exception;
+        }
     }
 
     protected function assertCheckoutCanProceed(array $checkoutData): void
@@ -335,28 +441,6 @@ class CheckoutService
         }
     }
 
-    protected function calculateShippingFromCart(array $cartItems, float $subtotal, array $selection): array
-    {
-        $payload = [
-            'shipping_method_id' => $selection['shipping_method_id'],
-            'state_id' => $selection['state_id'],
-            'shipping_zone_id' => null,
-            'pickup_location_id' => $selection['pickup_location_id'],
-            'subtotal' => $subtotal,
-            'items' => collect($cartItems)
-                ->map(fn (array $item) => [
-                    'variant_id' => (int) ($item['variant']['id'] ?? 0),
-                    'quantity' => (float) ($item['quantity'] ?? 0),
-                ])
-                ->values()
-                ->all(),
-        ];
-
-
-        return $this->shippingCostService->calculate($payload);
-//        return round((float) ($result['total'] ?? 0), 2);
-    }
-
     protected function normalizeCheckoutSelection(array $params): array
     {
         return [
@@ -392,26 +476,6 @@ class CheckoutService
         return $normalized !== '' ? $normalized : null;
     }
 
-    protected function toDiscountItems(array $cartItems): array
-    {
-        return collect($cartItems)->map(fn (array $item) => [
-            'variant_id' => (int) ($item['variant']['id'] ?? 0),
-            'quantity' => (float) ($item['quantity'] ?? 0),
-            'unit_price' => (float) data_get($item, 'variant.price.current', 0),
-            'product_id' => data_get($item, 'product.id'),
-            'category_ids' => $item['category_ids'] ?? [],
-        ])->values()->all();
-    }
-
-    protected function toOrderItems(array $cartItems): array
-    {
-        return collect($cartItems)->map(fn (array $item) => [
-            'variant_id' => (int) ($item['variant']['id'] ?? 0),
-            'quantity' => (int) ($item['quantity'] ?? 0),
-            'price' => (float) data_get($item, 'variant.price.current', 0),
-        ])->values()->all();
-    }
-
     protected function buildOrderShippingPayload(User $user, array $checkoutData): array
     {
         $selected = $checkoutData['selected_shipping'] ?? [];
@@ -429,6 +493,10 @@ class CheckoutService
             'shipping_method_id' => (int) $selected['shipping_method_id'],
             'state_id' => $selected['state_id'],
             'pickup_location_id' => $selected['pickup_location_id'],
+            'phone' => $selected['phone'],
+            'line1' => $selected['line1'],
+            'lga_id' => $selected['lga_id'],
+            'country_id' => $state?->country_id,
         ];
 
         if (!($checkoutData['is_pickup_method'] ?? false)) {
@@ -439,90 +507,88 @@ class CheckoutService
                 'lga_id' => $selected['lga_id'],
                 'country_id' => $state?->country_id,
             ];
-
-            return $payload;
+        } else {
+            $payload['address'] = [
+                'line1' => $selected['line1'] ?? 'Pickup collection',
+                'phone' => $selected['phone'],
+                'state_id' => $selected['state_id'],
+                'lga_id' => $selected['lga_id'],
+                'country_id' => $state?->country_id,
+            ];
         }
-
-        $payload['address'] = [
-            'line1' => $selected['line1'] ?? 'Pickup collection',
-            'phone' => $selected['phone'],
-            'state_id' => $selected['state_id'],
-            'lga_id' => $selected['lga_id'],
-            'country_id' => $state?->country_id,
-        ];
 
         return $payload;
     }
 
-    protected function createCheckoutSessionToken(User $user, array $checkoutData, string $reference): string
+    /**
+     * @return array{token:string,session_id:int,expires_at:string}
+     */
+    protected function createCheckoutSessionToken(User $user, array $checkoutData, string $reference): array
     {
         $token = hash_hmac(
             'sha256',
             Str::uuid()->toString().now()->timestamp.$user->id,
-            config('app.key')
+            (string) config('app.key')
         );
 
-        DB::table('checkout_sessions')->insert([
+        $quote = $checkoutData['pricing_quote'] ?? null;
+        $items = $quote['items'] ?? collect($checkoutData['cart']['items'])->map(fn ($item) => [
+            'variant_id' => (int) $item['variant']['id'],
+            'quantity' => (float) $item['quantity'],
+            'unit_price' => (float) $item['variant']['price']['current'],
+            'product_id' => (int) $item['product']['id'],
+            'category_ids' => $item['category_ids'] ?? [],
+        ])->values()->all();
+
+        $discountSnapshot = $quote['discount_snapshot'] ?? [
+            'discount_id' => $checkoutData['summary']['discount_id'] ?? null,
+            'code' => $checkoutData['summary']['coupon'] ?? null,
+            'label' => $checkoutData['summary']['discount_label'] ?? null,
+            'amount' => (float) ($checkoutData['summary']['discount'] ?? 0),
+        ];
+
+        $shippingSnapshot = $quote['shipping_snapshot'] ?? $this->buildOrderShippingPayload($user, $checkoutData);
+        $expiresAt = now()->addMinutes(30);
+
+        $sessionId = DB::table('checkout_sessions')->insertGetId([
             'token' => $token,
             'reference' => $reference,
             'user_id' => $user->id,
-
-            'items' => json_encode(
-                collect($checkoutData['cart']['items'])->map(fn ($item) => [
-                    'variant_id' => $item['variant']['id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['variant']['price']['current'],
-                    'product_id' => $item['product']['id'],
-                    'category_ids' => $item['category_ids'] ?? [],
-                ])
-            ),
-
-            'subtotal' => $checkoutData['summary']['subtotal'],
-            'shipping_total' => $checkoutData['summary']['shipping'],
-            'discount_amount' => $checkoutData['summary']['discount'],
-            'discount_id' => $checkoutData['summary']['discount_id'],
-
-            'discount_snapshot' => json_encode([
-                'code' => $checkoutData['summary']['coupon'],
-                'label' => $checkoutData['summary']['discount_label'],
-            ]),
-
-            'total' => $checkoutData['summary']['total'],
+            'items' => json_encode($items),
+            'subtotal' => (float) $checkoutData['summary']['subtotal'],
+            'shipping_total' => (float) $checkoutData['summary']['shipping'],
+            'discount_amount' => (float) $checkoutData['summary']['discount'],
+            'discount_id' => $checkoutData['summary']['discount_id'] ?? null,
+            'discount_snapshot' => json_encode($discountSnapshot),
+            'shipping_snapshot' => json_encode($shippingSnapshot),
+            'total' => (float) $checkoutData['summary']['total'],
             'channel' => 'online',
+            'payment_status' => 'pending',
             'used' => false,
-            'expires_at' => now()->addMinutes(30),
+            'expires_at' => $expiresAt,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        return $token;
+        return [
+            'token' => $token,
+            'session_id' => (int) $sessionId,
+            'expires_at' => $expiresAt->toDateTimeString(),
+        ];
     }
 
     protected function generateReference(): string
     {
         $reference = 'PSTK-' . strtoupper(Str::random(18));
 
-        while (Payment::query()->where('transaction_reference', $reference)->exists()) {
+        while (
+            Payment::query()->where('transaction_reference', $reference)->exists()
+            || DB::table('checkout_sessions')->where('reference', $reference)->exists()
+        ) {
             $reference = 'PSTK-' . strtoupper(Str::random(18));
         }
 
         return $reference;
-    }
-
-    protected function markCartAsConverted(int $userId): void
-    {
-        $activeCart = DB::table('carts')
-            ->where('user_id', $userId)
-            ->where('status', 'active')
-            ->orderByDesc('id')
-            ->first();
-
-        if (!$activeCart) {
-            return;
-        }
-
-        DB::table('carts')->where('id', $activeCart->id)->update(['status' => 'converted']);
-        DB::table('cart_items')->where('cart_id', $activeCart->id)->delete();
     }
 
     protected function listShippingMethods(): Collection
@@ -531,7 +597,7 @@ class CheckoutService
             'checkout:shipping_methods',
             now()->addHours(12),
             fn () => ShippingMethod::query()
-                ->select('id','name')
+                ->select('id', 'name')
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get()
@@ -544,12 +610,11 @@ class CheckoutService
             'checkout:states',
             now()->addDay(),
             fn () => State::query()
-                ->select('id','name')
+                ->select('id', 'name')
                 ->orderBy('name')
                 ->get()
         );
     }
-
 
     protected function listPickupLocations(?int $stateId, ?int $shippingMethodId): array
     {
@@ -594,18 +659,15 @@ class CheckoutService
         };
     }
 
-    protected function decodeMeta(mixed $meta): array
+    protected function buildQuoteShippingPayload(array $selection): array
     {
-        if (is_array($meta)) {
-            return $meta;
-        }
-
-        if (is_string($meta) && $meta !== '') {
-            $decoded = json_decode($meta, true);
-
-            return is_array($decoded) ? $decoded : [];
-        }
-
-        return [];
+        return [
+            'shipping_method_id' => $selection['shipping_method_id'],
+            'state_id' => $selection['state_id'],
+            'lga_id' => $selection['lga_id'],
+            'pickup_location_id' => $selection['pickup_location_id'],
+            'phone' => $selection['phone'],
+            'line1' => $selection['line1'],
+        ];
     }
 }

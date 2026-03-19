@@ -70,7 +70,9 @@ class InventoryService
 
             $variant = ProductVariant::lockForUpdate()->findOrFail($data['variant_id']);
 
-            if ($variant->quantity < $qtyOut) {
+            $available = $variant->quantity - $variant->reserved;
+
+            if ($available < $qtyOut) {
                 throw new \RuntimeException("Insufficient stock: requested $qtyOut, available {$variant->quantity}.");
             }
 
@@ -121,4 +123,5 @@ class InventoryService
     {
         return (float) ProductVariant::findOrFail($variantId)->average_cost;
     }
+
 }
