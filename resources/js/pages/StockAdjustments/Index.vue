@@ -28,6 +28,7 @@
                     <th class="p-3 text-right">Adjusted</th>
                     <th class="p-3 text-right">New Qty</th>
                     <th class="p-3">Reason</th>
+                    <th class="p-3">Status</th>
                     <th class="p-3">Adjusted At</th>
                     <th class="p-3 text-center">Action</th>
                 </tr>
@@ -53,6 +54,18 @@
                         {{ item.new_quantity }}
                     </td>
                     <td class="p-3 text-gray-700 dark:text-gray-300">{{ item.reason }}</td>
+                    <td class="p-3">
+                        <span
+                            class="inline-flex rounded-full px-2 py-1 text-xs font-medium"
+                            :class="{
+                                'bg-amber-100 text-amber-800': item.status === 'pending',
+                                'bg-green-100 text-green-800': item.status === 'approved',
+                                'bg-red-100 text-red-800': item.status === 'rejected',
+                            }"
+                        >
+                            {{ item.status }}
+                        </span>
+                    </td>
                     <td class="p-3 text-gray-700 dark:text-gray-300">{{ item.adjusted_at }}</td>
                     <td class="p-3 text-center">
                         <Link

@@ -2,23 +2,29 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\StockAdjustment;
 use App\Models\ProductVariant;
-use App\Services\InventoryService;
+use App\Models\StockAdjustment;
+use App\Services\StockAdjustmentApprovalService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Throwable;
 
 class StockAdjustmentController extends Controller
 {
+    public function __construct(
+        protected StockAdjustmentApprovalService $approvalService,
+    ) {}
+
     public function index()
     {
         $adjustments = StockAdjustment::with([
             'variant:id,product_id,sku',
             'variant.product:id,name',
             'warehouse:id,name',
-            'employee:id,name'
+            'employee:id,name',
+            'approver:id,name',
+            'rejector:id,name',
         ])
             ->latest('adjusted_at')
             ->paginate(15)
@@ -32,7 +38,12 @@ class StockAdjustmentController extends Controller
                 'adjusted_quantity' => $item->adjusted_quantity,
                 'new_quantity' => $item->new_quantity,
                 'reason' => ucfirst(str_replace('_', ' ', $item->reason)),
-                'adjusted_at' => $item->adjusted_at->toDateTimeString(),
+                'adjusted_at' => optional($item->adjusted_at)?->toDateTimeString(),
+                'status' => $item->status ?? StockAdjustment::STATUS_PENDING,
+                'approved_by' => $item->approver?->name,
+                'approved_at' => optional($item->approved_at)?->toDateTimeString(),
+                'rejected_by' => $item->rejector?->name,
+                'rejected_at' => optional($item->rejected_at)?->toDateTimeString(),
             ]);
 
         return Inertia::render('StockAdjustments/Index', [
@@ -49,7 +60,7 @@ class StockAdjustmentController extends Controller
             ->map(function ($variant) {
                 return [
                     'id' => $variant->id,
-                    'label' => $variant->product->name . ' — ' . $variant->sku,
+                    'label' => $variant->product->name . ' - ' . $variant->sku,
                     'current_quantity' => $variant->quantity ?? 0,
                 ];
             });
@@ -59,76 +70,34 @@ class StockAdjustmentController extends Controller
         ]);
     }
 
-
-    public function store(Request $request, InventoryService $inventoryService)
+    public function store(Request $request)
     {
         $validated = $request->validate([
-            'warehouse_id'       => 'nullable|exists:warehouses,id',
-            'variant_id'         => 'required|exists:product_variants,id',
-            'previous_quantity'  => 'required|integer',
-            'adjusted_quantity'  => 'required|integer|not_in:0',
-            'reason'             => 'required|string|max:50',
-            'employee_id'        => 'nullable|exists:employees,id',
-            'reference'          => 'nullable|string|max:100',
-            'note'               => 'nullable|string',
-            'adjusted_at'        => 'nullable|date',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'variant_id' => 'required|exists:product_variants,id',
+            'adjusted_quantity' => 'required|integer|not_in:0',
+            'reason' => 'required|in:damage,loss,count_discrepancy,manual_correction,other',
+            'reference' => 'nullable|string|max:100',
+            'note' => 'nullable|string',
+            'adjusted_at' => 'nullable|date',
         ]);
 
         $validated['adjusted_at'] = $validated['adjusted_at'] ?? now();
 
-
         try {
-            DB::transaction(function () use ($validated, $inventoryService) {
-                // 1️⃣ Create stock adjustment record
-                $adjustment = StockAdjustment::create($validated);
-
-                // 2️⃣ Fetch variant cost data
-                $variantId = $validated['variant_id'];
-                $lastPurchaseCost   = ProductVariant::find($variantId)->last_purchase_price;
-
-                // 3️⃣ Prepare common stock entry payload
-                $baseData = [
-                    'warehouse_id' => $validated['warehouse_id'] ?? null,
-                    'variant_id'   => $variantId,
-                    'reason'       => $validated['reason'],
-                    'employee_id'  => $validated['employee_id'] ?? null,
-                    'note'         => $validated['note'] ?? null,
-                    'effective_at' => $validated['adjusted_at'],
-                    'source_type'  => StockAdjustment::class,
-                    'source_id'    => $adjustment->id,
-                ];
-
-                // 4️⃣ Handle stock direction precisely
-                if ($validated['adjusted_quantity'] > 0) {
-                    // 🔹 Increase in stock — Stock In
-                    $inventoryService->stockIn([
-                        ...$baseData,
-                        'quantity'  => $validated['adjusted_quantity'],
-                        'unit_cost' => $lastPurchaseCost, // could also use last purchase price if you prefer
-                    ]);
-                } else {
-                    // 🔹 Decrease in stock — Stock Out
-                    $inventoryService->stockOut([
-                        ...$baseData,
-                        'quantity'  => abs($validated['adjusted_quantity']),
-                    ]);
-                }
-            });
-
+            $this->approvalService->submit($validated, (int) auth()->id());
 
             return redirect()
                 ->route('admin.stock-adjustments.index')
-                ->with('success', 'Stock adjustment recorded and inventory updated successfully.');
-
+                ->with('success', 'Stock adjustment submitted for approval. No inventory impact yet.');
         } catch (Throwable $e) {
             report($e);
 
             return back()
                 ->withInput()
-                ->with('error', 'An error occurred while processing the stock adjustment: ' . $e->getMessage());
+                ->with('error', 'An error occurred while submitting the stock adjustment: ' . $e->getMessage());
         }
     }
-
 
     public function show(StockAdjustment $stockAdjustment)
     {
@@ -136,22 +105,78 @@ class StockAdjustmentController extends Controller
             'variant.product:id,name',
             'warehouse:id,name',
             'employee:id,name',
+            'approver:id,name',
+            'rejector:id,name',
         ]);
+
+        $productName = $stockAdjustment->variant?->product?->name ?? 'N/A';
+        $sku = $stockAdjustment->variant?->sku ?? 'N/A';
 
         return Inertia::render('StockAdjustments/Show', [
             'adjustment' => [
                 'id' => $stockAdjustment->id,
-                'product_sku' => $stockAdjustment->variant->product->name . ' - ' . $stockAdjustment->variant->sku ?? 'N/A',
+                'product_sku' => "{$productName} - {$sku}",
                 'previous_quantity' => $stockAdjustment->previous_quantity,
                 'adjusted_quantity' => $stockAdjustment->adjusted_quantity,
                 'new_quantity' => $stockAdjustment->new_quantity,
                 'reason' => $stockAdjustment->reason,
                 'note' => $stockAdjustment->note,
-                'warehouse' => $stockAdjustment->warehouse->name ?? 'N/A',
-                'employee' => $stockAdjustment->employee->name ?? 'N/A',
-                'created_at' => $stockAdjustment->created_at->format('Y-m-d H:i'),
+                'warehouse' => $stockAdjustment->warehouse?->name ?? 'N/A',
+                'employee' => $stockAdjustment->employee?->name ?? 'N/A',
+                'created_at' => optional($stockAdjustment->created_at)?->format('Y-m-d H:i'),
+                'status' => $stockAdjustment->status ?? StockAdjustment::STATUS_PENDING,
+                'approved_by' => $stockAdjustment->approver?->name,
+                'approved_at' => optional($stockAdjustment->approved_at)?->format('Y-m-d H:i'),
+                'rejected_by' => $stockAdjustment->rejector?->name,
+                'rejected_at' => optional($stockAdjustment->rejected_at)?->format('Y-m-d H:i'),
+                'approval_note' => $stockAdjustment->approval_note,
+                'can_approve' => ($stockAdjustment->status ?? StockAdjustment::STATUS_PENDING) === StockAdjustment::STATUS_PENDING,
             ],
         ]);
+    }
+
+    public function approve(Request $request, StockAdjustment $stockAdjustment)
+    {
+        $validated = $request->validate([
+            'approval_note' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $this->approvalService->approve(
+                stockAdjustment: $stockAdjustment,
+                approverId: (int) auth()->id(),
+                approvalNote: $validated['approval_note'] ?? null,
+            );
+
+            return back()->with('success', 'Stock adjustment approved and applied successfully.');
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?? 'Unable to approve adjustment.');
+        } catch (Throwable $e) {
+            report($e);
+            return back()->with('error', 'An error occurred while approving the adjustment.');
+        }
+    }
+
+    public function reject(Request $request, StockAdjustment $stockAdjustment)
+    {
+        $validated = $request->validate([
+            'approval_note' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $this->approvalService->reject(
+                stockAdjustment: $stockAdjustment,
+                rejectedBy: (int) auth()->id(),
+                approvalNote: $validated['approval_note'] ?? null,
+            );
+
+            return back()->with('success', 'Stock adjustment rejected. No inventory impact was made.');
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?? 'Unable to reject adjustment.');
+        } catch (Throwable $e) {
+            report($e);
+            return back()->with('error', 'An error occurred while rejecting the adjustment.');
+        }
     }
 
     public function destroy(StockAdjustment $stockAdjustment)

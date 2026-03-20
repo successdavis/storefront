@@ -9,6 +9,10 @@ class StockAdjustment extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_APPROVED = 'approved';
+    public const STATUS_REJECTED = 'rejected';
+
     protected $fillable = [
         'warehouse_id',
         'variant_id',
@@ -19,10 +23,18 @@ class StockAdjustment extends Model
         'reference',
         'note',
         'adjusted_at',
+        'status',
+        'approved_by',
+        'approved_at',
+        'rejected_by',
+        'rejected_at',
+        'approval_note',
     ];
 
     protected $casts = [
         'adjusted_at' => 'datetime',
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
 
     // Relationships
@@ -39,5 +51,15 @@ class StockAdjustment extends Model
     public function employee()
     {
         return $this->belongsTo(User::class, 'employee_id');
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function rejector()
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 }

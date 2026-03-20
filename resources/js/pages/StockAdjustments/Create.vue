@@ -101,7 +101,7 @@
             <!-- Buttons -->
             <div class="flex justify-end space-x-3">
                 <Link
-                    href="/stock-adjustments"
+                    href="/admin/stock-adjustments"
                     class="px-4 py-2 rounded-lg border text-gray-700 dark:text-gray-200
                  dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                 >
@@ -113,7 +113,7 @@
                     class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700
                  disabled:opacity-60 transition"
                 >
-                    Save Adjustment
+                    Submit for Approval
                 </button>
             </div>
         </form>
@@ -149,4 +149,3 @@ const submit = () => {
     form.post('/admin/stock-adjustments', { preserveScroll: true })
 }
 </script>
-

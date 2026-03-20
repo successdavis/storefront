@@ -208,6 +208,10 @@ Route::prefix('admin')
         // Inventory
         Route::resource('stock-entries', StockEntryController::class)->only(['index', 'create', 'store', 'show']);
         Route::resource('stock-adjustments', StockAdjustmentController::class);
+        Route::post('stock-adjustments/{stockAdjustment}/approve', [StockAdjustmentController::class, 'approve'])
+            ->name('stock-adjustments.approve');
+        Route::post('stock-adjustments/{stockAdjustment}/reject', [StockAdjustmentController::class, 'reject'])
+            ->name('stock-adjustments.reject');
         Route::get('barcodes', [BarcodePrintController::class, 'index'])->name('barcodes.index');
         Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])->name('inventory.stock-audit.index');
         Route::post('inventory/stock-audit', [StockAuditController::class, 'store'])->name('inventory.stock-audit.store');
