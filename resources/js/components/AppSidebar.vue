@@ -94,6 +94,26 @@ const mainNavItems: MainNavItem[] = [
                 href: '/admin/stock-adjustments',
                 icon: ''
             },
+            {
+                title: 'Barcode Labels',
+                href: '/admin/barcodes',
+                icon: ''
+            },
+            {
+                title: 'Stock Audit',
+                href: '/admin/inventory/stock-audit',
+                icon: ''
+            },
+            {
+                title: 'Mobile Audit',
+                href: '/admin/inventory/stock-audit/mobile',
+                icon: ''
+            },
+            {
+                title: 'Discrepancies',
+                href: '/admin/inventory/discrepancies',
+                icon: ''
+            },
             // {
             //     title: 'Stock Returns',
             //     href: '/admin/stock-returns',

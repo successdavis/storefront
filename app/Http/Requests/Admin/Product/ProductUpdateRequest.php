@@ -41,7 +41,6 @@ class ProductUpdateRequest extends FormRequest
             'variants' => ['array'],
             'variants.*.id'            => ['nullable','integer','exists:product_variants,id'],
             'variants.*.quantity'      => ['integer','min:0'],
-            'variants.*.barcode'       => ['nullable','string','max:64'],
             'variants.*.last_purchase_price'    => ['nullable','numeric','min:0'],
             'variants.*.regular_price' => ['required','numeric','min:0'],
             'variants.*.weight'        => ['nullable','numeric','min:0'],
@@ -69,6 +68,10 @@ class ProductUpdateRequest extends FormRequest
             ];
             $rules["variants.$i.sale_starts_at"] = ['nullable','date'];
             $rules["variants.$i.sale_ends_at"]   = ['nullable','date','after_or_equal:variants.'.$i.'.sale_starts_at'];
+            $rules["variants.$i.barcode"] = [
+                'nullable', 'string', 'max:64',
+                Rule::unique('product_variants', 'barcode')->ignore($id),
+            ];
         }
 
         return $rules;

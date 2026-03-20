@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Inventory\Alerts\Detectors\DiscrepancyDetector;
 use App\Domain\Inventory\Alerts\Detectors\LowStockDetector;
 use App\Domain\Inventory\Alerts\Detectors\NegativeStockDetector;
 use App\Domain\Inventory\Alerts\Detectors\OutOfStockDetector;
@@ -64,6 +65,32 @@ class RunInventoryAlerts extends Command
             );
         }
 
+        $discrepancyThreshold = (int) Setting::get('inventory.discrepancy_high_threshold', 10);
+
+        foreach ((new DiscrepancyDetector)->detect() as $variant) {
+            $systemQuantity = (int) $variant->quantity;
+            $ledgerQuantity = (int) $variant->ledger_quantity;
+            $variance = $systemQuantity - $ledgerQuantity;
+
+            $engine->raise(
+                'discrepancy',
+                abs($variance) >= $discrepancyThreshold ? 'high' : 'medium',
+                $variant,
+                null,
+                sprintf(
+                    'Stock mismatch detected: %s (System: %d, Ledger: %d)',
+                    $variant->label(),
+                    $systemQuantity,
+                    $ledgerQuantity,
+                ),
+                [
+                    'system_quantity' => $systemQuantity,
+                    'ledger_quantity' => $ledgerQuantity,
+                    'variance' => $variance,
+                ]
+            );
+        }
+
         $days = Setting::get('slow_moving_days', 7);
 
         foreach ((new SlowMovingDetector)->detect() as $variant) {
@@ -83,5 +110,4 @@ class RunInventoryAlerts extends Command
         }
     }
 }
-
 

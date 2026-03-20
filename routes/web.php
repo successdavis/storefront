@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\SaleItemController;
 use App\Http\Controllers\Admin\SalePaymentController;
 use App\Http\Controllers\Admin\StockEntryController;
 use App\Http\Controllers\BrandController;
+use App\Http\Controllers\BarcodePrintController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CartItemController;
 use App\Http\Controllers\CheckoutController;
@@ -37,6 +38,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShippingController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
+use App\Http\Controllers\StockAuditController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\PaystackWebhookController;
@@ -54,6 +56,9 @@ Route::post('/webhooks/paystack', [PaystackWebhookController::class, 'handle'])
     ->name('webhooks.paystack');
 
 Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
+Route::post('/barcodes/print', [BarcodePrintController::class, 'print'])
+    ->middleware(['auth', 'verified'])
+    ->name('barcodes.print');
 
 Route::prefix('store')->name('store.')->group(function () {
     Route::get('/', [StorefrontController::class, 'home'])->name('home');
@@ -203,6 +208,12 @@ Route::prefix('admin')
         // Inventory
         Route::resource('stock-entries', StockEntryController::class)->only(['index', 'create', 'store', 'show']);
         Route::resource('stock-adjustments', StockAdjustmentController::class);
+        Route::get('barcodes', [BarcodePrintController::class, 'index'])->name('barcodes.index');
+        Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])->name('inventory.stock-audit.index');
+        Route::post('inventory/stock-audit', [StockAuditController::class, 'store'])->name('inventory.stock-audit.store');
+        Route::get('inventory/stock-audit/mobile', [StockAuditController::class, 'mobile'])->name('inventory.stock-audit.mobile');
+        Route::get('inventory/stock-audit/lookup', [StockAuditController::class, 'lookupByBarcode'])->name('inventory.stock-audit.lookup');
+        Route::get('inventory/discrepancies', [StockAuditController::class, 'discrepancies'])->name('inventory.discrepancies');
 
         Route::get('search-variants', [StockEntryController::class, 'search'])->name('variants.search');
 
