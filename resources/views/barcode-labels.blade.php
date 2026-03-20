@@ -38,7 +38,7 @@
             display: block;
             margin: 0 auto 4px auto;
             width: 100%;
-            max-width: 180px;
+            max-width: 200px;
             height: 44px;
         }
         .barcode-text {

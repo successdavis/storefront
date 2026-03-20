@@ -54,7 +54,9 @@ class StockAuditController extends Controller
 
     public function mobile(): Response
     {
-        return Inertia::render('InventoryStockAuditMobile');
+        return Inertia::render('InventoryStockAuditMobile', [
+            'totalVariants' => $this->stockAuditService->auditRows()->count(),
+        ]);
     }
 
     public function lookupByBarcode(Request $request): JsonResponse
