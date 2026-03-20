@@ -76,19 +76,28 @@
         <!-- Pagination -->
         <div v-if="adjustments.links.length > 3" class="mt-6 flex justify-end">
             <div class="flex space-x-2">
-                <Link
-                    v-for="link in adjustments.links"
-                    :key="link.label"
-                    :href="link.url"
-                    v-html="link.label"
-                    class="px-3 py-1 border rounded-md text-sm transition"
-                    :class="{
-            'bg-blue-600 text-white border-blue-600 dark:bg-blue-500 dark:border-blue-500':
-              link.active,
-            'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700':
-              !link.active && link.url
-          }"
-                />
+                <template v-for="(link, index) in adjustments.links" :key="index">
+
+                    <!-- Valid link -->
+                    <Link
+                        v-if="link.url"
+                        :href="link.url"
+                        v-html="link.label"
+                        class="px-3 py-1 border rounded-md text-sm transition"
+                        :class="{
+          'bg-blue-600 text-white border-blue-600 dark:bg-blue-500 dark:border-blue-500': link.active,
+          'text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700': !link.active
+        }"
+                    />
+
+                    <!-- Disabled link (null URL) -->
+                    <span
+                        v-else
+                        v-html="link.label"
+                        class="px-3 py-1 border rounded-md text-sm opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500 border-gray-300 dark:border-gray-600"
+                    />
+
+                </template>
             </div>
         </div>
     </div>
