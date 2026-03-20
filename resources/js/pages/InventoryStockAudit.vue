@@ -1,5 +1,5 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3'
+import { Head, router, useForm } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 
 const props = defineProps({
@@ -11,6 +11,14 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    categories: {
+        type: Array,
+        default: () => [],
+    },
+    session: {
+        type: Object,
+        default: null,
+    },
     defaultAuditNote: {
         type: String,
         default: '',
@@ -18,18 +26,26 @@ const props = defineProps({
 })
 
 const search = ref('')
+const scopeType = ref(props.session?.scope_type || 'full')
+const selectedCategoryId = ref(props.session?.category_id || null)
+
 const form = useForm({
-    warehouse_id: null,
+    session_id: props.session?.id || null,
+    warehouse_id: props.session?.warehouse_id || null,
     note: props.defaultAuditNote,
+    scope_type: scopeType.value,
+    category_id: selectedCategoryId.value,
+    submit_anyway: false,
+    source: 'manual',
     counts: props.variants.map((variant) => ({
         variant_id: variant.id,
-        physical_quantity: variant.system_quantity,
+        physical_quantity: Number(variant.physical_quantity ?? variant.system_quantity),
     })),
 })
 
 const physicalByVariant = ref(
     props.variants.reduce((carry, variant) => {
-        carry[variant.id] = variant.system_quantity
+        carry[variant.id] = Number(variant.physical_quantity ?? variant.system_quantity)
         return carry
     }, {}),
 )
@@ -67,6 +83,11 @@ function getVariance(variant) {
 }
 
 function submitAudit() {
+    form.session_id = props.session?.id || null
+    form.scope_type = scopeType.value
+    form.category_id = scopeType.value === 'category' ? Number(selectedCategoryId.value || 0) || null : null
+    form.source = 'manual'
+    form.submit_anyway = false
     form.counts = props.variants.map((variant) => ({
         variant_id: variant.id,
         physical_quantity: Number(physicalByVariant.value[variant.id] ?? 0),
@@ -75,6 +96,21 @@ function submitAudit() {
     form.post('/admin/inventory/stock-audit', {
         preserveScroll: true,
     })
+}
+
+function applyScope() {
+    router.get(
+        '/admin/inventory/stock-audit',
+        {
+            scope_type: scopeType.value,
+            category_id: scopeType.value === 'category' ? selectedCategoryId.value : null,
+            warehouse_id: form.warehouse_id,
+        },
+        {
+            preserveScroll: true,
+            replace: true,
+        },
+    )
 }
 </script>
 
@@ -102,6 +138,30 @@ function submitAudit() {
 
         <div class="grid gap-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 md:grid-cols-3">
             <label class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Audit Scope</span>
+                <select
+                    v-model="scopeType"
+                    class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
+                >
+                    <option value="full">Full Inventory</option>
+                    <option value="category">Category Only</option>
+                </select>
+            </label>
+
+            <label v-if="scopeType === 'category'" class="text-sm">
+                <span class="mb-1 block text-xs text-gray-500">Category</span>
+                <select
+                    v-model.number="selectedCategoryId"
+                    class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
+                >
+                    <option :value="null">Select category</option>
+                    <option v-for="category in categories" :key="category.id" :value="category.id">
+                        {{ category.name }}
+                    </option>
+                </select>
+            </label>
+
+            <label class="text-sm">
                 <span class="mb-1 block text-xs text-gray-500">Warehouse (Optional)</span>
                 <select
                     v-model.number="form.warehouse_id"
@@ -123,6 +183,37 @@ function submitAudit() {
                     placeholder="Physical stock check for week 12"
                 />
             </label>
+
+            <div class="md:col-span-3">
+                <button
+                    type="button"
+                    class="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/30"
+                    :disabled="scopeType === 'category' && !selectedCategoryId"
+                    @click="applyScope"
+                >
+                    Apply Scope
+                </button>
+            </div>
+        </div>
+
+        <div
+            v-if="session"
+            class="grid gap-4 rounded-lg border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900 md:grid-cols-3"
+        >
+            <p>
+                Session:
+                <strong>#{{ session.id }}</strong>
+            </p>
+            <p>
+                Audited:
+                <strong>{{ session.total_scanned_items }}</strong>
+                /
+                <strong>{{ session.total_expected_items }}</strong>
+            </p>
+            <p>
+                Coverage:
+                <strong>{{ Number(session.coverage_percentage || 0).toFixed(2) }}%</strong>
+            </p>
         </div>
 
         <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">

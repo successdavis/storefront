@@ -217,6 +217,7 @@ Route::prefix('admin')
         Route::post('inventory/stock-audit', [StockAuditController::class, 'store'])->name('inventory.stock-audit.store');
         Route::get('inventory/stock-audit/mobile', [StockAuditController::class, 'mobile'])->name('inventory.stock-audit.mobile');
         Route::get('inventory/stock-audit/lookup', [StockAuditController::class, 'lookupByBarcode'])->name('inventory.stock-audit.lookup');
+        Route::post('inventory/stock-audit/items', [StockAuditController::class, 'upsertItem'])->name('inventory.stock-audit.items.upsert');
         Route::get('inventory/discrepancies', [StockAuditController::class, 'discrepancies'])->name('inventory.discrepancies');
 
         Route::get('search-variants', [StockEntryController::class, 'search'])->name('variants.search');

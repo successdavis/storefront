@@ -1,18 +1,39 @@
 <script setup>
 import axios from 'axios'
-import { Head, useForm } from '@inertiajs/vue3'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { Head, router, useForm, usePage } from '@inertiajs/vue3'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
     totalVariants: {
         type: Number,
         default: 0,
     },
+    session: {
+        type: Object,
+        default: null,
+    },
+    sessionItems: {
+        type: Array,
+        default: () => [],
+    },
+    categories: {
+        type: Array,
+        default: () => [],
+    },
 })
 
+const scopeType = ref(props.session?.scope_type || 'full')
+const selectedCategoryId = ref(props.session?.category_id || null)
+const page = usePage()
+
 const form = useForm({
-    warehouse_id: null,
+    session_id: props.session?.id || null,
+    warehouse_id: props.session?.warehouse_id || null,
     note: '',
+    scope_type: scopeType.value,
+    category_id: selectedCategoryId.value,
+    submit_anyway: false,
+    source: 'mobile',
     counts: [],
 })
 
@@ -21,10 +42,27 @@ const scannerRunning = ref(false)
 const scannerError = ref('')
 const physicalInput = ref(0)
 const currentVariant = ref(null)
-const entries = ref([])
+const entries = ref(
+    (props.sessionItems || []).map((item) => ({
+        variant_id: Number(item.variant_id),
+        sku: item.sku,
+        display_name: item.display_name,
+        barcode: item.barcode,
+        system_quantity: Number(item.system_quantity || 0),
+        physical_quantity: Number(item.physical_quantity || 0),
+    })),
+)
 const lastScanValue = ref('')
 const lastScanTime = ref(0)
+const showMissingWarning = ref(false)
+const scannerWasRunningBeforeWarning = ref(false)
 let scanner = null
+
+const isScopeReady = computed(() => {
+    const query = String(page.url || '').split('?')[1] || ''
+    const params = new URLSearchParams(query)
+    return params.get('ready') === '1'
+})
 
 function loadScannerScript() {
     return new Promise((resolve, reject) => {
@@ -52,7 +90,7 @@ async function initScanner() {
 }
 
 async function startScanner() {
-    if (!scannerReady.value || scannerRunning.value) {
+    if (!scannerReady.value || scannerRunning.value || currentVariant.value || showMissingWarning.value) {
         return
     }
 
@@ -114,14 +152,17 @@ async function lookupBarcode(rawBarcode) {
 
     try {
         const { data } = await axios.get('/admin/inventory/stock-audit/lookup', {
-            params: { barcode },
+            params: {
+                barcode,
+                session_id: form.session_id,
+            },
         })
 
         currentVariant.value = data
         physicalInput.value = Number(data.system_quantity || 0)
     } catch (error) {
         currentVariant.value = null
-        scannerError.value = 'Barcode not found. Confirm the label and try again.'
+        scannerError.value = 'Barcode not found in this audit scope. Confirm label and try again.'
     }
 }
 
@@ -143,6 +184,17 @@ async function addToBatch() {
         barcode: currentVariant.value.barcode,
         system_quantity: Number(currentVariant.value.system_quantity || 0),
         physical_quantity: Number(physicalInput.value || 0),
+    }
+
+    try {
+        await axios.post('/admin/inventory/stock-audit/items', {
+            session_id: form.session_id,
+            variant_id: payload.variant_id,
+            physical_quantity: payload.physical_quantity,
+        })
+    } catch (error) {
+        scannerError.value = 'Could not save the scanned item. Please retry.'
+        return
     }
 
     const existingIndex = entries.value.findIndex((entry) => entry.variant_id === payload.variant_id)
@@ -174,11 +226,73 @@ const progressPercent = computed(() => {
     return Math.min(100, Math.round((auditedCount.value / total) * 100))
 })
 
-function submitBatch() {
+const missingCount = computed(() => {
+    return Math.max(Number(props.totalVariants || 0) - entries.value.length, 0)
+})
+
+const selectedCategoryName = computed(() => {
+    if (scopeType.value !== 'category' || !selectedCategoryId.value) {
+        return null
+    }
+
+    const selected = (props.categories || []).find(
+        (category) => Number(category.id) === Number(selectedCategoryId.value),
+    )
+
+    return selected?.name || null
+})
+
+function applyScope() {
+    router.get(
+        '/admin/inventory/stock-audit/mobile',
+        {
+            scope_type: scopeType.value,
+            category_id: scopeType.value === 'category' ? selectedCategoryId.value : null,
+            ready: 1,
+        },
+        {
+            preserveScroll: true,
+            replace: true,
+        },
+    )
+}
+
+function changeScope() {
+    router.get(
+        '/admin/inventory/stock-audit/mobile',
+        {
+            scope_type: scopeType.value,
+            category_id: scopeType.value === 'category' ? selectedCategoryId.value : null,
+        },
+        {
+            preserveScroll: true,
+            replace: true,
+        },
+    )
+}
+
+async function submitBatch() {
     if (!entries.value.length) {
         return
     }
 
+    form.submit_anyway = false
+
+    if (missingCount.value > 0) {
+        scannerWasRunningBeforeWarning.value = scannerRunning.value
+        await stopScanner()
+        showMissingWarning.value = true
+        return
+    }
+
+    performSubmit()
+}
+
+function performSubmit() {
+    form.session_id = props.session?.id || form.session_id
+    form.scope_type = scopeType.value
+    form.category_id = scopeType.value === 'category' ? selectedCategoryId.value : null
+    form.source = 'mobile'
     form.counts = entries.value.map((entry) => ({
         variant_id: entry.variant_id,
         physical_quantity: Number(entry.physical_quantity),
@@ -188,15 +302,44 @@ function submitBatch() {
         preserveScroll: true,
         onSuccess: () => {
             entries.value = []
+            showMissingWarning.value = false
+            form.submit_anyway = false
         },
     })
+}
+
+function continueSubmitAnyway() {
+    form.submit_anyway = true
+    showMissingWarning.value = false
+    performSubmit()
+}
+
+async function cancelSubmitWarning() {
+    showMissingWarning.value = false
+    form.submit_anyway = false
+
+    if (scannerWasRunningBeforeWarning.value) {
+        await startScanner()
+    }
 }
 
 onBeforeUnmount(async () => {
     await stopScanner()
 })
 
-initScanner()
+watch(
+    isScopeReady,
+    async (ready) => {
+        if (ready) {
+            await initScanner()
+            return
+        }
+
+        await stopScanner()
+        scannerReady.value = false
+    },
+    { immediate: true },
+)
 </script>
 
 <template>
@@ -206,16 +349,85 @@ initScanner()
         <div>
             <h1 class="text-2xl font-bold">Mobile Stock Audit</h1>
             <p class="text-sm text-gray-500 dark:text-gray-400">
-                Scan variant barcode, count physically, save to batch, then submit.
+                Scan variant barcodes within the active session scope and submit once complete.
             </p>
         </div>
 
-        <div class="space-y-2 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div v-if="!isScopeReady" class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+            <div>
+                <h2 class="text-lg font-semibold">Step 1: Select Audit Scope</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    Apply scope and category before moving to the scanning screen.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap items-end gap-3">
+                <label class="w-full text-sm sm:w-auto sm:min-w-48">
+                    <span class="mb-1 block text-xs text-gray-500">Audit Scope</span>
+                    <select
+                        v-model="scopeType"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
+                    >
+                    <option value="full">Full Inventory</option>
+                    <option value="category">Category Only</option>
+                </select>
+            </label>
+                <label v-if="scopeType === 'category'" class="w-full text-sm sm:w-auto sm:min-w-48">
+                    <span class="mb-1 block text-xs text-gray-500">Category</span>
+                    <select
+                        v-model.number="selectedCategoryId"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
+                    >
+                        <option :value="null">Select category</option>
+                        <option v-for="category in categories" :key="category.id" :value="category.id">
+                            {{ category.name }}
+                        </option>
+                    </select>
+                </label>
+                <button
+                    type="button"
+                    class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
+                    :disabled="scopeType === 'category' && !selectedCategoryId"
+                    @click="applyScope"
+                >
+                    Apply Scope and Continue
+                </button>
+            </div>
+            <p v-if="session" class="text-xs text-gray-500 dark:text-gray-400">
+                Session #{{ session.id }} ({{ session.status }})
+            </p>
+        </div>
+
+        <div v-if="isScopeReady" class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+            <div class="flex items-center justify-between">
+                <div class="text-sm">
+                    <p>
+                        Scope:
+                        <strong>{{ scopeType === 'category' ? 'Category' : 'Full Inventory' }}</strong>
+                    </p>
+                    <p v-if="scopeType === 'category'" class="text-xs text-gray-500">
+                        Category: {{ selectedCategoryName || 'N/A' }}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
+                    @click="changeScope"
+                >
+                    Change Scope
+                </button>
+            </div>
+<!--            <p v-if="session" class="text-xs text-gray-500 dark:text-gray-400">-->
+<!--                Session #{{ session.id }} ({{ session.status }})-->
+<!--            </p>-->
+        </div>
+
+        <div v-if="isScopeReady" class="space-y-2 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
             <div class="flex items-center justify-between text-sm">
                 <p>
                     Audited:
                     <strong>{{ auditedCount }}</strong>
-                    of
+                    /
                     <strong>{{ totalVariants }}</strong>
                 </p>
                 <p class="text-gray-500 dark:text-gray-400">{{ leftCount }} left</p>
@@ -226,10 +438,10 @@ initScanner()
                     :style="{ width: `${progressPercent}%` }"
                 />
             </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ progressPercent }}% complete</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Coverage: {{ progressPercent }}%</p>
         </div>
 
-        <div class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div v-if="isScopeReady" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
             <div id="barcode-reader" class="overflow-hidden rounded-md"></div>
 
             <div class="mt-3 flex flex-wrap gap-2">
@@ -256,7 +468,7 @@ initScanner()
             </p>
         </div>
 
-        <div v-if="currentVariant" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div v-if="isScopeReady && currentVariant" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
             <div class="w-full max-w-lg space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
                 <div>
                     <h2 class="text-lg font-semibold">Scanned Variant</h2>
@@ -295,7 +507,32 @@ initScanner()
             </div>
         </div>
 
-        <div class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div v-if="isScopeReady && showMissingWarning" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
+            <div class="w-full max-w-md space-y-4 rounded-xl border border-amber-200 bg-white p-5 shadow-xl dark:border-amber-700 dark:bg-gray-900">
+                <h2 class="text-lg font-semibold text-amber-700 dark:text-amber-300">Incomplete Audit Coverage</h2>
+                <p class="text-sm">
+                    You have not scanned <strong>{{ missingCount }}</strong> items. Do you want to submit anyway?
+                </p>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button
+                        type="button"
+                        class="rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
+                        @click="cancelSubmitWarning"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+                        @click="continueSubmitAnyway"
+                    >
+                        Continue Submit
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="isScopeReady" class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
             <div class="flex items-center justify-between">
                 <h2 class="text-base font-semibold">Audit Batch</h2>
                 <span class="text-xs text-gray-500">

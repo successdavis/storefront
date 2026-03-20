@@ -64,6 +64,11 @@ class ProductVariant extends Model
         return $this->hasMany(StockEntry::class, 'variant_id');
     }
 
+    public function stockAuditItems()
+    {
+        return $this->hasMany(StockAuditItem::class, 'variant_id');
+    }
+
     /**
      * 🔄 Scope for checking stock availability
      */
