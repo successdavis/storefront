@@ -9,6 +9,7 @@ use App\Models\Category;
 use App\Models\InventoryAlert;
 use App\Models\StockAuditSession;
 use App\Models\Warehouse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -48,6 +49,9 @@ class StockAuditController extends Controller
             );
         }
 
+        $session = $this->stockAuditService->touchSessionActivity($session);
+        $resumableSessions = $this->stockAuditService->resumableSessions(auth()->id(), $session->id);
+
         return Inertia::render('InventoryStockAudit', [
             'variants' => $this->stockAuditService->sessionRows($session)->all(),
             'warehouses' => Warehouse::query()
@@ -58,6 +62,8 @@ class StockAuditController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'session' => $this->stockAuditService->sessionSummary($session),
+            'resumableSessions' => $resumableSessions,
+            'resumeShortcut' => $resumableSessions->first(),
             'defaultAuditNote' => sprintf(
                 'Physical stock check for %s',
                 now()->format('F j, Y')
@@ -132,6 +138,8 @@ class StockAuditController extends Controller
             );
         }
 
+        $session = $this->stockAuditService->touchSessionActivity($session);
+        $resumableSessions = $this->stockAuditService->resumableSessions(auth()->id(), $session->id);
         $sessionRows = $this->stockAuditService->sessionRows($session);
 
         $sessionItems = $sessionRows
@@ -153,6 +161,8 @@ class StockAuditController extends Controller
             'categories' => Category::query()
                 ->orderBy('name')
                 ->get(['id', 'name']),
+            'resumableSessions' => $resumableSessions,
+            'resumeShortcut' => $resumableSessions->first(),
         ]);
     }
 
@@ -205,6 +215,23 @@ class StockAuditController extends Controller
             'ok' => true,
             'session' => data_get($summary, 'session'),
         ]);
+    }
+
+    public function sessions(): Response
+    {
+        return Inertia::render('InventoryAuditSessions', [
+            'sessions' => $this->stockAuditService->resumableSessions(auth()->id()),
+        ]);
+    }
+
+    public function discardSession(StockAuditSession $session): RedirectResponse
+    {
+        $this->stockAuditService->discardSession($session, (int) auth()->id());
+
+        return back()->with('success', sprintf(
+            'Audit session #%d was discarded.',
+            $session->id,
+        ));
     }
 
     public function discrepancies(Request $request): Response

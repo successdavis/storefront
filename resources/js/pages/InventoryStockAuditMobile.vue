@@ -20,15 +20,24 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    resumableSessions: {
+        type: Array,
+        default: () => [],
+    },
+    resumeShortcut: {
+        type: Object,
+        default: null,
+    },
 })
 
 const scopeType = ref(props.session?.scope_type || 'full')
 const selectedCategoryId = ref(props.session?.category_id || null)
+const sessionState = ref(props.session)
 const page = usePage()
 
 const form = useForm({
-    session_id: props.session?.id || null,
-    warehouse_id: props.session?.warehouse_id || null,
+    session_id: sessionState.value?.id || null,
+    warehouse_id: sessionState.value?.warehouse_id || null,
     note: '',
     scope_type: scopeType.value,
     category_id: selectedCategoryId.value,
@@ -56,6 +65,8 @@ const lastScanValue = ref('')
 const lastScanTime = ref(0)
 const showMissingWarning = ref(false)
 const scannerWasRunningBeforeWarning = ref(false)
+const autoSaveState = ref('idle')
+const lastSavedAt = ref(sessionState.value?.last_activity_at || null)
 let scanner = null
 
 const isScopeReady = computed(() => {
@@ -159,7 +170,9 @@ async function lookupBarcode(rawBarcode) {
         })
 
         currentVariant.value = data
-        physicalInput.value = Number(data.system_quantity || 0)
+        physicalInput.value = Number(
+            data.physical_quantity ?? data.system_quantity ?? 0,
+        )
     } catch (error) {
         currentVariant.value = null
         scannerError.value = 'Barcode not found in this audit scope. Confirm label and try again.'
@@ -186,13 +199,19 @@ async function addToBatch() {
         physical_quantity: Number(physicalInput.value || 0),
     }
 
+    autoSaveState.value = 'saving'
+
     try {
-        await axios.post('/admin/inventory/stock-audit/items', {
+        const { data } = await axios.post('/admin/inventory/stock-audit/items', {
             session_id: form.session_id,
             variant_id: payload.variant_id,
             physical_quantity: payload.physical_quantity,
         })
+
+        updateSessionStateFromResponse(data.session)
+        autoSaveState.value = 'saved'
     } catch (error) {
+        autoSaveState.value = 'error'
         scannerError.value = 'Could not save the scanned item. Please retry.'
         return
     }
@@ -207,27 +226,56 @@ async function addToBatch() {
     await closeVariantDialog()
 }
 
+function updateSessionStateFromResponse(session) {
+    if (!session) {
+        return
+    }
+
+    sessionState.value = session
+    form.session_id = session.id
+    if (session.last_activity_at) {
+        lastSavedAt.value = session.last_activity_at
+    }
+}
+
 const discrepancyCount = computed(() => {
     return entries.value.filter((entry) => entry.physical_quantity !== entry.system_quantity).length
 })
 
-const auditedCount = computed(() => entries.value.length)
+const autoSaveLabel = computed(() => {
+    if (autoSaveState.value === 'saving') {
+        return 'Saving...'
+    }
+
+    if (autoSaveState.value === 'saved') {
+        return lastSavedAt.value
+            ? `Saved at ${new Date(lastSavedAt.value).toLocaleTimeString()}`
+            : 'Saved'
+    }
+
+    if (autoSaveState.value === 'error') {
+        return 'Save failed'
+    }
+
+    return 'Not saved yet'
+})
+
+const auditedCount = computed(() => {
+    const persisted = Number(sessionState.value?.total_scanned_items ?? 0)
+    return persisted > 0 ? persisted : entries.value.length
+})
 
 const leftCount = computed(() => {
     return Math.max(Number(props.totalVariants || 0) - auditedCount.value, 0)
 })
 
 const progressPercent = computed(() => {
-    const total = Number(props.totalVariants || 0)
-    if (total <= 0) {
-        return 0
-    }
-
-    return Math.min(100, Math.round((auditedCount.value / total) * 100))
+    const persisted = Number(sessionState.value?.coverage_percentage ?? 0)
+    return Math.min(100, Math.max(0, Math.round(persisted)))
 })
 
 const missingCount = computed(() => {
-    return Math.max(Number(props.totalVariants || 0) - entries.value.length, 0)
+    return Math.max(Number(props.totalVariants || 0) - auditedCount.value, 0)
 })
 
 const selectedCategoryName = computed(() => {
@@ -255,6 +303,19 @@ function applyScope() {
             replace: true,
         },
     )
+}
+
+function openResumeSessions() {
+    router.get('/admin/inventory/stock-audit/sessions')
+}
+
+function resumeSession(sessionId, mode = 'mobile') {
+    if (mode === 'manual') {
+        router.get('/admin/inventory/stock-audit', { session_id: sessionId })
+        return
+    }
+
+    router.get('/admin/inventory/stock-audit/mobile', { session_id: sessionId, ready: 1 })
 }
 
 function changeScope() {
@@ -289,7 +350,7 @@ async function submitBatch() {
 }
 
 function performSubmit() {
-    form.session_id = props.session?.id || form.session_id
+    form.session_id = sessionState.value?.id || form.session_id
     form.scope_type = scopeType.value
     form.category_id = scopeType.value === 'category' ? selectedCategoryId.value : null
     form.source = 'mobile'
@@ -353,6 +414,32 @@ watch(
             </p>
         </div>
 
+        <div
+            v-if="resumeShortcut || resumableSessions.length"
+            class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/30"
+        >
+            <p class="text-sm">
+                You have unfinished audit sessions. Resume one to continue from the last saved point.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                    v-if="resumeShortcut"
+                    type="button"
+                    class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+                    @click="resumeSession(resumeShortcut.id, 'mobile')"
+                >
+                    Resume Last Unfinished
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg border border-amber-400 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                    @click="openResumeSessions"
+                >
+                    View All In-Progress Sessions
+                </button>
+            </div>
+        </div>
+
         <div v-if="!isScopeReady" class="space-y-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
             <div>
                 <h2 class="text-lg font-semibold">Step 1: Select Audit Scope</h2>
@@ -368,10 +455,10 @@ watch(
                         v-model="scopeType"
                         class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
                     >
-                    <option value="full">Full Inventory</option>
-                    <option value="category">Category Only</option>
-                </select>
-            </label>
+                        <option value="full">Full Inventory</option>
+                        <option value="category">Category Only</option>
+                    </select>
+                </label>
                 <label v-if="scopeType === 'category'" class="w-full text-sm sm:w-auto sm:min-w-48">
                     <span class="mb-1 block text-xs text-gray-500">Category</span>
                     <select
@@ -393,8 +480,8 @@ watch(
                     Apply Scope and Continue
                 </button>
             </div>
-            <p v-if="session" class="text-xs text-gray-500 dark:text-gray-400">
-                Session #{{ session.id }} ({{ session.status }})
+            <p v-if="sessionState" class="text-xs text-gray-500 dark:text-gray-400">
+                Session #{{ sessionState?.id }} ({{ sessionState?.status }})
             </p>
         </div>
 
@@ -417,9 +504,7 @@ watch(
                     Change Scope
                 </button>
             </div>
-<!--            <p v-if="session" class="text-xs text-gray-500 dark:text-gray-400">-->
-<!--                Session #{{ session.id }} ({{ session.status }})-->
-<!--            </p>-->
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ autoSaveLabel }}</p>
         </div>
 
         <div v-if="isScopeReady" class="space-y-2 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">

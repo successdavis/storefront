@@ -28,6 +28,7 @@ class StockAuditSession extends Model
         'submitted_by',
         'started_at',
         'submitted_at',
+        'last_activity_at',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class StockAuditSession extends Model
         'is_partial' => 'boolean',
         'started_at' => 'datetime',
         'submitted_at' => 'datetime',
+        'last_activity_at' => 'datetime',
     ];
 
     public function items(): HasMany

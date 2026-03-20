@@ -1,4 +1,5 @@
 <script setup>
+import axios from 'axios'
 import { Head, router, useForm } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 
@@ -19,6 +20,14 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    resumableSessions: {
+        type: Array,
+        default: () => [],
+    },
+    resumeShortcut: {
+        type: Object,
+        default: null,
+    },
     defaultAuditNote: {
         type: String,
         default: '',
@@ -28,6 +37,11 @@ const props = defineProps({
 const search = ref('')
 const scopeType = ref(props.session?.scope_type || 'full')
 const selectedCategoryId = ref(props.session?.category_id || null)
+const sessionState = ref(props.session)
+const autoSaveState = ref('idle')
+const lastSavedAt = ref(props.session?.last_activity_at || null)
+const persistingVariantId = ref(null)
+const saveError = ref('')
 
 const form = useForm({
     session_id: props.session?.id || null,
@@ -41,6 +55,24 @@ const form = useForm({
         variant_id: variant.id,
         physical_quantity: Number(variant.physical_quantity ?? variant.system_quantity),
     })),
+})
+
+const autoSaveLabel = computed(() => {
+    if (autoSaveState.value === 'saving') {
+        return 'Saving...'
+    }
+
+    if (autoSaveState.value === 'saved') {
+        return lastSavedAt.value
+            ? `Saved at ${new Date(lastSavedAt.value).toLocaleTimeString()}`
+            : 'Saved'
+    }
+
+    if (autoSaveState.value === 'error') {
+        return 'Save failed'
+    }
+
+    return 'Not saved yet'
 })
 
 const physicalByVariant = ref(
@@ -83,7 +115,7 @@ function getVariance(variant) {
 }
 
 function submitAudit() {
-    form.session_id = props.session?.id || null
+    form.session_id = sessionState.value?.id || null
     form.scope_type = scopeType.value
     form.category_id = scopeType.value === 'category' ? Number(selectedCategoryId.value || 0) || null : null
     form.source = 'manual'
@@ -96,6 +128,43 @@ function submitAudit() {
     form.post('/admin/inventory/stock-audit', {
         preserveScroll: true,
     })
+}
+
+function updateSessionStateFromResponse(session) {
+    if (!session) {
+        return
+    }
+
+    sessionState.value = session
+    if (session.last_activity_at) {
+        lastSavedAt.value = session.last_activity_at
+    }
+}
+
+async function persistVariant(variantId) {
+    if (!sessionState.value?.id) {
+        return
+    }
+
+    autoSaveState.value = 'saving'
+    saveError.value = ''
+    persistingVariantId.value = variantId
+
+    try {
+        const { data } = await axios.post('/admin/inventory/stock-audit/items', {
+            session_id: sessionState.value.id,
+            variant_id: variantId,
+            physical_quantity: Number(physicalByVariant.value[variantId] ?? 0),
+        })
+
+        updateSessionStateFromResponse(data.session)
+        autoSaveState.value = 'saved'
+    } catch (error) {
+        autoSaveState.value = 'error'
+        saveError.value = 'Auto-save failed. Please retry the field update.'
+    } finally {
+        persistingVariantId.value = null
+    }
 }
 
 function applyScope() {
@@ -111,6 +180,19 @@ function applyScope() {
             replace: true,
         },
     )
+}
+
+function openResumeSessions() {
+    router.get('/admin/inventory/stock-audit/sessions')
+}
+
+function resumeSession(sessionId, mode = 'manual') {
+    if (mode === 'mobile') {
+        router.get('/admin/inventory/stock-audit/mobile', { session_id: sessionId, ready: 1 })
+        return
+    }
+
+    router.get('/admin/inventory/stock-audit', { session_id: sessionId })
 }
 </script>
 
@@ -133,6 +215,32 @@ function applyScope() {
                     class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
                     placeholder="Search variant, SKU, or barcode"
                 />
+            </div>
+        </div>
+
+        <div
+            v-if="resumeShortcut || resumableSessions.length"
+            class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/30"
+        >
+            <p class="text-sm">
+                You have unfinished audit sessions. Resume one to continue instead of starting over.
+            </p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                    v-if="resumeShortcut"
+                    type="button"
+                    class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+                    @click="resumeSession(resumeShortcut.id)"
+                >
+                    Resume Last Unfinished
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg border border-amber-400 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                    @click="openResumeSessions"
+                >
+                    View All In-Progress Sessions
+                </button>
             </div>
         </div>
 
@@ -197,22 +305,29 @@ function applyScope() {
         </div>
 
         <div
-            v-if="session"
+            v-if="sessionState"
             class="grid gap-4 rounded-lg border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900 md:grid-cols-3"
         >
             <p>
                 Session:
-                <strong>#{{ session.id }}</strong>
+                <strong>#{{ sessionState.id }}</strong>
             </p>
             <p>
                 Audited:
-                <strong>{{ session.total_scanned_items }}</strong>
+                <strong>{{ sessionState.total_scanned_items }}</strong>
                 /
-                <strong>{{ session.total_expected_items }}</strong>
+                <strong>{{ sessionState.total_expected_items }}</strong>
             </p>
             <p>
                 Coverage:
-                <strong>{{ Number(session.coverage_percentage || 0).toFixed(2) }}%</strong>
+                <strong>{{ Number(sessionState.coverage_percentage || 0).toFixed(2) }}%</strong>
+            </p>
+            <p class="md:col-span-3">
+                <span class="font-medium">{{ autoSaveLabel }}</span>
+                <span v-if="persistingVariantId" class="text-xs text-gray-500"> (Variant #{{ persistingVariantId }})</span>
+            </p>
+            <p v-if="saveError" class="md:col-span-3 text-xs text-red-600">
+                {{ saveError }}
             </p>
         </div>
 
@@ -259,6 +374,7 @@ function applyScope() {
                                 type="number"
                                 min="0"
                                 class="w-28 rounded border border-gray-300 px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
+                                @change="persistVariant(variant.id)"
                             />
                         </td>
                         <td

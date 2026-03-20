@@ -214,6 +214,8 @@ Route::prefix('admin')
             ->name('stock-adjustments.reject');
         Route::get('barcodes', [BarcodePrintController::class, 'index'])->name('barcodes.index');
         Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])->name('inventory.stock-audit.index');
+        Route::get('inventory/stock-audit/sessions', [StockAuditController::class, 'sessions'])->name('inventory.stock-audit.sessions');
+        Route::delete('inventory/stock-audit/sessions/{session}', [StockAuditController::class, 'discardSession'])->name('inventory.stock-audit.sessions.discard');
         Route::post('inventory/stock-audit', [StockAuditController::class, 'store'])->name('inventory.stock-audit.store');
         Route::get('inventory/stock-audit/mobile', [StockAuditController::class, 'mobile'])->name('inventory.stock-audit.mobile');
         Route::get('inventory/stock-audit/lookup', [StockAuditController::class, 'lookupByBarcode'])->name('inventory.stock-audit.lookup');

@@ -89,12 +89,24 @@ class StockAuditService
             return null;
         }
 
+        $sessionItem = null;
+        if ($session) {
+            $sessionItem = $session->relationLoaded('items')
+                ? $session->items->firstWhere('variant_id', $variant->id)
+                : StockAuditItem::query()
+                    ->where('session_id', $session->id)
+                    ->where('variant_id', $variant->id)
+                    ->first();
+        }
+
         return [
             'id' => (int) $variant->id,
             'sku' => $variant->sku,
             'barcode' => $variant->barcode,
             'track_inventory' => (bool) $variant->track_inventory,
             'system_quantity' => (int) $variant->quantity,
+            'physical_quantity' => $sessionItem ? (int) $sessionItem->physical_quantity : null,
+            'has_been_audited' => (bool) $sessionItem,
             'reserved' => (int) ($variant->reserved ?? 0),
             'display_name' => $this->variantNameFormatter->format($variant),
         ];
@@ -119,7 +131,7 @@ class StockAuditService
                 ->first();
 
             if ($existing) {
-                return $existing;
+                return $this->touchSessionActivity($existing);
             }
         }
 
@@ -135,6 +147,7 @@ class StockAuditService
             'coverage_percentage' => 0,
             'started_by' => $startedBy,
             'started_at' => now(),
+            'last_activity_at' => now(),
         ]);
     }
 
@@ -171,14 +184,78 @@ class StockAuditService
             'is_partial' => (bool) $session->is_partial,
             'started_at' => optional($session->started_at)->toDateTimeString(),
             'submitted_at' => optional($session->submitted_at)->toDateTimeString(),
+            'last_activity_at' => optional($session->last_activity_at)->toDateTimeString(),
         ];
     }
 
     public function getSession(int $sessionId): ?StockAuditSession
     {
         return StockAuditSession::query()
-            ->with(['items'])
+            ->with(['items', 'category:id,name', 'warehouse:id,name', 'starter:id,name'])
             ->find($sessionId);
+    }
+
+    public function touchSessionActivity(StockAuditSession $session): StockAuditSession
+    {
+        $session->update([
+            'last_activity_at' => now(),
+        ]);
+
+        return $session->fresh();
+    }
+
+    public function resumableSessions(
+        ?int $startedBy = null,
+        ?int $excludeSessionId = null,
+    ): Collection {
+        return StockAuditSession::query()
+            ->with([
+                'category:id,name',
+                'warehouse:id,name',
+                'starter:id,name',
+            ])
+            ->where('status', StockAuditSession::STATUS_IN_PROGRESS)
+            ->when($startedBy, fn (Builder $query) => $query->where('started_by', $startedBy))
+            ->when($excludeSessionId, fn (Builder $query) => $query->where('id', '!=', $excludeSessionId))
+            ->orderByDesc('last_activity_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (StockAuditSession $session): array {
+                return [
+                    'id' => (int) $session->id,
+                    'reference' => sprintf('AUD-%06d', $session->id),
+                    'scope_type' => $session->scope_type,
+                    'category_id' => $session->category_id ? (int) $session->category_id : null,
+                    'category_name' => $session->category?->name,
+                    'warehouse_id' => $session->warehouse_id ? (int) $session->warehouse_id : null,
+                    'warehouse_name' => $session->warehouse?->name,
+                    'started_by' => $session->started_by ? (int) $session->started_by : null,
+                    'started_by_name' => $session->starter?->name,
+                    'started_at' => optional($session->started_at)->toDateTimeString(),
+                    'last_activity_at' => optional($session->last_activity_at)->toDateTimeString(),
+                    'total_expected_items' => (int) $session->total_expected_items,
+                    'total_scanned_items' => (int) $session->total_scanned_items,
+                    'coverage_percentage' => (float) $session->coverage_percentage,
+                ];
+            })
+            ->values();
+    }
+
+    public function discardSession(StockAuditSession $session, ?int $actorId = null): void
+    {
+        if ($session->status !== StockAuditSession::STATUS_IN_PROGRESS) {
+            throw ValidationException::withMessages([
+                'session' => 'Only in-progress sessions can be discarded.',
+            ]);
+        }
+
+        if ($actorId && $session->started_by && (int) $session->started_by !== $actorId) {
+            throw ValidationException::withMessages([
+                'session' => 'You are not allowed to discard this session.',
+            ]);
+        }
+
+        $session->delete();
     }
 
     public function upsertSessionItems(StockAuditSession $session, array $counts): array
@@ -483,6 +560,7 @@ class StockAuditService
             'is_partial' => $coverage < 100,
             'submitted_by' => $submittedBy,
             'submitted_at' => now(),
+            'last_activity_at' => now(),
         ]);
 
         return [
@@ -521,6 +599,7 @@ class StockAuditService
             'is_partial' => $session->status === StockAuditSession::STATUS_SUBMITTED
                 ? $coverage < 100
                 : false,
+            'last_activity_at' => now(),
         ]);
 
         return [
