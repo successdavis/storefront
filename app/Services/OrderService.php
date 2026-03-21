@@ -298,17 +298,24 @@ class OrderService
         ]);
 
         $line1 = $shipping['line1'] ?? $shipping['address'] ?? data_get($shipping, 'address.line1');
+        $line2 = $shipping['line2'] ?? data_get($shipping, 'address.line2');
         $phone = $shipping['phone'] ?? data_get($shipping, 'address.phone');
+        $email = $shipping['email'] ?? data_get($shipping, 'address.email');
         $stateId = $shipping['state_id'] ?? data_get($shipping, 'address.state_id');
         $lgaId = $shipping['lga_id'] ?? data_get($shipping, 'address.lga_id');
         $countryId = $shipping['country_id'] ?? data_get($shipping, 'address.country_id');
+        $postalCode = $shipping['postal_code'] ?? data_get($shipping, 'address.postal_code');
+        $recipientName = $shipping['recipient_name'] ?? data_get($shipping, 'address.name') ?? ($userId ? optional(User::find($userId))->name : 'Walk-In Customer');
 
         if (!empty($line1)) {
             Address::create([
                 'shipment_id' => $shipment->id,
-                'name' => $userId ? optional(User::find($userId))->name : 'Walk-In Customer',
+                'name' => $recipientName,
                 'phone' => $phone,
+                'email' => $email,
                 'line1' => $line1,
+                'line2' => $line2,
+                'postal_code' => $postalCode,
                 'country_id' => $countryId,
                 'state_id' => $stateId,
                 'lga_id' => $lgaId,
@@ -474,3 +481,4 @@ class OrderService
         return 0.0;
     }
 }
+

@@ -3,14 +3,17 @@
 namespace App\Services;
 
 use App\Models\Category;
+use App\Models\CustomerSavedItem;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 class StorefrontService
 {
     public function __construct(
         protected ProductService $productService,
         protected CartService $cartService,
+        protected CustomerSavedItemService $savedItemService,
     ) {}
 
     public function homeData(array $filters = []): array
@@ -72,8 +75,23 @@ class StorefrontService
         }
 
         $cartData = $this->cartService->getDetailedCart($couponCode);
+        $savedForLater = [];
+        $savedItemCounts = [
+            CustomerSavedItem::TYPE_WISHLIST => 0,
+            CustomerSavedItem::TYPE_SAVED_FOR_LATER => 0,
+        ];
 
-        return array_merge($cartData, $this->sharedData());
+        if (Auth::user()) {
+            $savedForLater = $this->savedItemService
+                ->paginate(Auth::user(), CustomerSavedItem::TYPE_SAVED_FOR_LATER, 6)
+                ->items();
+            $savedItemCounts = $this->savedItemService->counts(Auth::user());
+        }
+
+        return array_merge($cartData, [
+            'savedForLater' => $savedForLater,
+            'savedItemCounts' => $savedItemCounts,
+        ], $this->sharedData());
     }
 
     protected function buildCategoryPreviews(int $limit, int $productsPerCategory): array

@@ -29,6 +29,17 @@ const props = defineProps({
         type: String,
         default: null,
     },
+    savedForLater: {
+        type: Array,
+        default: () => [],
+    },
+    savedItemCounts: {
+        type: Object,
+        default: () => ({
+            wishlist: 0,
+            saved_for_later: 0,
+        }),
+    },
 })
 
 const page = usePage()
@@ -65,6 +76,14 @@ function checkout() {
     router.get(route('checkout.index'), {
         coupon: couponCode.value || undefined,
     })
+}
+
+function moveSavedToCart(id) {
+    router.post(`/account/saved-items/${id}/move-to-cart`, {}, { preserveScroll: true })
+}
+
+function removeSaved(id) {
+    router.delete(`/account/saved-items/${id}`, { preserveScroll: true })
 }
 </script>
 
@@ -103,6 +122,68 @@ function checkout() {
                 :key="item.id"
                 :item="item"
             />
+
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-base font-semibold text-slate-900">Saved for Later</h2>
+                        <p class="mt-1 text-sm text-slate-500">
+                            Items tied to your account and ready when you want them back.
+                        </p>
+                    </div>
+                    <Link :href="route('account.saved.index')" class="text-sm font-semibold text-slate-700 hover:text-slate-900">
+                        View all
+                    </Link>
+                </div>
+
+                <div v-if="savedForLater.length" class="mt-4 space-y-4">
+                    <article
+                        v-for="item in savedForLater"
+                        :key="item.id"
+                        class="flex flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center"
+                    >
+                        <img
+                            v-if="item.product?.image"
+                            :src="item.product.image"
+                            :alt="item.product?.name"
+                            class="h-20 w-20 rounded-xl object-cover"
+                        >
+                        <div v-else class="flex h-20 w-20 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-500">
+                            No image
+                        </div>
+
+                        <div class="flex-1">
+                            <p class="font-semibold text-slate-900">{{ item.product?.name || item.snapshot?.product_name }}</p>
+                            <p class="mt-1 text-sm text-slate-500">{{ item.variant?.label || item.snapshot?.variant_label }}</p>
+                            <p class="mt-1 text-sm font-semibold text-slate-900">{{ money(item.variant?.price?.current || item.snapshot?.price) }}</p>
+                            <p v-if="item.availability?.message" class="mt-2 text-xs font-medium text-amber-700">{{ item.availability.message }}</p>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                                :disabled="!item.availability?.is_available"
+                                @click="moveSavedToCart(item.id)"
+                            >
+                                Move to cart
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600"
+                                @click="removeSaved(item.id)"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    </article>
+                </div>
+
+                <div v-else class="mt-4 rounded-2xl bg-slate-50 px-4 py-8 text-center">
+                    <h3 class="text-sm font-semibold text-slate-900">Nothing saved yet</h3>
+                    <p class="mt-2 text-sm text-slate-500">Move items out of your active cart without losing your chosen variant.</p>
+                </div>
+            </div>
         </div>
 
         <aside class="space-y-4">

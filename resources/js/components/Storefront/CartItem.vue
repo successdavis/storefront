@@ -69,6 +69,14 @@ function removeItem() {
         { preserveScroll: true }
     )
 }
+
+function saveForLater() {
+    router.post(
+        route('store.cart.save-for-later', { variant: props.item.variant_id }),
+        {},
+        { preserveScroll: true },
+    )
+}
 </script>
 
 <template>
@@ -125,6 +133,13 @@ function removeItem() {
 
         <div class="space-y-2 text-right sm:min-w-28">
             <p class="text-sm font-bold text-slate-900">{{ money(item.subtotal) }}</p>
+            <button
+                type="button"
+                class="block text-xs font-medium text-slate-600 transition hover:text-slate-800"
+                @click="saveForLater"
+            >
+                Save for later
+            </button>
             <button
                 type="button"
                 class="text-xs font-medium text-rose-600 transition hover:text-rose-700"

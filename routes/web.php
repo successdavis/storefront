@@ -17,6 +17,11 @@ use App\Http\Controllers\Admin\SaleController;
 use App\Http\Controllers\Admin\SaleItemController;
 use App\Http\Controllers\Admin\SalePaymentController;
 use App\Http\Controllers\Admin\StockEntryController;
+use App\Http\Controllers\Account\AddressController as AccountAddressController;
+use App\Http\Controllers\Account\DashboardController as AccountDashboardController;
+use App\Http\Controllers\Account\OrderController as AccountOrderController;
+use App\Http\Controllers\Account\SavedItemController as AccountSavedItemController;
+use App\Http\Controllers\Auth\GoogleOAuthController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\BarcodePrintController;
 use App\Http\Controllers\CartController;
@@ -24,6 +29,7 @@ use App\Http\Controllers\CartItemController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\CheckoutPreviewController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DashboardRedirectController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InventoryAlertController;
 use App\Http\Controllers\ItemReceiptController;
@@ -42,6 +48,9 @@ use App\Http\Controllers\StockAuditController;
 use App\Http\Controllers\StorefrontController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\PaystackWebhookController;
+use App\Http\Controllers\Sales\CustomerController as SalesCustomerController;
+use App\Http\Controllers\Sales\DashboardController as SalesDashboardController;
+use App\Http\Controllers\Sales\OrderController as SalesOrderController;
 use App\Http\Controllers\VendorBillController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\VendorPaymentController;
@@ -55,7 +64,7 @@ Route::redirect('/', '/store')->name('home');
 Route::post('/webhooks/paystack', [PaystackWebhookController::class, 'handle'])
     ->name('webhooks.paystack');
 
-Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('dashboard', DashboardRedirectController::class)->middleware(['auth', 'verified'])->name('dashboard');
 Route::post('/barcodes/print', [BarcodePrintController::class, 'print'])
     ->middleware(['auth', 'verified'])
     ->name('barcodes.print');
@@ -73,8 +82,11 @@ Route::prefix('store')->name('store.')->group(function () {
             ->name('cart.update');
         Route::delete('/cart/items/{variant}', [StorefrontController::class, 'removeCartItem'])
             ->name('cart.remove');
+        Route::post('/cart/items/{variant}/save-for-later', [StorefrontController::class, 'saveCartItemForLater'])
+            ->name('cart.save-for-later');
         Route::post('/cart/coupon', [StorefrontController::class, 'applyCoupon'])->name('cart.apply-coupon');
         Route::post('/cart/checkout', [StorefrontController::class, 'checkout'])->name('cart.checkout');
+        Route::post('/wishlist', [StorefrontController::class, 'addToWishlist'])->name('wishlist.store');
     });
 });
 
@@ -110,14 +122,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/payment/reverify', [CheckoutController::class, 'reverifyPayment'])->name('payment.reverify');
     Route::get('/order/success', [CheckoutController::class, 'success'])->name('order.success');
 
-    Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
-    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
-
-    // Order state transitions suited to your enum
-    Route::patch('/orders/{order}/pay', [OrderController::class, 'markPaid'])->name('orders.pay');
-    Route::patch('/orders/{order}/ship', [OrderController::class, 'markShipped'])->name('orders.ship');
-    Route::patch('/orders/{order}/complete', [OrderController::class, 'markCompleted'])->name('orders.complete');
-    Route::patch('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
+    Route::get('/orders', [AccountOrderController::class, 'index'])->middleware('permission.any:account.orders.view')->name('orders.index');
+    Route::get('/orders/{order}', [AccountOrderController::class, 'show'])->middleware('permission.any:account.orders.view')->name('orders.show');
 
     Route::get('/locations/countries', [LocationController::class, 'countries'])->name('locations.countries');
     Route::get('/locations/states/{country}', [LocationController::class, 'states'])->name('locations.states');
@@ -140,6 +146,59 @@ Route::middleware(['auth'])->prefix('shipping')->name('shipping.')->group(functi
     Route::post('create', [ShippingController::class, 'createShipment'])->name('create');
 });
 
+Route::prefix('account')
+    ->as('account.')
+    ->middleware(['auth', 'verified', 'permission.any:account.access'])
+    ->group(function () {
+        Route::get('/', [AccountDashboardController::class, 'index'])->middleware('permission.any:account.dashboard.view')->name('dashboard');
+        Route::get('/orders', [AccountOrderController::class, 'index'])->middleware('permission.any:account.orders.view')->name('orders.index');
+        Route::get('/orders/{order}', [AccountOrderController::class, 'show'])->middleware('permission.any:account.orders.view')->name('orders.show');
+        Route::get('/wishlist', [AccountSavedItemController::class, 'index'])->middleware('permission.any:account.saved_items.manage')
+            ->defaults('listType', \App\Models\CustomerSavedItem::TYPE_WISHLIST)
+            ->name('wishlist.index');
+        Route::get('/saved-for-later', [AccountSavedItemController::class, 'index'])->middleware('permission.any:account.saved_items.manage')
+            ->defaults('listType', \App\Models\CustomerSavedItem::TYPE_SAVED_FOR_LATER)
+            ->name('saved.index');
+        Route::post('/wishlist', [AccountSavedItemController::class, 'store'])->middleware('permission.any:account.saved_items.manage')
+            ->defaults('listType', \App\Models\CustomerSavedItem::TYPE_WISHLIST)
+            ->name('wishlist.store');
+        Route::post('/saved-for-later', [AccountSavedItemController::class, 'store'])->middleware('permission.any:account.saved_items.manage')
+            ->defaults('listType', \App\Models\CustomerSavedItem::TYPE_SAVED_FOR_LATER)
+            ->name('saved.store');
+        Route::post('/saved-items/{savedItem}/move-to-cart', [AccountSavedItemController::class, 'moveToCart'])->middleware('permission.any:account.saved_items.manage')
+            ->name('saved.move-to-cart');
+        Route::post('/saved-items/{savedItem}/move-to-wishlist', [AccountSavedItemController::class, 'moveToList'])->middleware('permission.any:account.saved_items.manage')
+            ->defaults('targetListType', \App\Models\CustomerSavedItem::TYPE_WISHLIST)
+            ->name('saved.move-to-wishlist');
+        Route::post('/saved-items/{savedItem}/move-to-saved-for-later', [AccountSavedItemController::class, 'moveToList'])->middleware('permission.any:account.saved_items.manage')
+            ->defaults('targetListType', \App\Models\CustomerSavedItem::TYPE_SAVED_FOR_LATER)
+            ->name('saved.move-to-saved');
+        Route::delete('/saved-items/{savedItem}', [AccountSavedItemController::class, 'destroy'])->middleware('permission.any:account.saved_items.manage')->name('saved.destroy');
+
+        Route::get('/addresses', [AccountAddressController::class, 'index'])->middleware('permission.any:account.addresses.manage')->name('addresses.index');
+        Route::post('/addresses', [AccountAddressController::class, 'store'])->middleware('permission.any:account.addresses.manage')->name('addresses.store');
+        Route::put('/addresses/{customerAddress}', [AccountAddressController::class, 'update'])->middleware('permission.any:account.addresses.manage')->name('addresses.update');
+        Route::delete('/addresses/{customerAddress}', [AccountAddressController::class, 'destroy'])->middleware('permission.any:account.addresses.manage')->name('addresses.destroy');
+    });
+
+Route::prefix('sales')
+    ->as('sales.')
+    ->middleware(['auth', 'verified', 'permission.any:sales.access'])
+    ->group(function () {
+        Route::get('/', [SalesDashboardController::class, 'index'])->middleware('permission.any:sales.dashboard.view')->name('dashboard');
+        Route::get('/orders', [SalesOrderController::class, 'index'])->middleware('permission.any:sales.orders.view')->name('orders.index');
+        Route::get('/customers', [SalesCustomerController::class, 'index'])->middleware('permission.any:sales.customers.view')->name('customers.index');
+        Route::post('/customers', [SalesCustomerController::class, 'store'])->middleware('permission.any:sales.customers.create')->name('customers.store');
+
+        Route::get('/pos/select-terminal', [PosController::class, 'selectTerminal'])->middleware('permission.any:sales.pos.use')
+            ->name('pos.selectTerminal');
+        Route::post('/pos/select-terminal', [PosController::class, 'assignTerminal'])->middleware('permission.any:sales.pos.use')->name('pos.setTerminal');
+        Route::get('/pos', [PosController::class, 'index'])->middleware('permission.any:sales.pos.use')->name('pos.index');
+        Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->middleware('permission.any:sales.pos.use')->name('pos.placeOrder');
+        Route::get('/pos/sales', [PosController::class, 'salesOrders'])->middleware('permission.any:sales.pos.use')->name('pos.orders');
+        Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->middleware('permission.any:sales.pos.use')->name('pos.print');
+    });
+
 /*
 |--------------------------------------------------------------------------
 | Admin Dashboard
@@ -151,24 +210,29 @@ Route::middleware(['auth'])->prefix('shipping')->name('shipping.')->group(functi
 
 Route::prefix('admin')
     ->as('admin.')
-    ->middleware(['auth', 'verified'])
+    ->middleware(['auth', 'verified', 'permission.any:admin.access'])
     ->group(function () {
+        Route::get('/', [DashboardController::class, 'index'])->middleware('permission.any:admin.dashboard.view')->name('dashboard');
 
         Route::get('/dashboard/kpis', [DashboardController::class, 'kpis'])->name('dashboard.kpis');
         Route::get('/dashboard/sales-chart', [DashboardController::class, 'salesChart']);
         Route::post('/inventory-alerts/{alert}/close', [InventoryAlertController::class, 'close'])
             ->name('inventory-alerts.close');
         Route::get('/transactions', [TransactionController::class, 'index'])
+            ->middleware('permission.any:admin.transactions.view')
             ->name('transactions.index');
 
         Route::get('/payment-recovery', [PaymentRecoveryController::class, 'index'])
+            ->middleware('permission.any:admin.payment_recovery.manage')
             ->name('payment-recovery.index');
         Route::post('/payment-recovery/reverify', [PaymentRecoveryController::class, 'reverify'])
+            ->middleware('permission.any:admin.payment_recovery.manage')
             ->name('payment-recovery.reverify');
         Route::post('/payment-recovery/refund', [PaymentRecoveryController::class, 'refund'])
+            ->middleware('permission.any:admin.payment_recovery.manage')
             ->name('payment-recovery.refund');
 
-//        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+//        Route::get('/', [DashboardController::class, 'index'])->middleware('permission.any:admin.dashboard.view')->name('dashboard');
 
         // Catalog management
         Route::resource('categories', AdminCategoryController::class)->except(['show']);
@@ -267,17 +331,17 @@ Route::prefix('admin')
 
         Route::resource('staff', StaffController::class);
 
-        Route::get('/pos/select-terminal', [PosController::class, 'selectTerminal'])
+        Route::get('/pos/select-terminal', [PosController::class, 'selectTerminal'])->middleware('permission.any:sales.pos.use')
             ->name('pos.selectTerminal');
 
-        Route::post('/pos/select-terminal', [PosController::class, 'assignTerminal'])->name('pos.setTerminal');
+        Route::post('/pos/select-terminal', [PosController::class, 'assignTerminal'])->middleware('permission.any:sales.pos.use')->name('pos.setTerminal');
 
 
 
 //        Route::resource('employees', EmployeeController::class);
 
         // POS UI (Inertia)
-        Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
+        Route::get('/pos', [PosController::class, 'index'])->middleware('permission.any:sales.pos.use')->name('pos.index');
 
         // Cart operations (AJAX via Inertia/form)
         Route::post('/pos/cart/add', [PosController::class, 'addToCart'])->name('pos.cart.add');
@@ -285,8 +349,8 @@ Route::prefix('admin')
         Route::post('/pos/cart/remove', [PosController::class, 'removeCartItem'])->name('pos.cart.remove');
 
         // Finalize sale
-        Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->name('pos.placeOrder');
-        Route::get('/pos/sales', [PosController::class, 'salesOrders'])->name('pos.orders');
+        Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->middleware('permission.any:sales.pos.use')->name('pos.placeOrder');
+        Route::get('/pos/sales', [PosController::class, 'salesOrders'])->middleware('permission.any:sales.pos.use')->name('pos.orders');
         Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->name('pos.orders');
 
         // optional: incremental product loading API
@@ -309,3 +373,7 @@ Route::prefix('admin')
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+
+
+
+

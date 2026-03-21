@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CustomerSavedItem;
 use App\Models\CartItem;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\CartService;
+use App\Services\CustomerSavedItemService;
 use App\Services\StorefrontService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,7 @@ class StorefrontController extends Controller
     public function __construct(
         protected StorefrontService $storefrontService,
         protected CartService $cartService,
+        protected CustomerSavedItemService $savedItemService,
     ) {}
 
     public function home(Request $request): Response
@@ -71,7 +74,6 @@ class StorefrontController extends Controller
     public function updateCartItem(Request $request, int $variant): RedirectResponse
     {
         try {
-
             $validated = $request->validate([
                 'quantity' => ['required', 'integer', 'min:1'],
             ]);
@@ -79,12 +81,11 @@ class StorefrontController extends Controller
             $this->cartService->updateQuantity($variant, (int) $validated['quantity']);
 
             return back()->with('success', 'Cart updated.');
-        }catch(\Exception $e){
+        } catch (\Exception $e) {
             return back()
                 ->withErrors($e->errors())
                 ->with('error', collect($e->errors())->flatten()->first());
         }
-
     }
 
     public function removeCartItem(int $variant): RedirectResponse
@@ -100,7 +101,7 @@ class StorefrontController extends Controller
             'coupon' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $coupon = isset($validated['coupon']) ? trim((string) $validated['coupon']) : null;
+        $coupon = isset($validated['coupon']) ? trim((string) ($validated['coupon'] ?? '')) : null;
         $this->cartService->setCoupon($coupon !== '' ? $coupon : null);
 
         $cart = $this->cartService->getDetailedCart($coupon);
@@ -125,5 +126,39 @@ class StorefrontController extends Controller
         return redirect()->route('checkout.index', [
             'coupon' => $validated['coupon'] ?? null,
         ]);
+    }
+
+    public function saveCartItemForLater(Request $request, int $variant): RedirectResponse
+    {
+        $this->authorize('create', CustomerSavedItem::class);
+
+        try {
+            $this->savedItemService->moveCartItemToSavedForLater($request->user(), $variant);
+
+            return back()->with('success', 'Item moved to Saved for Later.');
+        } catch (\Throwable $exception) {
+            if (method_exists($exception, 'errors')) {
+                return back()->withErrors($exception->errors())->with('error', collect($exception->errors())->flatten()->first());
+            }
+
+            throw $exception;
+        }
+    }
+
+    public function addToWishlist(Request $request): RedirectResponse
+    {
+        $this->authorize('create', CustomerSavedItem::class);
+
+        $validated = $request->validate([
+            'variant_id' => ['required', 'integer', 'exists:product_variants,id'],
+        ]);
+
+        $this->savedItemService->addVariant(
+            $request->user(),
+            (int) $validated['variant_id'],
+            CustomerSavedItem::TYPE_WISHLIST,
+        );
+
+        return back()->with('success', 'Item added to your wishlist.');
     }
 }

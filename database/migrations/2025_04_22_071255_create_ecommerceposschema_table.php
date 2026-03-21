@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -180,7 +181,10 @@ return new class extends Migration
             // Inventory tracking
             $table->integer('quantity')->default(0); // quantity_on_hand physical stock
             $table->integer('reserved')->default(0);
-            $table->integer('available')->virtualAs('GREATEST(quantity - reserved, 0)');
+            $availableExpression = DB::connection()->getDriverName() === 'sqlite'
+                ? 'CASE WHEN quantity - reserved > 0 THEN quantity - reserved ELSE 0 END'
+                : 'GREATEST(quantity - reserved, 0)';
+            $table->integer('available')->virtualAs($availableExpression);
 
             // Cost tracking
             $table->decimal('total_cost_on_hand', 15, 4)->default(0); // value of stock

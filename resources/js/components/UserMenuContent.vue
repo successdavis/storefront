@@ -7,10 +7,9 @@ import {
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { logout } from '@/routes';
-import { edit } from '@/routes/profile';
 import type { User } from '@/types';
-import { Link, router } from '@inertiajs/vue3';
-import { LogOut, Settings } from 'lucide-vue-next';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { LayoutGrid, LogOut, Settings } from 'lucide-vue-next';
 
 interface Props {
     user: User;
@@ -21,6 +20,14 @@ const handleLogout = () => {
 };
 
 defineProps<Props>();
+
+const page = usePage();
+const primaryRole = page.props.auth?.primary_role ?? page.props.auth?.user?.primary_role ?? 'customer';
+const dashboardHref = primaryRole === 'director'
+    ? '/admin'
+    : primaryRole === 'sales_representative'
+      ? '/sales'
+      : '/account';
 </script>
 
 <template>
@@ -32,7 +39,13 @@ defineProps<Props>();
     <DropdownMenuSeparator />
     <DropdownMenuGroup>
         <DropdownMenuItem :as-child="true">
-            <Link class="block w-full" :href="edit()" prefetch as="button">
+            <Link class="block w-full" :href="dashboardHref" prefetch as="button">
+                <LayoutGrid class="mr-2 h-4 w-4" />
+                Dashboard
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem :as-child="true">
+            <Link class="block w-full" href="/settings/profile" prefetch as="button">
                 <Settings class="mr-2 h-4 w-4" />
                 Settings
             </Link>

@@ -27,17 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'terminal.assigned' => \App\Http\Middleware\VerifyTerminalAssigned::class,
+            'role.any' => \App\Http\Middleware\EnsureRole::class,
+            'permission.any' => \App\Http\Middleware\EnsureAnyPermission::class,
         ]);
-
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        // ✅ Disable syntax highlighting that is causing "PatternSearchException"
-//        $exceptions->renderable(function (\Throwable $e, $request) {
-//            if (app()->environment('local')) {
-//                return response()->make(
-//                    "<h2>Exception: {$e->getMessage()}</h2><pre>{$e->getTraceAsString()}</pre>",
-//                    500
-//                );
-//            }
-//        });
+        // Disable local syntax highlighting fallback that was causing PatternSearchException.
     })->create();

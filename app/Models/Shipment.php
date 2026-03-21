@@ -11,4 +11,5 @@ class Shipment extends Model
     public function shippable() { return $this->morphTo(); }
     public function method() { return $this->belongsTo(ShippingMethod::class,'shipping_method_id'); }
     public function pickup() { return $this->hasOne(Pickup::class); }
+    public function addresses() { return $this->hasMany(Address::class); }
 }

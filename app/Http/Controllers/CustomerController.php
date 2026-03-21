@@ -3,13 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\RoleNames;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class CustomerController extends Controller
 {
     public function list()
     {
-        return response()->json(User::doesntHave('roles')->select('id', 'name')->get());
+        return response()->json(
+            User::query()
+                ->role(RoleNames::CUSTOMER)
+                ->select('id', 'name')
+                ->get()
+        );
     }
 
     public function store(Request $request)
@@ -28,11 +35,12 @@ class CustomerController extends Controller
 
         $customer = User::create([
             ...$validated,
-            'role' => 'customer',
-            'password' => bcrypt('password'), // or random default
+            'email' => $validated['email'] ?? sprintf('customer-%s@example.invalid', now()->timestamp.Str::random(4)),
+            'password' => bcrypt(Str::random(32)),
         ]);
+
+        $customer->assignRole(RoleNames::CUSTOMER);
 
         return response()->json($customer);
     }
 }
-

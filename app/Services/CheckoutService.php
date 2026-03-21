@@ -27,11 +27,13 @@ class CheckoutService
         protected ProductService $productService,
         protected StockReservationService $stockReservationService,
         protected DiscountService $discountService,
+        protected CustomerAddressService $customerAddressService,
     ) {}
 
     public function getCheckoutData(User $user, array $params = []): array
     {
-        $selection = $this->normalizeCheckoutSelection($params);
+        $savedAddresses = $this->customerAddressService->listForCheckout($user);
+        $selection = $this->normalizeCheckoutSelection($user, $params);
         $isPickupMethod = $this->isPickupMethod($selection['shipping_method_id']);
 
         $cartData = $this->cartService->getDetailedCart($selection['coupon'], (int) $user->id);
@@ -118,7 +120,9 @@ class CheckoutService
             'is_pickup_method' => $isPickupMethod,
             'shipping_methods' => $this->listShippingMethods(),
             'states' => $this->listStates(),
+            'lgas' => $this->listLgas($selection['state_id']),
             'pickup_locations' => $this->listPickupLocations($selection['state_id'], $selection['shipping_method_id']),
+            'saved_addresses' => $savedAddresses,
             'cartCount' => $this->cartService->getCartCount((int) $user->id),
             'categories' => $this->productService->listStoreCategories(),
             'pricing_quote' => $pricingQuote,
@@ -145,6 +149,7 @@ class CheckoutService
         }
 
         $this->assertCheckoutCanProceed($checkoutData);
+        $this->rememberCheckoutAddressIfRequested($user, $checkoutData);
 
         $reference = $this->generateReference();
         $session = $this->createCheckoutSessionToken($user, $checkoutData, $reference);
@@ -441,17 +446,80 @@ class CheckoutService
         }
     }
 
-    protected function normalizeCheckoutSelection(array $params): array
+    protected function normalizeCheckoutSelection(User $user, array $params): array
     {
-        return [
+        $selection = [
             'coupon' => $this->normalizeCoupon($params['coupon'] ?? null),
+            'address_id' => !empty($params['address_id']) ? (int) $params['address_id'] : null,
             'shipping_method_id' => !empty($params['shipping_method_id']) ? (int) $params['shipping_method_id'] : null,
             'state_id' => !empty($params['state_id']) ? (int) $params['state_id'] : null,
             'lga_id' => !empty($params['lga_id']) ? (int) $params['lga_id'] : null,
             'pickup_location_id' => !empty($params['pickup_location_id']) ? (int) $params['pickup_location_id'] : null,
             'phone' => $this->normalizeNullableString($params['phone'] ?? null),
             'line1' => $this->normalizeNullableString($params['line1'] ?? null),
+            'line2' => $this->normalizeNullableString($params['line2'] ?? null),
+            'recipient_name' => null,
+            'email' => null,
+            'postal_code' => null,
+            'country_id' => null,
+            'save_address' => !empty($params['save_address']),
         ];
+
+        $selectedAddress = null;
+        if (!empty($selection['address_id'])) {
+            $selectedAddress = $this->customerAddressService->findForUser($user, (int) $selection['address_id']);
+        } elseif (
+            empty($selection['state_id'])
+            && empty($selection['lga_id'])
+            && empty($selection['phone'])
+            && empty($selection['line1'])
+            && empty($selection['line2'])
+        ) {
+            $selectedAddress = $this->customerAddressService->defaultForUser($user);
+            $selection['address_id'] = $selectedAddress?->id;
+        }
+
+        if ($selectedAddress) {
+            $selection['address_id'] = (int) $selectedAddress->id;
+            $selection['country_id'] = $selectedAddress->country_id ? (int) $selectedAddress->country_id : null;
+            $selection['state_id'] = $selection['state_id'] ?: ($selectedAddress->state_id ? (int) $selectedAddress->state_id : null);
+            $selection['lga_id'] = $selection['lga_id'] ?: ($selectedAddress->lga_id ? (int) $selectedAddress->lga_id : null);
+            $selection['phone'] = $selection['phone'] ?: $this->normalizeNullableString($selectedAddress->phone);
+            $selection['line1'] = $selection['line1'] ?: $this->normalizeNullableString($selectedAddress->line1);
+            $selection['line2'] = $selection['line2'] ?: $this->normalizeNullableString($selectedAddress->line2);
+            $selection['recipient_name'] = $this->normalizeNullableString($selectedAddress->recipient_name);
+            $selection['email'] = $this->normalizeNullableString($selectedAddress->email);
+            $selection['postal_code'] = $this->normalizeNullableString($selectedAddress->postal_code);
+        }
+
+        return $selection;
+    }
+
+    protected function rememberCheckoutAddressIfRequested(User $user, array &$checkoutData): void
+    {
+        if (($checkoutData['is_pickup_method'] ?? false) || empty($checkoutData['selected_shipping']['save_address'])) {
+            return;
+        }
+
+        $savedAddress = $this->customerAddressService->rememberCheckoutAddress($user, $checkoutData['selected_shipping']);
+
+        if (!$savedAddress) {
+            return;
+        }
+
+        $payload = $this->customerAddressService->toCheckoutPayload($savedAddress);
+        $checkoutData['selected_shipping'] = array_merge($checkoutData['selected_shipping'], [
+            'address_id' => $payload['id'],
+            'recipient_name' => $payload['recipient_name'],
+            'email' => $payload['email'],
+            'phone' => $payload['phone'],
+            'line1' => $payload['line1'],
+            'line2' => $payload['line2'],
+            'country_id' => $payload['country_id'],
+            'state_id' => $payload['state_id'],
+            'lga_id' => $payload['lga_id'],
+            'postal_code' => $payload['postal_code'],
+        ]);
     }
 
     protected function normalizeCoupon(mixed $coupon): ?string
@@ -489,33 +557,36 @@ class CheckoutService
             $state = State::query()->select(['id', 'country_id'])->find((int) $selected['state_id']);
         }
 
+        $countryId = $selected['country_id'] ?? $state?->country_id;
+        $recipientName = $selected['recipient_name'] ?? $user->name;
+        $email = $selected['email'] ?? $user->email;
+
         $payload = [
+            'address_id' => $selected['address_id'] ?? null,
             'shipping_method_id' => (int) $selected['shipping_method_id'],
             'state_id' => $selected['state_id'],
             'pickup_location_id' => $selected['pickup_location_id'],
             'phone' => $selected['phone'],
             'line1' => $selected['line1'],
+            'line2' => $selected['line2'] ?? null,
             'lga_id' => $selected['lga_id'],
-            'country_id' => $state?->country_id,
+            'postal_code' => $selected['postal_code'] ?? null,
+            'country_id' => $countryId,
+            'recipient_name' => $recipientName,
+            'email' => $email,
         ];
 
-        if (!($checkoutData['is_pickup_method'] ?? false)) {
-            $payload['address'] = [
-                'line1' => $selected['line1'],
-                'phone' => $selected['phone'],
-                'state_id' => $selected['state_id'],
-                'lga_id' => $selected['lga_id'],
-                'country_id' => $state?->country_id,
-            ];
-        } else {
-            $payload['address'] = [
-                'line1' => $selected['line1'] ?? 'Pickup collection',
-                'phone' => $selected['phone'],
-                'state_id' => $selected['state_id'],
-                'lga_id' => $selected['lga_id'],
-                'country_id' => $state?->country_id,
-            ];
-        }
+        $payload['address'] = [
+            'name' => $recipientName,
+            'phone' => $selected['phone'],
+            'email' => $email,
+            'line1' => $selected['line1'] ?? 'Pickup collection',
+            'line2' => $selected['line2'] ?? null,
+            'postal_code' => $selected['postal_code'] ?? null,
+            'state_id' => $selected['state_id'],
+            'lga_id' => $selected['lga_id'],
+            'country_id' => $countryId,
+        ];
 
         return $payload;
     }
@@ -547,7 +618,10 @@ class CheckoutService
             'amount' => (float) ($checkoutData['summary']['discount'] ?? 0),
         ];
 
-        $shippingSnapshot = $quote['shipping_snapshot'] ?? $this->buildOrderShippingPayload($user, $checkoutData);
+        $shippingSnapshot = array_replace(
+            $quote['shipping_snapshot'] ?? [],
+            $this->buildOrderShippingPayload($user, $checkoutData),
+        );
         $expiresAt = now()->addMinutes(30);
 
         $sessionId = DB::table('checkout_sessions')->insertGetId([
@@ -662,12 +736,44 @@ class CheckoutService
     protected function buildQuoteShippingPayload(array $selection): array
     {
         return [
+            'address_id' => $selection['address_id'] ?? null,
             'shipping_method_id' => $selection['shipping_method_id'],
             'state_id' => $selection['state_id'],
             'lga_id' => $selection['lga_id'],
             'pickup_location_id' => $selection['pickup_location_id'],
             'phone' => $selection['phone'],
             'line1' => $selection['line1'],
+            'line2' => $selection['line2'] ?? null,
+            'country_id' => $selection['country_id'] ?? null,
         ];
     }
+
+    protected function listLgas(?int $stateId): array
+    {
+        if (!$stateId) {
+            return [];
+        }
+
+        return Lga::query()
+            ->where('state_id', $stateId)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Lga $lga) => [
+                'id' => (int) $lga->id,
+                'name' => $lga->name,
+            ])
+            ->values()
+            ->all();
+    }
 }
+
+
+
+
+
+
+
+
+
+
+

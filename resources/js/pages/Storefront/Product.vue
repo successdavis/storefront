@@ -1,5 +1,5 @@
 <script setup>
-import { Head } from '@inertiajs/vue3'
+import { Head, router, usePage } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import AddToCartButton from '@/components/Storefront/AddToCartButton.vue'
@@ -21,6 +21,7 @@ const props = defineProps({
 
 const quantity = ref(1)
 const selectedVariantId = ref(props.product.default_variant_id || props.product.variants?.[0]?.id || null)
+const page = usePage()
 
 const selectedVariant = computed(() => {
     return (props.product.variants || []).find((variant) => variant.id === selectedVariantId.value) || props.product.variants?.[0] || null
@@ -44,6 +45,23 @@ const formatter = new Intl.NumberFormat('en-NG', {
 
 function money(value) {
     return formatter.format(Number(value || 0))
+}
+
+function addToWishlist() {
+    if (!selectedVariant.value?.id) {
+        return
+    }
+
+    if (!page.props.auth?.user) {
+        router.visit(route('login'))
+        return
+    }
+
+    router.post(route('store.wishlist.store'), {
+        variant_id: selectedVariant.value.id,
+    }, {
+        preserveScroll: true,
+    })
 }
 
 watch(selectedVariantId, () => {
@@ -119,12 +137,12 @@ watch(selectedVariantId, () => {
                     </div>
                 </div>
 
-                <div class="mt-5 flex items-center gap-3">
+                <div class="mt-5 grid gap-3 md:grid-cols-[120px_1fr_auto]">
                     <input
                         v-model.number="quantity"
                         type="number"
                         min="1"
-                        class="h-11 w-24 rounded-xl border border-slate-300 px-3 text-sm"
+                        class="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm"
                     >
                     <AddToCartButton
                         :variant-id="selectedVariant?.id"
@@ -133,6 +151,13 @@ watch(selectedVariantId, () => {
                         label="Add to Cart"
                         full-width
                     />
+                    <button
+                        type="button"
+                        class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500"
+                        @click="addToWishlist"
+                    >
+                        Add to Wishlist
+                    </button>
                 </div>
             </div>
 

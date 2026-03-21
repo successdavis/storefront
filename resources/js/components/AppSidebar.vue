@@ -13,15 +13,41 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { type MainNavItem, NavItem } from '@/types';
-import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, PackageCheck, Store, ShoppingCart, Building2, Boxes, Monitor, Settings  } from 'lucide-vue-next';
+import { Link, usePage } from '@inertiajs/vue3';
+import {
+    BookOpen,
+    Building2,
+    Boxes,
+    Heart,
+    LayoutGrid,
+    MapPin,
+    Monitor,
+    PackageCheck,
+    ReceiptText,
+    Settings,
+    ShoppingBag,
+    ShoppingCart,
+    Store,
+    Users,
+} from 'lucide-vue-next';
+import { computed } from 'vue';
 import AppLogo from './AppLogo.vue';
 
-const mainNavItems: MainNavItem[] = [
+const page = usePage();
+
+const primaryRole = computed(() => page.props.auth?.primary_role ?? page.props.auth?.user?.primary_role ?? 'customer');
+const capabilities = computed<Record<string, boolean>>(() => page.props.auth?.capabilities ?? page.props.auth?.user?.capabilities ?? {});
+
+const adminNavItems: MainNavItem[] = [
     {
         title: 'Dashboard',
-        href: '/dashboard',
+        href: '/admin',
         icon: LayoutGrid,
+    },
+    {
+        title: 'Sales Workspace',
+        href: '/sales',
+        icon: ShoppingBag,
     },
     {
         title: 'POS',
@@ -32,146 +58,146 @@ const mainNavItems: MainNavItem[] = [
         title: 'Products',
         icon: PackageCheck,
         subItems: [
-            {
-                title: 'All Products',
-                href: '/admin/products',
-                icon: ''
-            },
-            {
-                title: 'Add New Product',
-                href: '/admin/products/create',
-                icon: ''
-            },
-            {
-                title: 'Category',
-                href: '/admin/categories',
-                icon: ''
-            },
-            {
-                title: 'Brand',
-                href: '/admin/brands',
-                icon: ''
-            },
-            {
-                title: 'Variants',
-                href: '/admin/variant-types',
-                icon: ''
-            },
-        ]
+            { title: 'All Products', href: '/admin/products' },
+            { title: 'Add New Product', href: '/admin/products/create' },
+            { title: 'Category', href: '/admin/categories' },
+            { title: 'Brand', href: '/admin/brands' },
+            { title: 'Variants', href: '/admin/variant-types' },
+        ],
     },
     {
         title: 'Purchase Orders',
         icon: Store,
         subItems: [
-            {
-                title: 'Create PO',
-                href: '/admin/purchase-order',
-                icon: ''
-            },
-            {
-                title: 'PO List',
-                href: '/admin/purchase-orders/index',
-                icon: ''
-            },
-        ]
+            { title: 'Create PO', href: '/admin/purchase-order' },
+            { title: 'PO List', href: '/admin/purchase-orders/index' },
+        ],
     },
     {
         title: 'Inventory',
         icon: Boxes,
         subItems: [
-            // {
-            //     title: 'Stock Entries',
-            //     href: '/admin/stock-entries',
-            //     icon: ''
-            // },
-            {
-                title: 'Create Adjustment',
-                href: '/admin/stock-adjustments/create',
-                icon: ''
-            },
-            {
-                title: 'Adjustment',
-                href: '/admin/stock-adjustments',
-                icon: ''
-            },
-            {
-                title: 'Barcode Labels',
-                href: '/admin/barcodes',
-                icon: ''
-            },
-            {
-                title: 'Stock Audit',
-                href: '/admin/inventory/stock-audit',
-                icon: ''
-            },
-            {
-                title: 'Mobile Audit',
-                href: '/admin/inventory/stock-audit/mobile',
-                icon: ''
-            },
-            {
-                title: 'Discrepancies',
-                href: '/admin/inventory/discrepancies',
-                icon: ''
-            },
-            // {
-            //     title: 'Stock Returns',
-            //     href: '/admin/stock-returns',
-            //     icon: ''
-            // },
-        ]
+            { title: 'Create Adjustment', href: '/admin/stock-adjustments/create' },
+            { title: 'Adjustment', href: '/admin/stock-adjustments' },
+            { title: 'Barcode Labels', href: '/admin/barcodes' },
+            { title: 'Stock Audit', href: '/admin/inventory/stock-audit' },
+            { title: 'Mobile Audit', href: '/admin/inventory/stock-audit/mobile' },
+            { title: 'Discrepancies', href: '/admin/inventory/discrepancies' },
+        ],
     },
     {
         title: 'Warehouse',
         icon: Building2,
-        href: '/admin/warehouses'
+        href: '/admin/warehouses',
     },
     {
-        title: 'Pos Terminals',
+        title: 'POS Terminals',
         icon: Monitor,
-        href: '/admin/pos-terminals'
+        href: '/admin/pos-terminals',
     },
     {
         title: 'Payments',
         icon: BookOpen,
         subItems: [
-            {
-                title: 'Recovery',
-                href: '/admin/payment-recovery',
-                icon: ''
-            },
-        ]
+            { title: 'Recovery', href: '/admin/payment-recovery' },
+            { title: 'Transactions', href: '/admin/transactions' },
+        ],
     },
     {
-        title: 'Staffs',
-        icon: Boxes,
+        title: 'Staff',
+        icon: Users,
         subItems: [
-            {
-                title: 'All Staffs',
-                href: '/admin/staff',
-                icon: ''
-            },
-            {
-                title: 'Roles',
-                href: '/admin/roles/create',
-                icon: ''
-            },
-        ]
+            { title: 'All Staff', href: '/admin/staff' },
+        ],
     },
 ];
 
-const footerNavItems: NavItem[] = [
-    // {
-    //     title: 'Github Repo',
-    //     href: 'https://github.com/laravel/vue-starter-kit',
-    //     icon: Folder,
-    // },
+const salesNavItems: MainNavItem[] = [
     {
-        title: 'Business Settings',
-        href: '/admin/settings',
-        icon: Settings,
+        title: 'Sales Dashboard',
+        href: '/sales',
+        icon: LayoutGrid,
+    },
+    {
+        title: 'POS',
+        href: '/sales/pos',
+        icon: ShoppingCart,
+    },
+    {
+        title: 'Orders',
+        href: '/sales/orders',
+        icon: ReceiptText,
+    },
+    {
+        title: 'Customers',
+        href: '/sales/customers',
+        icon: Users,
     },
 ];
+
+const customerNavItems: MainNavItem[] = [
+    {
+        title: 'Overview',
+        href: '/account',
+        icon: LayoutGrid,
+    },
+    {
+        title: 'My Orders',
+        href: '/account/orders',
+        icon: ReceiptText,
+    },
+    {
+        title: 'Wishlist',
+        href: '/account/wishlist',
+        icon: Heart,
+    },
+    {
+        title: 'Saved for Later',
+        href: '/account/saved-for-later',
+        icon: ShoppingBag,
+    },
+    {
+        title: 'Addresses',
+        href: '/account/addresses',
+        icon: MapPin,
+    },
+];
+
+const mainNavItems = computed<MainNavItem[]>(() => {
+    if (capabilities.value.can_access_admin) {
+        return adminNavItems;
+    }
+
+    if (capabilities.value.can_access_sales && primaryRole.value === 'sales_representative') {
+        return salesNavItems;
+    }
+
+    return customerNavItems;
+});
+
+const footerNavItems = computed<NavItem[]>(() => {
+    if (capabilities.value.can_access_admin) {
+        return [
+            {
+                title: 'Profile Settings',
+                href: '/settings/profile',
+                icon: Settings,
+            },
+        ];
+    }
+
+    if (primaryRole.value === 'customer') {
+        return [
+            {
+                title: 'Account Settings',
+                href: '/settings/profile',
+                icon: Settings,
+            },
+        ];
+    }
+
+    return [];
+});
 </script>
 
 <template>
@@ -193,7 +219,7 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <NavFooter v-if="footerNavItems.length" :items="footerNavItems" />
             <NavUser />
         </SidebarFooter>
     </Sidebar>
