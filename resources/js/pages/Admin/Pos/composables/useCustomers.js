@@ -1,8 +1,10 @@
 import { ref, onMounted } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import { route } from 'ziggy-js'
 
 export function useCustomers() {
+    const page = usePage()
     const customers = ref([])
     const selectedCustomer = ref('')
     const showCustomerModal = ref(false)
@@ -23,7 +25,7 @@ export function useCustomers() {
     const lgas = ref([])
 
     onMounted(async () => {
-        const res = await axios.get(route('admin.customers.list'))
+        const res = await axios.get(page.props.pos_routes.customers_list)
         customers.value = res.data
 
         const c = await axios.get(route('locations.countries'))
@@ -51,7 +53,7 @@ export function useCustomers() {
 
     const submitNewCustomer = async () => {
         try {
-            const res = await axios.post(route('admin.customers.store'), newCustomer.value)
+            const res = await axios.post(page.props.pos_routes.customers_store, newCustomer.value)
             const newCust = res.data
             customers.value.push(newCust)
             selectedCustomer.value = newCust.id

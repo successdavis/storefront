@@ -1,6 +1,5 @@
 import { computed, ref, watch } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
-import { route } from 'ziggy-js'
 import { eventBus } from '@/eventBus.js';
 
 export function useProducts() {
@@ -11,7 +10,7 @@ export function useProducts() {
     const filters = ref({ ...(props.filters ?? {}) })
 
     const reload = () => {
-        router.get(route('admin.pos.index'), filters.value, {
+        router.get(props.pos_routes.index, filters.value, {
             preserveState: false,
             replace: true,
         })

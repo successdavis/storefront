@@ -193,6 +193,8 @@ Route::prefix('sales')
         Route::get('/pos/select-terminal', [PosController::class, 'selectTerminal'])->middleware('permission.any:sales.pos.use')
             ->name('pos.selectTerminal');
         Route::post('/pos/select-terminal', [PosController::class, 'assignTerminal'])->middleware('permission.any:sales.pos.use')->name('pos.setTerminal');
+        Route::get('/pos/customers', [CustomerController::class, 'list'])->middleware('permission.any:sales.pos.use')->name('pos.customers.list');
+        Route::post('/pos/customers', [CustomerController::class, 'store'])->middleware('permission.any:sales.pos.use')->name('pos.customers.store');
         Route::get('/pos', [PosController::class, 'index'])->middleware('permission.any:sales.pos.use')->name('pos.index');
         Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->middleware('permission.any:sales.pos.use')->name('pos.placeOrder');
         Route::get('/pos/sales', [PosController::class, 'salesOrders'])->middleware('permission.any:sales.pos.use')->name('pos.orders');

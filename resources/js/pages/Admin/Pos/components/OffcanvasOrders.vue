@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { ref, watch } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import { Printer } from 'lucide-vue-next'
 
@@ -24,6 +25,7 @@ const isOpen = ref(false)
 const salesOrders = ref<Sale[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
+const page = usePage()
 
 watch(isOpen, async (val) => {
     if (val) {
@@ -35,7 +37,7 @@ async function fetchSalesOrders() {
     loading.value = true
     error.value = null
     try {
-        const response = await axios.get('/admin/pos/sales')
+        const response = await axios.get(page.props.pos_routes.sales_orders)
         // Normalize response: response.data.data expected
         salesOrders.value = response.data?.data ?? []
     } catch (err: any) {
@@ -47,7 +49,7 @@ async function fetchSalesOrders() {
 }
 
 async function printReceipt(saleId) {
-    const url = `/admin/pos/sales/${saleId}/print`;
+    const url = String(page.props.pos_routes.print_sale_template).replace('__SALE__', String(saleId));
     const printWindow = window.open(url, '_blank');
     printWindow.focus();
 

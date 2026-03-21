@@ -193,6 +193,7 @@ import { route } from 'ziggy-js';
 import debounce from 'lodash/debounce';
 import { useCurrencyFormatter } from '@/pages/Admin/Pos/composables/useCurrencyFormatter.js';
 import OffcanvasOrders from '@/pages/Admin/Pos/components/OffcanvasOrders.vue'; // optional: you can implement your own debounce
+import { usePage } from '@inertiajs/vue3';
 
 // useCart provides reactive cartItems and subtotal, and item operations
 const {
@@ -207,6 +208,8 @@ const {
 } = useCart();
 
 const { formatCurrency } = useCurrencyFormatter();
+const page = usePage()
+const posRoutes = computed(() => page.props.pos_routes || {})
 
 
 // Customers + location lists are parent-controlled now
@@ -261,7 +264,7 @@ const total = computed(() => {
 
 // load initial data
 async function loadCustomers() {
-    const res = await axios.get(route('admin.customers.list'));
+    const res = await axios.get(posRoutes.value.customers_list);
     customers.value = res.data;
 }
 
@@ -308,7 +311,7 @@ onMounted(async () => {
 // called when modal emits 'save'
 async function handleSaveNewCustomer(payload) {
     try {
-        const res = await axios.post(route('admin.customers.store'), payload);
+        const res = await axios.post(posRoutes.value.customers_store, payload);
         const newCust = res.data;
         customers.value.push(newCust);
         selectedCustomer.value = newCust.id;

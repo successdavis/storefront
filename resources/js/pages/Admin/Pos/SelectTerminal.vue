@@ -8,6 +8,10 @@ const props = defineProps({
         type: Array,
         required: true,
     },
+    pos_routes: {
+        type: Object,
+        required: true,
+    },
     use_pos_terminal_password: {
         type: Boolean,
         required: true,
@@ -25,7 +29,7 @@ const selectedTerminal = computed(() =>
 );
 
 const submit = () => {
-    form.post(route("admin.pos.setTerminal"));
+    form.post(props.pos_routes.set_terminal);
 };
 </script>
 

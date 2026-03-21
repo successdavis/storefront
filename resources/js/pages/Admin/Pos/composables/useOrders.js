@@ -1,9 +1,10 @@
 // composables/useOrders.js
 import { ref } from 'vue'
+import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
-import { route } from 'ziggy-js'
 
 export function useOrders() {
+    const page = usePage()
     const orders = ref([])
     const meta = ref(null) // expects Laravel pagination meta: current_page, last_page, per_page etc.
     const loading = ref(false)
@@ -24,7 +25,7 @@ export function useOrders() {
         error.value = null
 
         try {
-            const res = await axios.get(route('admin.pos.orders'), {
+            const res = await axios.get(page.props.pos_routes.sales_orders, {
                 params: { page, per_page },
                 signal: controller.signal,
             })
@@ -62,7 +63,7 @@ export function useOrders() {
         loadingMore.value = true
         try {
             const next = meta.value.current_page + 1
-            const res = await axios.get(route('admin.pos.orders'), { params: { page: next } })
+            const res = await axios.get(page.props.pos_routes.sales_orders, { params: { page: next } })
             const payload = res.data
             const list = payload.data ?? payload.orders ?? []
             const pagination = payload.meta ?? payload.pagination ?? payload.meta?.pagination ?? null

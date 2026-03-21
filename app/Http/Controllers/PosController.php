@@ -78,6 +78,7 @@ class PosController extends Controller
             'categories' => $categories,
             'brands'     => $brands,
             'cart'       => $cart,
+            'pos_routes' => $this->posRoutes(),
             'filters'    => [
                 'q' => $q,
                 'category_id' => $categoryId,
@@ -222,7 +223,7 @@ class PosController extends Controller
         }
 
         if (Setting::get('use_pos_terminal_password', 'true')) {
-            return redirect()->route('admin.pos.selectTerminal');
+            return redirect()->route($this->posRouteName('selectTerminal'));
         }
 
         if ($warehouse->posTerminals()->count() === 1) {
@@ -255,7 +256,7 @@ class PosController extends Controller
         }
 
 
-        return redirect()->route('admin.pos.selectTerminal');
+        return redirect()->route($this->posRouteName('selectTerminal'));
     }
 
     public function assignTerminal(Request $request)
@@ -285,7 +286,7 @@ class PosController extends Controller
 
         session(['pos_terminal_id' => $terminal->id]);
 
-        return redirect()->route('admin.pos.index');
+        return redirect()->route($this->posRouteName('index'));
     }
 
     public function selectTerminal()
@@ -305,7 +306,39 @@ class PosController extends Controller
         return Inertia::render('Admin/Pos/SelectTerminal', [
             'terminals' => $terminals,
             'use_pos_terminal_password' => filter_var(Setting::get('use_pos_terminal_password'), FILTER_VALIDATE_BOOLEAN),
+            'pos_routes' => $this->posRoutes(),
         ]);
+    }
+
+    protected function posRoutes(): array
+    {
+        return [
+            'index' => route($this->posRouteName('index')),
+            'set_terminal' => route($this->posRouteName('setTerminal')),
+            'select_terminal' => route($this->posRouteName('selectTerminal')),
+            'place_order' => route($this->posRouteName('placeOrder')),
+            'sales_orders' => route($this->posRouteName('orders')),
+            'print_sale_template' => route($this->posRouteName('print'), ['sale' => '__SALE__']),
+            'customers_list' => route($this->customerRouteName('list')),
+            'customers_store' => route($this->customerRouteName('store')),
+        ];
+    }
+
+    protected function posRouteName(string $suffix): string
+    {
+        return $this->isAdminPosContext() ? "admin.pos.{$suffix}" : "sales.pos.{$suffix}";
+    }
+
+    protected function customerRouteName(string $suffix): string
+    {
+        return $this->isAdminPosContext() ? "admin.customers.{$suffix}" : "sales.pos.customers.{$suffix}";
+    }
+
+    protected function isAdminPosContext(): bool
+    {
+        $routeName = (string) request()->route()?->getName();
+
+        return str_starts_with($routeName, 'admin.');
     }
 
 

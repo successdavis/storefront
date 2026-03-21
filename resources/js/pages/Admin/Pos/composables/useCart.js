@@ -1,13 +1,14 @@
 import { ref } from 'vue'
-import { route } from 'ziggy-js'
 import axios from 'axios'
 import { eventBus } from '@/eventBus.js'
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 
 // module-level shared cart state (singleton)
 const cartItems = ref([])
 
 export function useCart() {
+    const page = usePage()
+
     // Add variant object directly — simpler and reliable
     const addToCart = (variant) => {
         if (!variant || !variant.id) return
@@ -73,7 +74,7 @@ export function useCart() {
             checkout_token: payload.checkout_token,
         }
 
-        router.post(route('admin.pos.placeOrder'), data, {
+        router.post(page.props.pos_routes.place_order, data, {
             // Keep the page in place; Inertia will still receive flash props
             preserveScroll: true,
             preserveState: false,
