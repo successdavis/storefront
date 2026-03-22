@@ -22,10 +22,6 @@ export default {
 </script>
 
 <template>
-    <AuthBase
-        title="Create your account"
-        description="Open a secure customer account for checkout, saved lists, and ongoing order visibility."
-    >
         <Head title="Register" />
 
         <div
@@ -137,5 +133,4 @@ export default {
                 >
             </div>
         </Form>
-    </AuthBase>
 </template>

@@ -13,8 +13,8 @@ const page = usePage();
 
 <template>
     <div class="min-h-svh bg-[linear-gradient(160deg,#f8fafc_0%,#fff7ed_42%,#f1f5f9_100%)]">
-        <div class="mx-auto grid min-h-svh max-w-7xl items-stretch gap-8 px-4 py-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-6">
-            <section class="relative hidden overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-900 p-10 text-white shadow-2xl lg:flex lg:flex-col">
+        <div class="mx-auto grid min-h-svh items-stretch gap-8  lg:grid-cols-[1.05fr_0.95fr]">
+            <section class="relative hidden overflow-hidden border border-slate-200 bg-slate-900 p-10 text-white shadow-2xl lg:flex lg:flex-col">
                 <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(245,158,11,0.28),_transparent_45%)]" />
                 <div class="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.14),_transparent_65%)]" />
 
@@ -50,7 +50,7 @@ const page = usePage();
             </section>
 
             <section class="flex items-center justify-center py-6 lg:py-10">
-                <div class="w-full max-w-xl rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-2xl shadow-slate-200/60 backdrop-blur md:p-8">
+                <div class="w-full max-w-2xl rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-2xl shadow-slate-200/60 backdrop-blur md:p-8">
                     <div class="mb-8 flex flex-col gap-5">
                         <Link :href="home()" class="inline-flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.22em] text-slate-600 lg:hidden">
                             <AppLogoIcon class="size-8 fill-current text-slate-900" />
