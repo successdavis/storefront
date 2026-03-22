@@ -49,7 +49,7 @@ class CustomerSavedItemService
 
         $variant = $this->loadVariant($variantId);
         $quantity = max(1, $quantity);
-        $pricing = $this->productService->resolveVariantPricing($variant);
+        $pricing = $this->productService->resolveVariantPricing($variant, $user, $variant->product);
         $variantLabel = $variant->values
             ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
             ->implode(' / ');
@@ -268,7 +268,7 @@ class CustomerSavedItemService
         return ProductVariant::query()
             ->withTrashed()
             ->with([
-                'product' => fn ($query) => $query->withTrashed()->with('images'),
+                'product' => fn ($query) => $query->withTrashed()->with(['images', 'categories:id']),
                 'values.type',
                 'images',
             ])

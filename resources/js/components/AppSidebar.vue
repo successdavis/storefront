@@ -63,6 +63,8 @@ const adminNavItems: MainNavItem[] = [
             { title: 'Category', href: '/admin/categories' },
             { title: 'Brand', href: '/admin/brands' },
             { title: 'Variants', href: '/admin/variant-types' },
+            { title: 'Discounts', href: '/admin/discounts' },
+            { title: 'Coupons', href: '/admin/coupons' },
         ],
     },
     {

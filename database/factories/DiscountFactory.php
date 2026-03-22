@@ -25,15 +25,18 @@ class DiscountFactory extends Factory
 
         return [
             'name'                  => ucfirst($this->faker->words(3, true)) . " Discount",
+            'description'           => $this->faker->optional()->sentence(),
             'code'                  => $this->faker->boolean(70) ? strtoupper(Str::random(8)) : null, // 70% have a code
             'type'                  => $type,
             'value'                 => $value,
+            'application_method'    => Discount::APPLICATION_ORDER_TOTAL,
             'min_order_amount'      => $this->faker->optional()->randomFloat(2, 1000, 10000),
             'usage_limit'           => $this->faker->optional()->numberBetween(50, 500),
             'usage_limit_per_user'  => $this->faker->optional()->numberBetween(1, 5),
             'starts_at'             => now()->subDays($this->faker->numberBetween(0, 10)),
             'ends_at'               => now()->addDays($this->faker->numberBetween(5, 30)),
             'customer_scope'        => $this->faker->randomElement(['all', 'new_customers', 'selected_customers']),
+            'priority'              => 0,
             'is_active'             => true,
         ];
     }
@@ -82,5 +85,17 @@ class DiscountFactory extends Factory
                 }
             }
         });
+    }
+
+    public function lineItem(): self
+    {
+        return $this->state(fn () => [
+            'code' => null,
+            'type' => $this->faker->randomElement([Discount::TYPE_PERCENTAGE, Discount::TYPE_FIXED_AMOUNT]),
+            'application_method' => Discount::APPLICATION_LINE_ITEM,
+            'min_order_amount' => null,
+            'usage_limit' => null,
+            'usage_limit_per_user' => null,
+        ]);
     }
 }

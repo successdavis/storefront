@@ -310,6 +310,7 @@ class CartService
             ->get()
             ->keyBy('id');
 
+        $user = $userId ? User::find($userId) : null;
         $items = [];
         $discountItems = [];
         $subtotal = 0.0;
@@ -327,7 +328,7 @@ class CartService
             }
 
             $categoryIds = $variant->product->categories?->pluck('id')->all() ?? [];
-            $pricing = $this->productService->resolveVariantPricing($variant);
+            $pricing = $this->productService->resolveVariantPricing($variant, $user, $variant->product);
             $stock = $this->productService->resolveVariantStock($variant);
             $lineTotal = round(((float) $pricing['current']) * $quantity, 2);
             $subtotal += $lineTotal;
@@ -366,8 +367,6 @@ class CartService
                 'category_ids' => $categoryIds,
             ];
         }
-
-        $user = Auth::id() ? User::find(Auth::id()) : null;
 
         $discount = [
             'discount_id' => null,

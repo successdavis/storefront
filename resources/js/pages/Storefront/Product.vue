@@ -108,6 +108,10 @@ watch(selectedVariantId, () => {
                     </span>
                 </div>
 
+                <p v-if="activePrice?.discount_label" class="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-rose-600">
+                    {{ activePrice.discount_label }}
+                </p>
+
                 <p
                     :class="[
                         'mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',

@@ -33,12 +33,8 @@ class CartItem extends Model
             return 0.0;
         }
 
-        $onSale = $variant->sale_price !== null
-            && (float) $variant->sale_price < (float) $variant->regular_price
-            && (!$variant->sale_starts_at || $variant->sale_starts_at->isPast())
-            && (!$variant->sale_ends_at || $variant->sale_ends_at->isFuture());
-
-        $price = $onSale ? (float) $variant->sale_price : (float) $variant->regular_price;
+        $price = (float) app(\App\Services\ProductService::class)
+            ->resolveVariantPricing($variant, $this->cart?->user, $variant->product)['current'];
 
         return round($price * (int) $this->quantity, 2);
     }

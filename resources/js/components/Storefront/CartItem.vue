@@ -97,7 +97,18 @@ function saveForLater() {
                 {{ item.product.name }}
             </Link>
             <p class="mt-1 text-xs text-slate-500">{{ item.variant.label }}</p>
-            <p class="mt-1 text-sm font-semibold text-slate-800">{{ money(item.variant.price.current) }}</p>
+            <div class="mt-1 flex flex-wrap items-center gap-2">
+                <p class="text-sm font-semibold text-slate-800">{{ money(item.variant.price.current) }}</p>
+                <p v-if="item.variant.price.has_discount" class="text-xs text-slate-400 line-through">
+                    {{ money(item.variant.price.regular) }}
+                </p>
+                <span
+                    v-if="item.variant.price.has_discount"
+                    class="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700"
+                >
+                    On Sale
+                </span>
+            </div>
 
             <!-- Validation Error -->
             <p v-if="errorMessage" class="mt-2 text-xs font-medium text-red-600">

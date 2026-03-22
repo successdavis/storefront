@@ -41,12 +41,8 @@ class Cart extends Model
                 return 0;
             }
 
-            $onSale = $variant->sale_price !== null
-                && (float) $variant->sale_price < (float) $variant->regular_price
-                && (!$variant->sale_starts_at || $variant->sale_starts_at->isPast())
-                && (!$variant->sale_ends_at || $variant->sale_ends_at->isFuture());
-
-            $price = $onSale ? $variant->sale_price : $variant->regular_price;
+            $price = app(\App\Services\ProductService::class)
+                ->resolveVariantPricing($variant, $this->user, $variant->product)['current'];
 
             return (float) $price * (int) $item->quantity;
         });

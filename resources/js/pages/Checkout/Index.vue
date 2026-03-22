@@ -288,6 +288,11 @@ function payNow() {
                     <p class="mt-1 text-xs text-slate-500">
                         Qty: {{ item.quantity }}
                     </p>
+
+                    <div v-if="item.variant?.price?.has_discount" class="mt-2 flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-semibold text-rose-700">On Sale</span>
+                        <span class="text-xs text-slate-400 line-through">{{ money(item.variant.price.regular) }}</span>
+                    </div>
                 </div>
 
                 <p class="text-sm font-semibold text-slate-900">

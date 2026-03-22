@@ -8,7 +8,8 @@ use App\Models\{Admin\ProductImage,
     OpeningBalanceItem,
     Product,
     ProductFaq,
-    ProductVariant};
+    ProductVariant,
+    User};
 use App\Models\Category;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +28,7 @@ class ProductService
     public function __construct(
         private SkuGenerator $skuGen,
         private InventoryService $inventoryService,
+        private DiscountService $discountService,
         private ImageManager $imageManager = new ImageManager(new Driver())
     ) {}
 
@@ -396,31 +398,31 @@ class ProductService
         });
     }
 
-    public function paginateStorefrontProducts(int $perPage = 12, ?string $search = null, ?int $categoryId = null): LengthAwarePaginator
+    public function paginateStorefrontProducts(int $perPage = 12, ?string $search = null, ?int $categoryId = null, ?User $user = null): LengthAwarePaginator
     {
         $paginator = $this->storeListQuery($search, $categoryId)
             ->paginate(max(1, min($perPage, 48)))
             ->withQueryString();
 
         $paginator->setCollection(
-            $paginator->getCollection()->map(fn (Product $product) => $this->toStorefrontCard($product))
+            $paginator->getCollection()->map(fn (Product $product) => $this->toStorefrontCard($product, $user))
         );
 
         return $paginator;
     }
 
-    public function getFeaturedProducts(int $limit = 8): array
+    public function getFeaturedProducts(int $limit = 8, ?User $user = null): array
     {
         return $this->storeListQuery()
             ->where('featured', true)
             ->limit(max(1, $limit))
             ->get()
-            ->map(fn (Product $product) => $this->toStorefrontCard($product))
+            ->map(fn (Product $product) => $this->toStorefrontCard($product, $user))
             ->values()
             ->all();
     }
 
-    public function getLatestProducts(int $limit = 8): array
+    public function getLatestProducts(int $limit = 8, ?User $user = null): array
     {
         return Product::query()
             ->active()
@@ -428,24 +430,24 @@ class ProductService
             ->latest('created_at')
             ->limit(max(1, $limit))
             ->get()
-            ->map(fn (Product $product) => $this->toStorefrontCard($product))
+            ->map(fn (Product $product) => $this->toStorefrontCard($product, $user))
             ->values()
             ->all();
     }
 
-    public function getProductsByCategory(Category|int $category, int $perPage = 12): LengthAwarePaginator
+    public function getProductsByCategory(Category|int $category, int $perPage = 12, ?User $user = null): LengthAwarePaginator
     {
         $categoryId = $category instanceof Category ? (int) $category->id : (int) $category;
 
-        return $this->paginateStorefrontProducts($perPage, null, $categoryId);
+        return $this->paginateStorefrontProducts($perPage, null, $categoryId, $user);
     }
 
-    public function searchProducts(string $term, int $perPage = 12): LengthAwarePaginator
+    public function searchProducts(string $term, int $perPage = 12, ?User $user = null): LengthAwarePaginator
     {
-        return $this->paginateStorefrontProducts($perPage, $term, null);
+        return $this->paginateStorefrontProducts($perPage, $term, null, $user);
     }
 
-    public function getProductDetails(Product $product): array
+    public function getProductDetails(Product $product, ?User $user = null): array
     {
         $product->loadMissing([
             'brand:id,name',
@@ -473,8 +475,10 @@ class ProductService
                 ->orderBy('id'),
         ]);
 
-        $card = $this->toStorefrontCard($product);
-        $variants = $product->variants->map(fn (ProductVariant $variant) => $this->toVariantPayload($variant))->values();
+        $card = $this->toStorefrontCard($product, $user);
+        $variants = $product->variants
+            ->map(fn (ProductVariant $variant) => $this->toVariantPayload($variant, $user, $product))
+            ->values();
 
         $selectedVariant = $product->variants
             ->first(fn (ProductVariant $variant) => ($variant->quantity - ($variant->reserved ?? 0)) > 0)
@@ -516,7 +520,7 @@ class ProductService
         ];
     }
 
-    public function getRelatedProducts(Product $product, int $limit = 8): array
+    public function getRelatedProducts(Product $product, int $limit = 8, ?User $user = null): array
     {
         $product->loadMissing('categories:id');
 
@@ -537,19 +541,19 @@ class ProductService
 
         return $query
             ->get()
-            ->map(fn (Product $related) => $this->toStorefrontCard($related))
+            ->map(fn (Product $related) => $this->toStorefrontCard($related, $user))
             ->values()
             ->all();
     }
 
-    public function toStorefrontCard(Product $product): array
+    public function toStorefrontCard(Product $product, ?User $user = null): array
     {
         $product->loadMissing($this->storeCardRelations());
 
         $primaryVariant = $this->pickPrimaryVariant($product->variants);
         $stock = $this->resolveProductStock($product);
-        $pricing = $this->toStorefrontPricingFromVariants($product->variants, $primaryVariant);
-        $badges = $this->cardBadges($product, $pricing['has_discount']);
+        $pricing = $this->toStorefrontPricingFromVariants($product->variants, $primaryVariant, $user, $product);
+        $badges = $this->cardBadges($product, $pricing);
 
         return [
             'id' => (int) $product->id,
@@ -604,31 +608,53 @@ class ProductService
         return null;
     }
 
-    public function resolveVariantPricing(ProductVariant $variant): array
+    public function resolveVariantPricing(ProductVariant $variant, ?User $user = null, ?Product $product = null): array
     {
-        $now = now();
+        $user ??= auth()->user();
+        $product ??= $variant->product;
 
-        $hasSaleWindow = (!$variant->sale_starts_at || $variant->sale_starts_at->lte($now))
-            && (!$variant->sale_ends_at || $variant->sale_ends_at->gte($now));
+        if (!$product) {
+            $variant->loadMissing('product.categories:id');
+            $product = $variant->product;
+        }
 
-        $hasDiscount = $variant->sale_price !== null
-            && (float) $variant->sale_price < (float) $variant->regular_price
-            && $hasSaleWindow;
+        $legacyPricing = $this->resolveLegacyVariantPricing($variant);
+        $regular = (float) $legacyPricing['regular'];
+        $categoryIds = $product?->categories?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [];
 
-        $regular = (float) $variant->regular_price;
-        $sale = $variant->sale_price !== null ? (float) $variant->sale_price : null;
-        $current = $hasDiscount ? (float) $variant->sale_price : $regular;
+        $lineItemDiscount = $this->discountService->resolveLineItemDiscount(
+            variant: $variant,
+            regularPrice: $regular,
+            user: $user,
+            categoryIds: $categoryIds,
+        );
 
+        $current = (float) $legacyPricing['current'];
+        $discountSource = $legacyPricing['has_discount'] ? 'sale' : null;
+        $discountLabel = $legacyPricing['has_discount'] ? 'Sale' : null;
+        $discountId = null;
+
+        if (($lineItemDiscount['discount_id'] ?? null) && (float) $lineItemDiscount['current'] < $current) {
+            $current = (float) $lineItemDiscount['current'];
+            $discountSource = 'automatic';
+            $discountLabel = $lineItemDiscount['label'];
+            $discountId = $lineItemDiscount['discount_id'];
+        }
+
+        $hasDiscount = round($current, 2) < round($regular, 2);
         $percentage = $hasDiscount && $regular > 0
             ? (int) round((($regular - $current) / $regular) * 100)
             : 0;
 
         return [
             'regular' => round($regular, 2),
-            'sale' => $sale !== null ? round($sale, 2) : null,
+            'sale' => $legacyPricing['sale'] !== null ? round((float) $legacyPricing['sale'], 2) : null,
             'current' => round($current, 2),
             'has_discount' => $hasDiscount,
             'discount_percentage' => $percentage,
+            'discount_label' => $discountLabel,
+            'discount_source' => $discountSource,
+            'discount_id' => $discountId,
         ];
     }
 
@@ -721,12 +747,12 @@ class ProductService
         ];
     }
 
-    protected function cardBadges(Product $product, bool $hasDiscount): array
+    protected function cardBadges(Product $product, array $pricing): array
     {
         $badges = [];
 
-        if ($hasDiscount) {
-            $badges[] = 'Discount';
+        if (($pricing['has_discount'] ?? false) === true) {
+            $badges[] = 'On Sale';
         }
 
         if ($product->created_at?->gt(now()->subDays(14))) {
@@ -751,12 +777,12 @@ class ProductService
         ];
     }
 
-    protected function toVariantPayload(ProductVariant $variant): array
+    protected function toVariantPayload(ProductVariant $variant, ?User $user = null, ?Product $product = null): array
     {
         $variant->loadMissing(['values.type', 'images']);
 
         $stock = $this->resolveVariantStock($variant);
-        $price = $this->resolveVariantPricing($variant);
+        $price = $this->resolveVariantPricing($variant, $user, $product);
 
         $label = $variant->values
             ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
@@ -795,7 +821,7 @@ class ProductService
         return $inStockVariant ?? $variants->first();
     }
 
-    protected function toStorefrontPricingFromVariants(Collection $variants, ?ProductVariant $primaryVariant): array
+    protected function toStorefrontPricingFromVariants(Collection $variants, ?ProductVariant $primaryVariant, ?User $user = null, ?Product $product = null): array
     {
         if ($variants->isEmpty()) {
             return [
@@ -804,26 +830,59 @@ class ProductService
                 'current' => 0.0,
                 'has_discount' => false,
                 'discount_percentage' => 0,
+                'discount_label' => null,
+                'discount_source' => null,
                 'from' => false,
             ];
         }
 
-        $variantPricing = $variants->map(fn (ProductVariant $variant) => $this->resolveVariantPricing($variant));
+        $resolvedVariants = $variants->map(fn (ProductVariant $variant) => [
+            'variant' => $variant,
+            'pricing' => $this->resolveVariantPricing($variant, $user, $product),
+        ]);
 
-        $minimumCurrent = (float) $variantPricing->min('current');
-        $maximumCurrent = (float) $variantPricing->max('current');
+        $displayVariant = $resolvedVariants
+            ->sortBy(fn (array $resolved) => [(float) $resolved['pricing']['current'], (int) $resolved['variant']->id])
+            ->first();
 
-        $primaryPricing = $primaryVariant
-            ? $this->resolveVariantPricing($primaryVariant)
-            : $variantPricing->first();
+        $minimumCurrent = (float) $resolvedVariants->min(fn (array $resolved) => $resolved['pricing']['current']);
+        $maximumCurrent = (float) $resolvedVariants->max(fn (array $resolved) => $resolved['pricing']['current']);
+        $displayPricing = $displayVariant['pricing'] ?? ($primaryVariant
+            ? $this->resolveVariantPricing($primaryVariant, $user, $product)
+            : $resolvedVariants->first()['pricing']);
 
         return [
-            'regular' => (float) $primaryPricing['regular'],
-            'sale' => $primaryPricing['sale'] !== null ? (float) $primaryPricing['sale'] : null,
+            'regular' => (float) $displayPricing['regular'],
+            'sale' => $displayPricing['sale'] !== null ? (float) $displayPricing['sale'] : null,
             'current' => round($minimumCurrent, 2),
-            'has_discount' => (bool) $variantPricing->contains(fn (array $price) => $price['has_discount'] === true),
-            'discount_percentage' => (int) ($primaryPricing['discount_percentage'] ?? 0),
+            'has_discount' => (bool) ($displayPricing['has_discount'] ?? false),
+            'discount_percentage' => (int) ($displayPricing['discount_percentage'] ?? 0),
+            'discount_label' => $displayPricing['discount_label'] ?? null,
+            'discount_source' => $displayPricing['discount_source'] ?? null,
             'from' => round($minimumCurrent, 2) !== round($maximumCurrent, 2),
+        ];
+    }
+
+    protected function resolveLegacyVariantPricing(ProductVariant $variant): array
+    {
+        $now = now();
+
+        $hasSaleWindow = (!$variant->sale_starts_at || $variant->sale_starts_at->lte($now))
+            && (!$variant->sale_ends_at || $variant->sale_ends_at->gte($now));
+
+        $hasDiscount = $variant->sale_price !== null
+            && (float) $variant->sale_price < (float) $variant->regular_price
+            && $hasSaleWindow;
+
+        $regular = (float) $variant->regular_price;
+        $sale = $variant->sale_price !== null ? (float) $variant->sale_price : null;
+        $current = $hasDiscount ? (float) $variant->sale_price : $regular;
+
+        return [
+            'regular' => round($regular, 2),
+            'sale' => $sale !== null ? round($sale, 2) : null,
+            'current' => round($current, 2),
+            'has_discount' => $hasDiscount,
         ];
     }
     private function syncCats($product, mixed $category_ids)

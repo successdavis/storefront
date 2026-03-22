@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Admin\AdminBrandController;
 use App\Http\Controllers\Admin\AdminCategoryController;
+use App\Http\Controllers\Admin\CouponController as AdminCouponController;
+use App\Http\Controllers\Admin\DiscountController as AdminDiscountController;
 use App\Http\Controllers\Admin\AdminOrderController;
 use App\Http\Controllers\Admin\AdminProductController;
 use App\Http\Controllers\Admin\AdminProductVariantController;
@@ -241,6 +243,43 @@ Route::prefix('admin')
         Route::resource('brands', AdminBrandController::class)->except(['show']);
         Route::patch('brands/{brand}/toggle-top', [AdminBrandController::class, 'toggleTop'])
             ->name('brands.toggle-top');
+        Route::get('discounts', [AdminDiscountController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('discounts.index');
+        Route::get('discounts/create', [AdminDiscountController::class, 'create'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('discounts.create');
+        Route::post('discounts', [AdminDiscountController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('discounts.store');
+        Route::get('discounts/{discount}/edit', [AdminDiscountController::class, 'edit'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('discounts.edit');
+        Route::put('discounts/{discount}', [AdminDiscountController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('discounts.update');
+        Route::patch('discounts/{discount}/toggle-status', [AdminDiscountController::class, 'toggleStatus'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('discounts.toggle-status');
+
+        Route::get('coupons', [AdminCouponController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('coupons.index');
+        Route::get('coupons/create', [AdminCouponController::class, 'create'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('coupons.create');
+        Route::post('coupons', [AdminCouponController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('coupons.store');
+        Route::get('coupons/{coupon}/edit', [AdminCouponController::class, 'edit'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('coupons.edit');
+        Route::put('coupons/{coupon}', [AdminCouponController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('coupons.update');
+        Route::patch('coupons/{coupon}/toggle-status', [AdminCouponController::class, 'toggleStatus'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('coupons.toggle-status');
 
         Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');
@@ -353,7 +392,7 @@ Route::prefix('admin')
         // Finalize sale
         Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->middleware('permission.any:sales.pos.use')->name('pos.placeOrder');
         Route::get('/pos/sales', [PosController::class, 'salesOrders'])->middleware('permission.any:sales.pos.use')->name('pos.orders');
-        Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->name('pos.orders');
+        Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->name('pos.print');
 
         // optional: incremental product loading API
         Route::get('/pos/products', [PosController::class, 'productsApi'])->name('pos.products.api');

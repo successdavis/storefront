@@ -38,7 +38,7 @@ export default {
 <template>
     <Head title="Log in" />
 
-    <div class="mx-auto w-full max-w-xl">
+    <div class="mx-auto w-full max-w-lg">
         <div class="rounded-3xl border border-slate-200/80 bg-white/95 p-6 shadow-xl shadow-slate-200/40 backdrop-blur sm:p-8">
             <!-- Header -->
             <div class="mb-8 space-y-3 text-center">
@@ -86,11 +86,11 @@ export default {
             >
                 <!-- Google auth -->
                 <div class="space-y-4">
-                    <AuthGoogleButton class="h-15" label="Continue with Google" />
+                    <AuthGoogleButton class=" text-[15px] lg:text-[18px]" label="Continue with Google" />
 
                     <div class="flex items-center gap-3">
                         <div class="h-px flex-1 bg-slate-200" />
-                        <span class="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        <span class="text-[12px] font-semibold uppercase tracking-[0.24em] text-slate-400">
                             or continue with email
                         </span>
                         <div class="h-px flex-1 bg-slate-200" />
@@ -101,7 +101,7 @@ export default {
                 <div class="space-y-2.5">
                     <Label
                         for="email"
-                        class="text-sm font-semibold text-slate-700"
+                        class="text-sm xl:text-lg font-semibold text-slate-700"
                     >
                         Email address
                     </Label>
@@ -117,7 +117,7 @@ export default {
                             :tabindex="1"
                             autocomplete="email"
                             placeholder="name@company.com"
-                            class="h-15 rounded-2xl border-slate-200 dark:bg-white bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
+                            class="h-13 rounded-2xl border-slate-200 dark:bg-white bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
                         />
                     </div>
 
@@ -129,7 +129,7 @@ export default {
                     <div class="flex items-center justify-between gap-4">
                         <Label
                             for="password"
-                            class="text-sm font-semibold text-slate-700"
+                            class="text-sm xl:text-lg font-semibold text-slate-700"
                         >
                             Password
                         </Label>
@@ -154,7 +154,7 @@ export default {
                             :tabindex="2"
                             autocomplete="current-password"
                             placeholder="Enter your password"
-                            class="h-15 rounded-2xl border-slate-200 bg-white dark:bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
+                            class="h-13 rounded-2xl border-slate-200 bg-white dark:bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
                         />
                     </div>
 
@@ -178,7 +178,7 @@ export default {
                     :tabindex="4"
                     :disabled="processing"
                     data-test="login-button"
-                    class="group h-15 w-full rounded-2xl bg-slate-900 text-sm font-semibold text-white shadow-lg shadow-slate-300/40 transition hover:bg-slate-800 disabled:opacity-70"
+                    class="group h-15 w-full rounded-2xl bg-slate-900 text-sm xl:text-lg font-semibold text-white shadow-lg shadow-slate-300/40 transition hover:bg-slate-800 disabled:opacity-70"
                 >
                     <LoaderCircle
                         v-if="processing"

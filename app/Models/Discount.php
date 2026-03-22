@@ -25,12 +25,23 @@ class Discount extends Model
 {
     use HasFactory;
 
+    public const TYPE_PERCENTAGE = 'percentage';
+    public const TYPE_FIXED_AMOUNT = 'fixed_amount';
+    public const TYPE_FREE_SHIPPING = 'free_shipping';
+
+    public const APPLICATION_ORDER_TOTAL = 'order_total';
+    public const APPLICATION_LINE_ITEM = 'line_item';
+
+    public const CUSTOMER_SCOPE_ALL = 'all';
+    public const CUSTOMER_SCOPE_NEW = 'new_customers';
+    public const CUSTOMER_SCOPE_SELECTED = 'selected_customers';
+
     protected $table = 'discounts';
 
     protected $fillable = [
-        'name', 'code', 'type', 'value',
+        'name', 'description', 'code', 'type', 'value', 'application_method',
         'min_order_amount', 'usage_limit', 'usage_limit_per_user',
-        'starts_at', 'ends_at', 'customer_scope', 'is_active',
+        'starts_at', 'ends_at', 'customer_scope', 'priority', 'is_active',
     ];
 
     protected $casts = [
@@ -38,6 +49,7 @@ class Discount extends Model
         'min_order_amount'  => 'decimal:2',
         'starts_at'         => 'datetime',
         'ends_at'           => 'datetime',
+        'priority'          => 'integer',
         'is_active'         => 'boolean',
     ];
 
@@ -109,6 +121,21 @@ class Discount extends Model
         return $query->whereNull('code');
     }
 
+    public function scopeCoupons(Builder $query): Builder
+    {
+        return $query->whereNotNull('code');
+    }
+
+    public function scopeOrderTotal(Builder $query): Builder
+    {
+        return $query->where('application_method', self::APPLICATION_ORDER_TOTAL);
+    }
+
+    public function scopeLineItem(Builder $query): Builder
+    {
+        return $query->where('application_method', self::APPLICATION_LINE_ITEM);
+    }
+
     public function scopeForCode(Builder $query, string $code): Builder
     {
         return $query->where('code', $code);
@@ -167,5 +194,22 @@ class Discount extends Model
         $used = $pivot ? (int) $pivot->times_used : 0;
 
         return max($this->usage_limit_per_user - $used, 0);
+    }
+
+    public function isCoupon(): bool
+    {
+        return filled($this->code);
+    }
+
+    public function isLineItemDiscount(): bool
+    {
+        return $this->application_method === self::APPLICATION_LINE_ITEM;
+    }
+
+    public function hasScopeConstraints(): bool
+    {
+        return $this->products()->exists()
+            || $this->variants()->exists()
+            || $this->categories()->exists();
     }
 }

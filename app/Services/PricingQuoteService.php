@@ -63,7 +63,12 @@ class PricingQuoteService
             ]);
         }
 
-        $items = $this->resolveItems($payloadItems);
+        $user = $payload['user'] ?? null;
+        if (!$user instanceof User && $user !== null) {
+            throw new \InvalidArgumentException('user must be an instance of User or null');
+        }
+
+        $items = $this->resolveItems($payloadItems, $user);
         $subtotal = round((float) collect($items)->sum('line_total'), 2);
 
         $shippingSnapshot = $this->normalizeShippingSnapshot($payload['shipping'] ?? null);
@@ -74,12 +79,6 @@ class PricingQuoteService
         $taxTotal = round((float) ($payload['tax_total'] ?? 0.0), 2);
         $channel = strtolower((string) ($payload['channel'] ?? 'online'));
         $coupon = $this->normalizeCoupon($payload['coupon'] ?? null);
-        $user = $payload['user'] ?? null;
-
-        if (!$user instanceof User && $user !== null) {
-            throw new \InvalidArgumentException('user must be an instance of User or null');
-        }
-
         $discountQuote = $this->discountService->previewQuote(
             user: $user,
             items: $items,
@@ -117,7 +116,7 @@ class PricingQuoteService
         ];
     }
 
-    protected function resolveItems(array $payloadItems): array
+    protected function resolveItems(array $payloadItems, ?User $user = null): array
     {
         $variantIds = collect($payloadItems)
             ->pluck('variant_id')
@@ -148,7 +147,7 @@ class PricingQuoteService
                 ]);
             }
 
-            $pricing = $this->productService->resolveVariantPricing($variant);
+            $pricing = $this->productService->resolveVariantPricing($variant, $user, $variant->product);
             $unitPrice = round((float) ($pricing['current'] ?? 0), 2);
             $lineTotal = round($unitPrice * $quantity, 2);
 
@@ -231,4 +230,3 @@ class PricingQuoteService
         return $value !== '' ? $value : null;
     }
 }
-
