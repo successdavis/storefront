@@ -10,6 +10,8 @@ use App\Http\Controllers\Admin\AdminProductVariantController;
 use App\Http\Controllers\Admin\AdminSkuController;
 use App\Http\Controllers\Admin\ProductImageController;
 use App\Http\Controllers\Admin\PaymentRecoveryController;
+use App\Http\Controllers\Admin\ShippingMethodController as AdminShippingMethodController;
+use App\Http\Controllers\Admin\ShippingRateController as AdminShippingRateController;
 use App\Http\Controllers\Admin\VariantTypeController;
 use App\Http\Controllers\Admin\AdminVariantValueController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -280,6 +282,44 @@ Route::prefix('admin')
         Route::patch('coupons/{coupon}/toggle-status', [AdminCouponController::class, 'toggleStatus'])
             ->middleware('permission.any:admin.catalog.manage')
             ->name('coupons.toggle-status');
+
+        Route::get('shipping-methods', [AdminShippingMethodController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-methods.index');
+        Route::get('shipping-methods/create', [AdminShippingMethodController::class, 'create'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-methods.create');
+        Route::post('shipping-methods', [AdminShippingMethodController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-methods.store');
+        Route::get('shipping-methods/{shippingMethod}/edit', [AdminShippingMethodController::class, 'edit'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-methods.edit');
+        Route::put('shipping-methods/{shippingMethod}', [AdminShippingMethodController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-methods.update');
+        Route::patch('shipping-methods/{shippingMethod}/toggle-status', [AdminShippingMethodController::class, 'toggleStatus'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-methods.toggle-status');
+
+        Route::get('shipping-rates', [AdminShippingRateController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-rates.index');
+        Route::get('shipping-rates/create', [AdminShippingRateController::class, 'create'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-rates.create');
+        Route::post('shipping-rates', [AdminShippingRateController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-rates.store');
+        Route::get('shipping-rates/{shippingRate}/edit', [AdminShippingRateController::class, 'edit'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-rates.edit');
+        Route::put('shipping-rates/{shippingRate}', [AdminShippingRateController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-rates.update');
+        Route::patch('shipping-rates/{shippingRate}/toggle-status', [AdminShippingRateController::class, 'toggleStatus'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('shipping-rates.toggle-status');
 
         Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');

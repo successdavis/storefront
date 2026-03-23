@@ -10,10 +10,11 @@ use App\Models\PickupLocation;
 use App\Models\ShippingMethod;
 use App\Models\State;
 use App\Models\User;
+use App\Services\Shipping\ShippingCostService;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -28,6 +29,7 @@ class CheckoutService
         protected StockReservationService $stockReservationService,
         protected DiscountService $discountService,
         protected CustomerAddressService $customerAddressService,
+        protected ShippingCostService $shippingCostService,
     ) {}
 
     public function getCheckoutData(User $user, array $params = []): array
@@ -410,10 +412,9 @@ class CheckoutService
             $pickupLocation = PickupLocation::query()
                 ->whereKey((int) $selected['pickup_location_id'])
                 ->where('is_active', true)
-                ->where('state_id', (int) $selected['state_id'])
                 ->first();
 
-            if (!$pickupLocation) {
+            if (!$pickupLocation || !$this->shippingCostService->pickupLocationMatchesState($pickupLocation, (int) $selected['state_id'])) {
                 throw ValidationException::withMessages([
                     'pickup_location_id' => 'Selected pickup location is invalid for the chosen state.',
                 ]);
@@ -670,11 +671,14 @@ class CheckoutService
         return Cache::remember(
             'checkout:shipping_methods',
             now()->addHours(12),
-            fn () => ShippingMethod::query()
-                ->select('id', 'name')
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get()
+            fn () => $this->shippingCostService->listActiveMethods()
+                ->map(fn (ShippingMethod $method) => [
+                    'id' => (int) $method->id,
+                    'name' => $method->name,
+                    'description' => $method->description,
+                    'method_type' => $method->method_type,
+                    'sort_order' => (int) $method->sort_order,
+                ])
         );
     }
 
@@ -696,12 +700,8 @@ class CheckoutService
             return [];
         }
 
-        return PickupLocation::query()
-            ->where('is_active', true)
-            ->where('state_id', $stateId)
-            ->where('shipping_method_id', $shippingMethodId)
-            ->orderBy('name')
-            ->get(['id', 'name', 'address_line1', 'phone'])
+        return $this->shippingCostService
+            ->listPickupLocationsForState($stateId, $shippingMethodId)
             ->map(fn (PickupLocation $location) => [
                 'id' => (int) $location->id,
                 'name' => $location->name,
@@ -718,9 +718,7 @@ class CheckoutService
             return false;
         }
 
-        $methodName = ShippingMethod::query()->whereKey($shippingMethodId)->value('name');
-
-        return is_string($methodName) && str_contains(Str::lower($methodName), 'pickup');
+        return $this->shippingCostService->isPickupMethod($shippingMethodId);
     }
 
     protected function mapPaystackMethod(string $channel): string

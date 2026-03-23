@@ -112,6 +112,11 @@ const currentMethod = computed(() => {
 })
 
 const isPickupMethod = computed(() => {
+    const methodType = String(currentMethod.value?.method_type || '').toLowerCase()
+    if (methodType !== '') {
+        return methodType === 'pickup'
+    }
+
     const methodName = String(currentMethod.value?.name || '').toLowerCase()
     return methodName.includes('pickup')
 })
@@ -384,6 +389,10 @@ function payNow() {
                                 {{ method.name }}
                             </option>
                         </select>
+
+                        <p v-if="currentMethod?.description" class="mt-2 text-xs text-slate-500">
+                            {{ currentMethod.description }}
+                        </p>
                     </div>
 
                     <div>

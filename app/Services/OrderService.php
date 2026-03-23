@@ -6,9 +6,11 @@ use App\Exceptions\InsufficientStockException;
 use App\Models\Address;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Pickup;
 use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\Shipment;
+use App\Models\ShippingMethod;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -293,8 +295,11 @@ class OrderService
             'shippable_type' => Order::class,
             'shippable_id' => $order->id,
             'shipping_method_id' => $shipping['shipping_method_id'] ?? null,
+            'type' => !empty($shipping['pickup_location_id']) ? 'pickup' : 'delivery',
             'weight' => $shipping['weight'] ?? 0,
             'cost' => (float) $session->shipping_total,
+            'shipping_zone_id' => $shipping['shipping_zone_id'] ?? null,
+            'currency' => $shipping['currency'] ?? 'NGN',
         ]);
 
         $line1 = $shipping['line1'] ?? $shipping['address'] ?? data_get($shipping, 'address.line1');
@@ -319,6 +324,16 @@ class OrderService
                 'country_id' => $countryId,
                 'state_id' => $stateId,
                 'lga_id' => $lgaId,
+            ]);
+        }
+
+        if (!empty($shipping['pickup_location_id'])) {
+            Pickup::query()->create([
+                'shipment_id' => $shipment->id,
+                'pickup_location_id' => (int) $shipping['pickup_location_id'],
+                'contact_name' => $recipientName,
+                'contact_phone' => $phone,
+                'reference' => 'PU-' . strtoupper(Str::random(8)),
             ]);
         }
 

@@ -181,6 +181,7 @@ class PricingQuoteService
             'shipping_zone_id' => $shippingSnapshot['shipping_zone_id'],
             'pickup_location_id' => $shippingSnapshot['pickup_location_id'],
             'state_id' => $shippingSnapshot['state_id'],
+            'lga_id' => $shippingSnapshot['lga_id'],
             'subtotal' => $subtotal,
             'items' => collect($items)->map(fn (array $item) => [
                 'variant_id' => (int) $item['variant_id'],

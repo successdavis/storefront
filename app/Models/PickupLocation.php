@@ -10,6 +10,25 @@ class PickupLocation extends Model
       'phone','email','timezone','opening_hours','slot_duration_minutes','capacity_per_slot','lead_time_hours','is_active'
     ];
 
-    protected $casts = ['opening_hours' => 'array','is_active' => 'boolean'];
-    public function method() { return $this->belongsTo(ShippingMethod::class, 'shipping_method_id'); }
+    protected $casts = ['opening_hours' => 'array', 'is_active' => 'boolean'];
+
+    public function method()
+    {
+        return $this->belongsTo(ShippingMethod::class, 'shipping_method_id');
+    }
+
+    public function zone()
+    {
+        return $this->belongsTo(ShippingZone::class, 'shipping_zone_id');
+    }
+
+    public function state()
+    {
+        return $this->belongsTo(State::class);
+    }
+
+    public function lga()
+    {
+        return $this->belongsTo(Lga::class);
+    }
 }

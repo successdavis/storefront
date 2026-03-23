@@ -18,7 +18,7 @@
                     </div>
 
                     <!-- Receiver's Phone (hidden for Pickup) -->
-                    <div v-if="selectedMethodName !== 'Pickup'">
+                    <div v-if="!isPickupMethod">
                         <label class="block text-sm mb-1">Receiver's Phone</label>
                         <input
                             v-model.trim="form.phone"
@@ -28,7 +28,7 @@
                     </div>
 
                     <!-- Pickup Location (only when Pickup) -->
-                    <div v-if="selectedMethodName === 'Pickup'">
+                    <div v-if="isPickupMethod">
                         <label class="block text-sm mb-1">Pickup Location</label>
                         <select v-model="form.pickup_location_id" class="w-full rounded border px-3 py-2">
                             <option class="dark:text-black" :value="null">— Select Pickup Location</option>
@@ -40,7 +40,7 @@
                 </div>
 
                 <!-- Address (hidden for Pickup) -->
-                <div v-if="selectedMethodName !== 'Pickup'" class="grid grid-cols-2 mb-6 gap-3">
+                <div v-if="!isPickupMethod" class="grid grid-cols-2 mb-6 gap-3">
                     <!-- Country -->
                     <div>
                         <label class="mb-1 block text-sm">Country</label>
@@ -130,9 +130,18 @@ const form = reactive({
 })
 
 /** Derived: selected method name */
-const selectedMethodName = computed(() => {
-    const m = props.methods.find(m => m.id === form.shipping_method_id)
-    return m?.name ?? ''
+const selectedMethod = computed(() => {
+    const m = props.methods.find(m => Number(m.id) === Number(form.shipping_method_id))
+    return m ?? null
+})
+
+const isPickupMethod = computed(() => {
+    const methodType = String(selectedMethod.value?.method_type ?? '').toLowerCase()
+    if (methodType !== '') {
+        return methodType === 'pickup'
+    }
+
+    return String(selectedMethod.value?.name ?? '').toLowerCase() === 'pickup'
 })
 
 /** Validation */
@@ -140,7 +149,7 @@ const canSave = computed(() => {
     if (!form.shipping_method_id) return false
 
     // Pickup: only pickup_location is required
-    if (selectedMethodName.value === 'Pickup') {
+    if (isPickupMethod.value) {
         return !!form.pickup_location_id
     }
 
@@ -178,12 +187,12 @@ function emitShipment() {
 
     const payload = {
         shipping_method_id: form.shipping_method_id,
-        pickup_location_id: selectedMethodName.value === 'Pickup' ? form.pickup_location_id : null,
-        phone: selectedMethodName.value === 'Pickup' ? null : form.phone,
-        country_id: selectedMethodName.value === 'Pickup' ? null : form.country_id,
-        state_id: selectedMethodName.value === 'Pickup' ? null : form.state_id,
-        lga_id: selectedMethodName.value === 'Pickup' ? null : form.lga_id,
-        address: selectedMethodName.value === 'Pickup' ? null : form.line1,
+        pickup_location_id: isPickupMethod.value ? form.pickup_location_id : null,
+        phone: isPickupMethod.value ? null : form.phone,
+        country_id: isPickupMethod.value ? null : form.country_id,
+        state_id: form.state_id,
+        lga_id: isPickupMethod.value ? null : form.lga_id,
+        address: isPickupMethod.value ? null : form.line1,
     }
 
     emit('created', payload)

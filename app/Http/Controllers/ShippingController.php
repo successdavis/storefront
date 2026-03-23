@@ -2,13 +2,10 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\ShippingRateNotFoundException;
-use App\Models\ShippingMethod;
 use App\Models\ShippingZone;
-use App\Models\ShippingRate;
 use App\Models\PickupLocation;
 use App\Models\Shipment;
 use App\Models\Pickup;
-use App\Models\ShippingZoneState;
 use App\Services\Shipping\ShippingCostService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -25,7 +22,16 @@ class ShippingController extends Controller
 
     public function methods()
     {
-        $methods = ShippingMethod::where('is_active', true)->select('id','name')->get();
+        $methods = $this->shipService->listActiveMethods()
+            ->map(fn ($method) => [
+                'id' => (int) $method->id,
+                'name' => $method->name,
+                'description' => $method->description,
+                'method_type' => $method->method_type,
+                'sort_order' => (int) $method->sort_order,
+            ])
+            ->values();
+
         return response()->json($methods);
     }
 
@@ -37,7 +43,10 @@ class ShippingController extends Controller
 
     public function pickupLocations()
     {
-        $locations = PickupLocation::where('is_active', true)->get();
+        $locations = PickupLocation::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
         return response()->json($locations);
     }
 
@@ -46,29 +55,20 @@ class ShippingController extends Controller
         $cacheKey = "pickup_locations_state_{$stateId}";
 
         return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($stateId) {
-
-            // Get zones for this state
-            $zoneIds = ShippingZoneState::where('state_id', $stateId)
-                ->pluck('shipping_zone_id');
-
-            return PickupLocation::query()
-                ->where('is_active', true)
-                ->where(function ($q) use ($stateId, $zoneIds) {
-                    $q->where('state_id', $stateId)
-                        ->orWhereIn('shipping_zone_id', $zoneIds);
-                })
-                ->select([
-                    'id',
-                    'name',
-                    'address_line1',
-                    'address_line2',
-                    'state_id',
-                    'lga_id',
-                    'latitude',
-                    'longitude'
+            return $this->shipService
+                ->listPickupLocationsForState((int) $stateId)
+                ->map(fn (PickupLocation $location) => [
+                    'id' => (int) $location->id,
+                    'name' => $location->name,
+                    'address_line1' => $location->address_line1,
+                    'address_line2' => $location->address_line2,
+                    'state_id' => $location->state_id ? (int) $location->state_id : null,
+                    'lga_id' => $location->lga_id ? (int) $location->lga_id : null,
+                    'latitude' => $location->latitude,
+                    'longitude' => $location->longitude,
+                    'phone' => $location->phone,
                 ])
-                ->orderBy('name')
-                ->get();
+                ->values();
         });
     }
 
@@ -78,6 +78,8 @@ class ShippingController extends Controller
             'shipping_method_id' => 'required|integer|exists:shipping_methods,id',
             'shipping_zone_id' => 'nullable|integer|exists:shipping_zones,id',
             'state_id' => 'nullable|integer|exists:states,id',
+            'lga_id' => 'nullable|integer|exists:lgas,id',
+            'pickup_location_id' => 'nullable|integer|exists:pickup_locations,id',
             'weight_kg' => 'nullable|numeric|min:0',
             'subtotal' => 'nullable|numeric|min:0',
             'items' => 'nullable|array',
@@ -162,13 +164,13 @@ class ShippingController extends Controller
 
     public function zoneByState($stateId)
     {
-        $zoneState = ShippingZoneState::where('state_id', $stateId)->first();
+        $zoneId = $this->shipService->resolveZoneForState((int) $stateId);
 
-        if (!$zoneState) {
+        if (!$zoneId) {
             return response()->json(['message' => 'No zone found for this state'], 404);
         }
 
-        return response()->json(['zone_id' => $zoneState->shipping_zone_id]);
+        return response()->json(['zone_id' => $zoneId]);
     }
 
 }

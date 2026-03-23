@@ -23,4 +23,9 @@ class State extends Model
     {
         return $this->belongsToMany(ShippingZone::class, 'shipping_zone_states');
     }
+
+    public function shippingZones()
+    {
+        return $this->shippingZone();
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ShippingRateNotFoundException;
 use App\Models\User;
 use App\Services\PricingQuoteService;
 use Carbon\Carbon;
@@ -32,14 +33,23 @@ class CheckoutPreviewController extends Controller
         $channel = $data['channel'] ?? 'online';
         $user = $this->resolveUserId($data, $channel);
 
-        $quote = $this->pricingQuoteService->quote([
-            'items' => $data['items'],
-            'shipping' => $data['shipping'] ?? null,
-            'coupon' => $data['coupon'] ?? null,
-            'channel' => $channel,
-            'user' => $user,
-            'tax_total' => 0.0,
-        ]);
+        try {
+            $quote = $this->pricingQuoteService->quote([
+                'items' => $data['items'],
+                'shipping' => $data['shipping'] ?? null,
+                'coupon' => $data['coupon'] ?? null,
+                'channel' => $channel,
+                'user' => $user,
+                'tax_total' => 0.0,
+            ]);
+        } catch (ShippingRateNotFoundException | InvalidArgumentException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'errors' => [
+                    'shipping' => [$exception->getMessage()],
+                ],
+            ], 422);
+        }
 
         $now = Carbon::now();
         $expiresAt = $now->copy()->addMinutes(30);

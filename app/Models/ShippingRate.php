@@ -5,16 +5,34 @@ use Illuminate\Database\Eloquent\Model;
 class ShippingRate extends Model
 {
     protected $fillable = [
-      'shipping_method_id','shipping_zone_id','min_weight','max_weight','min_subtotal','max_subtotal',
-      'rate_type','base_rate','per_kg','surcharge','free_shipping_threshold','currency','starts_at','ends_at','is_active'
+      'shipping_method_id', 'shipping_zone_id', 'state_id', 'lga_id', 'min_weight', 'max_weight', 'min_subtotal', 'max_subtotal',
+      'rate_type', 'base_rate', 'per_kg', 'surcharge', 'free_shipping_threshold', 'estimated_delivery_text', 'currency', 'starts_at', 'ends_at', 'is_active', 'sort_order'
     ];
 
     protected $casts = [
       'starts_at' => 'datetime',
       'ends_at' => 'datetime',
       'is_active' => 'boolean',
+      'sort_order' => 'integer',
     ];
 
-    public function method() { return $this->belongsTo(ShippingMethod::class, 'shipping_method_id'); }
-    public function zone() { return $this->belongsTo(ShippingZone::class, 'shipping_zone_id'); }
+    public function method()
+    {
+        return $this->belongsTo(ShippingMethod::class, 'shipping_method_id');
+    }
+
+    public function zone()
+    {
+        return $this->belongsTo(ShippingZone::class, 'shipping_zone_id');
+    }
+
+    public function state()
+    {
+        return $this->belongsTo(State::class);
+    }
+
+    public function lga()
+    {
+        return $this->belongsTo(Lga::class);
+    }
 }

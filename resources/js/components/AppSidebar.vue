@@ -28,6 +28,7 @@ import {
     ShoppingBag,
     ShoppingCart,
     Store,
+    Truck,
     Users,
 } from 'lucide-vue-next';
 import { computed } from 'vue';
@@ -65,6 +66,14 @@ const adminNavItems: MainNavItem[] = [
             { title: 'Variants', href: '/admin/variant-types' },
             { title: 'Discounts', href: '/admin/discounts' },
             { title: 'Coupons', href: '/admin/coupons' },
+        ],
+    },
+    {
+        title: 'Shipping',
+        icon: Truck,
+        subItems: [
+            { title: 'Shipping Methods', href: '/admin/shipping-methods' },
+            { title: 'Shipping Rates', href: '/admin/shipping-rates' },
         ],
     },
     {

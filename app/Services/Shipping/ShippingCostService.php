@@ -3,88 +3,80 @@
 namespace App\Services\Shipping;
 
 use App\Exceptions\ShippingRateNotFoundException;
-use App\Models\ShippingRate;
+use App\Models\PickupLocation;
 use App\Models\ProductVariant;
+use App\Models\ShippingMethod;
+use App\Models\ShippingRate;
 use App\Models\State;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Arr;
 
 class ShippingCostService
 {
     public function calculate(array $payload): array
     {
-        $now = Carbon::now();
-
         if (!isset($payload['shipping_method_id'])) {
             throw new \InvalidArgumentException('shipping_method_id is required');
         }
 
-        $shippingMethodId = (int) $payload['shipping_method_id'];
-        $subtotal = isset($payload['subtotal']) ? (float) $payload['subtotal'] : 0.0;
-        $weightKg = isset($payload['weight_kg']) ? (float) $payload['weight_kg'] : 0.0;
-        $shippingZoneId = $payload['shipping_zone_id'] ?? null;
-        $stateId = $payload['state_id'] ?? null;
-        $volumetricDivisor = $payload['volumetric_divisor'] ?? 5000.0;
-        $useVolumetric = ($payload['use_volumetric'] ?? true);
-
-        if (is_null($shippingZoneId) && !is_null($stateId)) {
-            $shippingZoneId = $this->resolveZoneForState((int)$stateId);
+        $method = $this->resolveMethod((int) $payload['shipping_method_id']);
+        if (!$method || !$method->is_active) {
+            throw new ShippingRateNotFoundException('The selected shipping method is not available.');
         }
 
-
-        // 1) compute volumetric weight if items provided and volumetric enabled
+        $subtotal = isset($payload['subtotal']) ? (float) $payload['subtotal'] : 0.0;
+        $weightKg = isset($payload['weight_kg']) ? (float) $payload['weight_kg'] : (float) ($payload['weight'] ?? 0.0);
+        $shippingZoneId = !empty($payload['shipping_zone_id']) ? (int) $payload['shipping_zone_id'] : null;
+        $stateId = !empty($payload['state_id']) ? (int) $payload['state_id'] : null;
+        $lgaId = !empty($payload['lga_id']) ? (int) $payload['lga_id'] : null;
+        $pickupLocationId = !empty($payload['pickup_location_id']) ? (int) $payload['pickup_location_id'] : null;
+        $volumetricDivisor = (float) ($payload['volumetric_divisor'] ?? 5000.0);
+        $useVolumetric = (bool) ($payload['use_volumetric'] ?? true);
         $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
 
+        if ($shippingZoneId === null && $stateId !== null) {
+            $shippingZoneId = $this->resolveZoneForState($stateId);
+        }
+
+        if ($this->isPickupMethod($method)) {
+            return $this->calculatePickup($method, $pickupLocationId, $stateId, $shippingZoneId);
+        }
+
         if ($useVolumetric && !empty($items)) {
-            $volumetricWeight = $this->computeVolumetricWeight($items, (float)$volumetricDivisor);
-            // use greater of actual weight and volumetric
+            $volumetricWeight = $this->computeVolumetricWeight($items, $volumetricDivisor);
             $weightKg = max($weightKg, $volumetricWeight);
-            Log::channel('shippingcost')->debug('Volumetric weight computed', ['volumetricKg' => $volumetricWeight, 'weightKg' => $weightKg]);
         }
 
-        // 2) If weight still zero or not provided => compute weight from items/variants
         if ($weightKg <= 0.0 && !empty($items)) {
-            $computedWeight = $this->computeWeightFromItems($items);
-            if ($computedWeight > 0.0) {
-                $weightKg = $computedWeight;
-                Log::channel('shippingcost')->debug('Computed weight from items/variants', ['computedKg' => $computedWeight]);
-            } else {
-                Log::channel('shippingcost')->debug('Computed weight from items returned 0. Items payload', ['items' => $items]);
-            }
+            $weightKg = max($weightKg, $this->computeWeightFromItems($items));
         }
 
-        // 3) find applicable rates
-        $rates = $this->getApplicableRates($shippingMethodId, $shippingZoneId, $now, $subtotal, $weightKg);
+        $rates = ShippingRate::query()
+            ->with(['method:id,name,method_type', 'zone:id,name', 'state:id,name', 'lga:id,name'])
+            ->where('shipping_method_id', $method->id)
+            ->where('is_active', true)
+            ->where(function ($query) {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->where(function ($query) {
+                $query->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+            })
+            ->get()
+            ->filter(fn (ShippingRate $rate) => $this->rateMatchesScope($rate, $shippingZoneId, $stateId, $lgaId))
+            ->filter(fn (ShippingRate $rate) => $this->rateMatchesThresholds($rate, $subtotal, $weightKg))
+            ->values();
+
         if ($rates->isEmpty()) {
-            $rates = $this->getApplicableRates($shippingMethodId, null, $now, $subtotal, $weightKg);
-        }
-        if ($rates->isEmpty()) {
-            throw new ShippingRateNotFoundException('We couldn’t find a shipping option for your selected location. Please Try other shipping methods');
+            throw new ShippingRateNotFoundException('No shipping rate is configured for the selected method and location.');
         }
 
-        // 4) select rate and compute cost
-        $rate = $this->selectBestRate($rates, $weightKg, $subtotal);
-
-        // guard: if rate depends on weight but weight is still zero -> fail with clear message
-        if (in_array($rate->rate_type, ['per_kg', 'hybrid']) && $weightKg <= 0) {
-            // Defensive — prefer throwing error than silently returning base rate only
-            throw new \InvalidArgumentException("Weight must be provided or derivable from items for rate_type '{$rate->rate_type}'.");
-        }
-
-        Log::channel('shippingcost')->debug('ShippingRate used', [
-            'id' => $rate->id,
-            'rate_type' => $rate->rate_type,
-            'base_rate' => (string)$rate->base_rate,
-            'per_kg' => (string)$rate->per_kg,
-            'weightKg' => $weightKg,
-            'zone_id' => $shippingZoneId,
-        ]);
-
-        $calculation = $this->calculateByRateType($rate, $weightKg, $subtotal);
-
+        $rate = $this->selectBestRate($rates, $shippingZoneId, $stateId, $lgaId);
+        $calculation = $this->calculateByRateType($rate, $weightKg);
         $surcharge = (float) $rate->surcharge;
+
         $calculation['surcharge'] = round($surcharge, 2);
         $calculation['total_before_free_check'] = round($calculation['total'] + $surcharge, 2);
 
@@ -92,97 +84,197 @@ class ShippingCostService
             $calculation['total'] = 0.00;
             $calculation['free_shipping_applied'] = true;
         } else {
-            $calculation['total'] = round($calculation['total'] + $surcharge, 2);
+            $calculation['total'] = round(max($calculation['total'] + $surcharge, 0), 2);
             $calculation['free_shipping_applied'] = false;
         }
 
         $calculation['currency'] = $rate->currency ?? 'NGN';
         $calculation['rate_id'] = $rate->id;
-        $calculation['shipping_method_id'] = $shippingMethodId;
-        $calculation['shipping_zone_id'] = $shippingZoneId;
-        $calculation['used_volumetric_kg'] = $useVolumetric ? round($weightKg, 3) : null;
+        $calculation['shipping_method_id'] = $method->id;
+        $calculation['shipping_zone_id'] = $rate->shipping_zone_id ?? $shippingZoneId;
+        $calculation['state_id'] = $rate->state_id ?? $stateId;
+        $calculation['lga_id'] = $rate->lga_id ?? $lgaId;
+        $calculation['used_weight_kg'] = round($weightKg, 3);
         $calculation['rate_type'] = $rate->rate_type;
+        $calculation['estimated_delivery_text'] = $rate->estimated_delivery_text;
+        $calculation['method_type'] = $method->method_type;
 
         return $calculation;
+    }
+
+    public function listActiveMethods(): EloquentCollection
+    {
+        return ShippingMethod::query()
+            ->active()
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function listPickupLocationsForState(?int $stateId, ?int $shippingMethodId = null): EloquentCollection
+    {
+        if (!$stateId) {
+            return new EloquentCollection();
+        }
+
+        $zoneId = $this->resolveZoneForState($stateId);
+
+        return PickupLocation::query()
+            ->with(['method:id,name,method_type', 'zone:id,name'])
+            ->where('is_active', true)
+            ->when($shippingMethodId, fn ($query) => $query->where('shipping_method_id', $shippingMethodId))
+            ->where(function ($query) use ($stateId, $zoneId) {
+                $query->where('state_id', $stateId);
+
+                if ($zoneId) {
+                    $query->orWhere('shipping_zone_id', $zoneId);
+                }
+            })
+            ->orderBy('name')
+            ->get();
+    }
+
+    public function resolveZoneForState(int $stateId): ?int
+    {
+        $state = State::query()->find($stateId);
+
+        return $state?->shippingZone()->first()?->id;
+    }
+
+    public function resolveMethod(?int $shippingMethodId): ?ShippingMethod
+    {
+        if (!$shippingMethodId) {
+            return null;
+        }
+
+        return ShippingMethod::query()->find($shippingMethodId);
+    }
+
+    public function isPickupMethod(ShippingMethod|int|null $method): bool
+    {
+        if (is_int($method)) {
+            $method = $this->resolveMethod($method);
+        }
+
+        return $method?->isPickup() ?? false;
+    }
+
+    public function pickupLocationMatchesState(PickupLocation $pickupLocation, ?int $stateId): bool
+    {
+        if (!$stateId) {
+            return true;
+        }
+
+        if ($pickupLocation->state_id && (int) $pickupLocation->state_id === $stateId) {
+            return true;
+        }
+
+        $zoneId = $this->resolveZoneForState($stateId);
+
+        return $zoneId !== null && (int) $pickupLocation->shipping_zone_id === $zoneId;
+    }
+
+    protected function calculatePickup(ShippingMethod $method, ?int $pickupLocationId, ?int $stateId, ?int $shippingZoneId): array
+    {
+        $pickupLocation = null;
+
+        if ($pickupLocationId) {
+            $pickupLocation = PickupLocation::query()
+                ->whereKey($pickupLocationId)
+                ->where('shipping_method_id', $method->id)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$pickupLocation) {
+                throw new ShippingRateNotFoundException('The selected pickup location is not available.');
+            }
+
+            if (!$this->pickupLocationMatchesState($pickupLocation, $stateId)) {
+                throw new ShippingRateNotFoundException('The selected pickup location is not valid for the chosen state.');
+            }
+        }
+
+        return [
+            'base_rate' => 0.0,
+            'per_kg' => 0.0,
+            'weight_kg' => 0.0,
+            'per_kg_total' => 0.0,
+            'total' => 0.0,
+            'surcharge' => 0.0,
+            'total_before_free_check' => 0.0,
+            'free_shipping_applied' => false,
+            'currency' => 'NGN',
+            'rate_id' => null,
+            'shipping_method_id' => $method->id,
+            'shipping_zone_id' => $pickupLocation?->shipping_zone_id ?? $shippingZoneId,
+            'state_id' => $pickupLocation?->state_id ?? $stateId,
+            'lga_id' => $pickupLocation?->lga_id,
+            'used_weight_kg' => 0.0,
+            'rate_type' => 'flat',
+            'estimated_delivery_text' => null,
+            'method_type' => $method->method_type,
+        ];
     }
 
     protected function computeVolumetricWeight(array $items, float $divisor = 5000.0): float
     {
         $totalVolKg = 0.0;
+
         foreach ($items as $item) {
-            $qty = max(1, (int)($item['quantity'] ?? 1));
-            $l = (float)($item['length_cm'] ?? 0.0);
-            $w = (float)($item['width_cm'] ?? 0.0);
-            $h = (float)($item['height_cm'] ?? 0.0);
-            if ($l <= 0 || $w <= 0 || $h <= 0) {
+            $qty = max(1, (int) ($item['quantity'] ?? 1));
+            $length = (float) ($item['length_cm'] ?? 0.0);
+            $width = (float) ($item['width_cm'] ?? 0.0);
+            $height = (float) ($item['height_cm'] ?? 0.0);
+
+            if ($length <= 0 || $width <= 0 || $height <= 0) {
                 continue;
             }
-            $vol = ($l * $w * $h) * $qty; // cm^3
-            $kg = $vol / $divisor; // convert to kg
-            $totalVolKg += $kg;
+
+            $totalVolKg += (($length * $width * $height) * $qty) / $divisor;
         }
 
         return (float) round($totalVolKg, 3);
     }
 
-    /**
-     * Compute gross weight (kg) from the items list.
-     *
-     * Items may include:
-     *  - 'weight' (kg) and 'quantity'
-     *  - OR 'variant_id' and 'quantity' (weight will be looked up in product_variants table)
-     *
-     * Returns total weight in kg (float).
-     */
     protected function computeWeightFromItems(array $items): float
     {
         $totalKg = 0.0;
         $variantIds = [];
         $pendingVariantQty = [];
 
-        // First pass: sum explicit weights and collect variant ids for lookup
-        foreach ($items as $i => $item) {
-            $qty = max(1, (int)($item['quantity'] ?? 1));
+        foreach ($items as $item) {
+            $qty = max(1, (int) ($item['quantity'] ?? 1));
 
-            // if item has weight explicitly provided (kg)
             if (isset($item['weight']) && is_numeric($item['weight'])) {
-                $w = (float)$item['weight'];
-                if ($w > 0) {
-                    $totalKg += $w * $qty;
+                $weight = (float) $item['weight'];
+
+                if ($weight > 0) {
+                    $totalKg += $weight * $qty;
                     continue;
                 }
             }
 
-            // otherwise attempt to resolve using variant_id
             $variantId = $item['variant_id'] ?? $item['product_variant_id'] ?? null;
             if ($variantId) {
-                $variantIds[] = (int)$variantId;
-                // record qty to apply once weights are fetched
-                if (!isset($pendingVariantQty[$variantId])) $pendingVariantQty[$variantId] = 0;
-                $pendingVariantQty[$variantId] += $qty;
+                $variantIds[] = (int) $variantId;
+                $pendingVariantQty[$variantId] = ($pendingVariantQty[$variantId] ?? 0) + $qty;
                 continue;
             }
 
-            // no weight and no variant -> can't derive weight for this line
             Log::channel('shippingcost')->debug('Item missing weight and variant_id', ['item' => $item]);
         }
 
-        // Bulk fetch variant weights to avoid N+1
         if (!empty($variantIds)) {
-            $variantIds = array_values(array_unique($variantIds));
-            $weights = ProductVariant::whereIn('id', $variantIds)
-                        ->pluck('weight', 'id')
-                        ->mapWithKeys(function ($value, $key) {
-                            // Ensure numeric cast
-                            return [$key => (float)$value];
-                        })->toArray();
+            $weights = ProductVariant::query()
+                ->whereIn('id', array_values(array_unique($variantIds)))
+                ->pluck('weight', 'id')
+                ->mapWithKeys(fn ($value, $key) => [$key => (float) $value])
+                ->all();
 
-            foreach ($pendingVariantQty as $vid => $qty) {
-                $w = Arr::get($weights, $vid, 0.0);
-                if ($w > 0) {
-                    $totalKg += ((float)$w * (int)$qty);
-                } else {
-                    Log::channel('shippingcost')->debug("Variant weight not found or zero", ['variant_id' => $vid, 'weight' => $w]);
+            foreach ($pendingVariantQty as $variantId => $qty) {
+                $weight = Arr::get($weights, $variantId, 0.0);
+                if ($weight > 0) {
+                    $totalKg += $weight * (int) $qty;
                 }
             }
         }
@@ -190,109 +282,123 @@ class ShippingCostService
         return (float) round($totalKg, 3);
     }
 
-    protected function resolveZoneForState(int $stateId): ?int
+    protected function rateMatchesScope(ShippingRate $rate, ?int $shippingZoneId, ?int $stateId, ?int $lgaId): bool
     {
-//        $zone = ShippingZone::whereHas('states', function ($q) use ($stateId) {
-//            $q->where('id', $stateId);
-//        })->first();
+        if ($rate->lga_id !== null) {
+            return $lgaId !== null && (int) $rate->lga_id === $lgaId;
+        }
 
-        $state = State::find($stateId);
+        if ($rate->state_id !== null) {
+            return $stateId !== null && (int) $rate->state_id === $stateId;
+        }
 
-        $zone = $state->shippingZone()->first();
+        if ($rate->shipping_zone_id !== null) {
+            return $shippingZoneId !== null && (int) $rate->shipping_zone_id === $shippingZoneId;
+        }
 
-        return $zone ? $zone->id : null;
+        return true;
     }
 
-    protected function getApplicableRates(int $shippingMethodId, $shippingZoneId = null, Carbon $now, float $subtotal = 0.0, float $weightKg = 0.0): Collection
+    protected function rateMatchesThresholds(ShippingRate $rate, float $subtotal, float $weightKg): bool
     {
-        $query = ShippingRate::query()
-            ->where('shipping_method_id', $shippingMethodId)
-            ->where('is_active', true)
-            ->where(function ($q) use ($shippingZoneId) {
-                if (is_null($shippingZoneId)) {
-                    // prefer zone-less and zone-specific; allow both so we can pick best later
-                    $q->whereNull('shipping_zone_id');
-                } else {
-                    $q->where('shipping_zone_id', $shippingZoneId);
+        if ($rate->min_weight !== null && $weightKg < (float) $rate->min_weight) {
+            return false;
+        }
+
+        if ($rate->max_weight !== null && $weightKg > (float) $rate->max_weight) {
+            return false;
+        }
+
+        if ($rate->min_subtotal !== null && $subtotal < (float) $rate->min_subtotal) {
+            return false;
+        }
+
+        if ($rate->max_subtotal !== null && $subtotal > (float) $rate->max_subtotal) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function selectBestRate(Collection $rates, ?int $shippingZoneId, ?int $stateId, ?int $lgaId): ShippingRate
+    {
+        return $rates
+            ->sort(function (ShippingRate $left, ShippingRate $right) use ($shippingZoneId, $stateId, $lgaId) {
+                $leftScope = $this->scopePriority($left, $shippingZoneId, $stateId, $lgaId);
+                $rightScope = $this->scopePriority($right, $shippingZoneId, $stateId, $lgaId);
+
+                if ($leftScope !== $rightScope) {
+                    return $rightScope <=> $leftScope;
                 }
+
+                $leftConstraintScore = $this->constraintPriority($left);
+                $rightConstraintScore = $this->constraintPriority($right);
+
+                if ($leftConstraintScore !== $rightConstraintScore) {
+                    return $rightConstraintScore <=> $leftConstraintScore;
+                }
+
+                if ((int) $left->sort_order !== (int) $right->sort_order) {
+                    return (int) $left->sort_order <=> (int) $right->sort_order;
+                }
+
+                return (int) $left->id <=> (int) $right->id;
             })
-            ->where(function ($q) use ($now) {
-                $q->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
-            })
-            ->where(function ($q) use ($now) {
-                $q->whereNull('ends_at')->orWhere('ends_at', '>=', $now);
-            });
-
-        return $query->get();
+            ->firstOrFail();
     }
 
-    protected function selectBestRate(Collection $rates, float $weightKg, float $subtotal): ShippingRate
+    protected function scopePriority(ShippingRate $rate, ?int $shippingZoneId, ?int $stateId, ?int $lgaId): int
     {
-        $scored = $rates->map(function (ShippingRate $rate) use ($weightKg, $subtotal) {
-            $score = 0;
+        if ($rate->lga_id !== null && $lgaId !== null && (int) $rate->lga_id === $lgaId) {
+            return 4;
+        }
 
-            if (!is_null($rate->min_weight) || !is_null($rate->max_weight)) {
-                $minW = $rate->min_weight ? (float)$rate->min_weight : -INF;
-                $maxW = $rate->max_weight ? (float)$rate->max_weight : INF;
-                if ($weightKg >= $minW && $weightKg <= $maxW) {
-                    $score += 100;
-                } else {
-                    $score -= 10;
-                }
-            }
+        if ($rate->state_id !== null && $stateId !== null && (int) $rate->state_id === $stateId) {
+            return 3;
+        }
 
-            if (!is_null($rate->min_subtotal) || !is_null($rate->max_subtotal)) {
-                $minS = $rate->min_subtotal ? (float)$rate->min_subtotal : -INF;
-                $maxS = $rate->max_subtotal ? (float)$rate->max_subtotal : INF;
-                if ($subtotal >= $minS && $subtotal <= $maxS) {
-                    $score += 50;
-                } else {
-                    $score -= 5;
-                }
-            }
+        if ($rate->shipping_zone_id !== null && $shippingZoneId !== null && (int) $rate->shipping_zone_id === $shippingZoneId) {
+            return 2;
+        }
 
-            if (strtolower($rate->rate_type) === 'hybrid') $score += 5;
+        if ($rate->shipping_zone_id === null && $rate->state_id === null && $rate->lga_id === null) {
+            return 1;
+        }
 
-            $score -= (float)$rate->surcharge / 1000.0;
-
-            return ['rate' => $rate, 'score' => $score];
-        });
-
-        $sorted = $scored->sortByDesc('score')->values();
-
-        return $sorted->first()['rate'];
+        return 0;
     }
 
-    protected function calculateByRateType(ShippingRate $rate, float $weightKg, float $subtotal): array
+    protected function constraintPriority(ShippingRate $rate): int
+    {
+        $score = 0;
+
+        foreach (['min_weight', 'max_weight', 'min_subtotal', 'max_subtotal'] as $field) {
+            if ($rate->{$field} !== null) {
+                $score++;
+            }
+        }
+
+        return $score;
+    }
+
+    protected function calculateByRateType(ShippingRate $rate, float $weightKg): array
     {
         $baseRate = (float) $rate->base_rate;
         $perKg = (float) $rate->per_kg;
-        $total = 0.0;
         $perKgTotal = 0.0;
 
-        switch ($rate->rate_type) {
-            case 'flat':
-                $total = $baseRate;
-                break;
-
-            case 'per_kg':
-                $perKgTotal = round($perKg * $weightKg, 2);
-                $total = $perKgTotal;
-                break;
-
-            case 'hybrid':
-            default:
-                $perKgTotal = round($perKg * $weightKg, 2);
-                $total = round($baseRate + $perKgTotal, 2);
-                break;
-        }
+        $total = match ($rate->rate_type) {
+            'flat' => $baseRate,
+            'per_kg' => $perKgTotal = round($perKg * $weightKg, 2),
+            default => round($baseRate + ($perKgTotal = round($perKg * $weightKg, 2)), 2),
+        };
 
         return [
             'base_rate' => round($baseRate, 2),
             'per_kg' => round($perKg, 2),
             'weight_kg' => round($weightKg, 3),
             'per_kg_total' => $perKgTotal,
-            'total' => round($total, 2),
+            'total' => round(max($total, 0), 2),
         ];
     }
 }

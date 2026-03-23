@@ -73,9 +73,9 @@ class ShippingSeeder extends Seeder
 
             // --- 3️⃣ Shipping Methods ---
             $methods = [
-                ['name' => 'Standard Delivery', 'is_active' => true],
-                ['name' => 'Express Delivery', 'is_active' => true],
-                ['name' => 'Pickup', 'is_active' => true],
+                ['name' => 'Standard Delivery', 'description' => 'Reliable doorstep delivery.', 'method_type' => 'delivery', 'sort_order' => 1, 'is_active' => true],
+                ['name' => 'Express Delivery', 'description' => 'Faster premium delivery.', 'method_type' => 'delivery', 'sort_order' => 2, 'is_active' => true],
+                ['name' => 'Pickup', 'description' => 'Collect your order from a pickup point.', 'method_type' => 'pickup', 'sort_order' => 3, 'is_active' => true],
             ];
             DB::table('shipping_methods')->insert(array_map(fn($m) => [
                 ...$m, 'created_at' => now(), 'updated_at' => now()
@@ -266,8 +266,6 @@ class ShippingSeeder extends Seeder
 
             DB::table('pickup_locations')->insert($pickups);
 
-
-            DB::table('pickup_locations')->insert($pickups);
         });
     }
 }
