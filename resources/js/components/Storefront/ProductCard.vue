@@ -20,7 +20,7 @@ function money(value) {
 </script>
 
 <template>
-    <article class="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+    <Link :href="route('store.product', product.slug)" class="group relative pb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
         <div class="relative aspect-[4/3] overflow-hidden bg-slate-100">
             <img
                 v-if="product.image"
@@ -50,7 +50,7 @@ function money(value) {
             </div>
         </div>
 
-        <div class="space-y-3 p-4">
+        <div class="space-y-3 p-4 ">
             <div class="space-y-1">
                 <h3 class="line-clamp-2 text-sm font-semibold text-slate-900">
                     {{ product.name }}
@@ -80,20 +80,14 @@ function money(value) {
                 </span>
             </div>
 
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-2 gap-2 absolute bottom-3">
                 <AddToCartButton
                     :variant-id="product.default_variant_id"
                     :disabled="!product.stock?.is_in_stock"
                     label="Add to Cart"
                     full-width
                 />
-                <Link
-                    :href="route('store.product', product.slug)"
-                    class="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500"
-                >
-                    View Product
-                </Link>
             </div>
         </div>
-    </article>
+    </Link>
 </template>

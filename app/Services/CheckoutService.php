@@ -105,7 +105,7 @@ class CheckoutService
                 }
             } catch (\Throwable $exception) {
                 report($exception);
-                $shippingError = $shippingError ?: 'Unable to calculate shipping right now.';
+                $shippingError = $shippingError ?: $exception->getMessage();
             }
         }
 

@@ -62,11 +62,9 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
 
         <div class="relative grid gap-8 lg:grid-cols-2 lg:items-center">
             <div class="space-y-4">
-                <p class="inline-flex rounded-full border border-white/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-200">
-                    Production Ready Storefront
-                </p>
                 <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">
-                    {{ pageTitle }}
+<!--                    {{ pageTitle }}-->
+                    Shop with Confidence!
                 </h1>
                 <p class="max-w-xl text-sm text-slate-200 sm:text-base">
                     Discover curated products, transparent pricing, stock-aware purchasing, and checkout backed by your existing service layer.

@@ -18,7 +18,7 @@ function submitSearch() {
 <template>
     <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#fef3c7_0%,_#fff7ed_30%,_#f8fafc_100%)] text-slate-900">
         <header class="border-b border-amber-100/60 bg-white/80 backdrop-blur">
-            <div class="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-4 px-4 py-4 sm:px-6 lg:px-8">
+            <div class="mx-auto flex w-full max-w-8xl flex-wrap items-center gap-4 px-4 py-4 sm:px-6 lg:px-12">
                 <Link :href="route('store.home')" class="text-xl font-bold tracking-tight text-slate-900">
                     S-Tech-Max LTD
                 </Link>
@@ -68,7 +68,7 @@ function submitSearch() {
                 </div>
             </div>
 
-            <div class="mx-auto w-full max-w-7xl px-4 pb-3 sm:px-6 lg:px-8">
+            <div class="mx-auto w-full max-w-8xl px-4 pb-3 sm:px-6 lg:px-12">
                 <div class="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
                     <Link
                         :href="route('store.home')"
@@ -88,7 +88,7 @@ function submitSearch() {
             </div>
         </header>
 
-        <main class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <main class="mx-auto w-full max-w-8xl px-4 py-8 sm:px-6 lg:px-12">
             <slot />
         </main>
     </div>
