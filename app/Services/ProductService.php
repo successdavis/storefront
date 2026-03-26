@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\{Admin\ProductImage,
     Admin\VariantImage,
+    Discount,
     OpeningBalance,
     OpeningBalanceItem,
     Product,
@@ -636,15 +637,18 @@ class ProductService
         $discountSource = $legacyPricing['has_discount'] ? 'sale' : null;
         $discountLabel = $legacyPricing['has_discount'] ? 'Sale' : null;
         $discountId = null;
+        $appliedLineItemDiscount = null;
 
         if (($lineItemDiscount['discount_id'] ?? null) && (float) $lineItemDiscount['current'] < $current) {
             $current = (float) $lineItemDiscount['current'];
             $discountSource = 'automatic';
             $discountLabel = $lineItemDiscount['label'];
             $discountId = $lineItemDiscount['discount_id'];
+            $appliedLineItemDiscount = $lineItemDiscount;
         }
 
         $hasDiscount = round($current, 2) < round($regular, 2);
+        $discountAmount = $hasDiscount ? round(max($regular - $current, 0), 2) : 0.0;
         $percentage = $hasDiscount && $regular > 0
             ? (int) round((($regular - $current) / $regular) * 100)
             : 0;
@@ -654,8 +658,16 @@ class ProductService
             'sale' => $legacyPricing['sale'] !== null ? round((float) $legacyPricing['sale'], 2) : null,
             'current' => round($current, 2),
             'has_discount' => $hasDiscount,
+            'discount_amount' => $discountAmount,
             'discount_percentage' => $percentage,
             'discount_label' => $discountLabel,
+            'discount_display_label' => $this->resolveDiscountDisplayLabel(
+                regular: $regular,
+                current: $current,
+                hasDiscount: $hasDiscount,
+                percentage: $percentage,
+                appliedLineItemDiscount: $appliedLineItemDiscount,
+            ),
             'discount_source' => $discountSource,
             'discount_id' => $discountId,
         ];
@@ -839,8 +851,10 @@ class ProductService
                 'sale' => null,
                 'current' => 0.0,
                 'has_discount' => false,
+                'discount_amount' => 0.0,
                 'discount_percentage' => 0,
                 'discount_label' => null,
+                'discount_display_label' => null,
                 'discount_source' => null,
                 'from' => false,
             ];
@@ -866,8 +880,10 @@ class ProductService
             'sale' => $displayPricing['sale'] !== null ? (float) $displayPricing['sale'] : null,
             'current' => round($minimumCurrent, 2),
             'has_discount' => (bool) ($displayPricing['has_discount'] ?? false),
+            'discount_amount' => (float) ($displayPricing['discount_amount'] ?? 0),
             'discount_percentage' => (int) ($displayPricing['discount_percentage'] ?? 0),
             'discount_label' => $displayPricing['discount_label'] ?? null,
+            'discount_display_label' => $displayPricing['discount_display_label'] ?? null,
             'discount_source' => $displayPricing['discount_source'] ?? null,
             'from' => round($minimumCurrent, 2) !== round($maximumCurrent, 2),
         ];
@@ -894,6 +910,42 @@ class ProductService
             'current' => round($current, 2),
             'has_discount' => $hasDiscount,
         ];
+    }
+
+    protected function resolveDiscountDisplayLabel(
+        float $regular,
+        float $current,
+        bool $hasDiscount,
+        int $percentage,
+        ?array $appliedLineItemDiscount = null
+    ): ?string {
+        if (!$hasDiscount) {
+            return null;
+        }
+
+        if (($appliedLineItemDiscount['discount_id'] ?? null) !== null) {
+            return match ($appliedLineItemDiscount['type'] ?? null) {
+                Discount::TYPE_PERCENTAGE => '-' . ((int) ($appliedLineItemDiscount['percentage'] ?? $percentage)) . '%',
+                Discount::TYPE_FIXED_AMOUNT => '-' . $this->formatMoneyLabel((float) ($appliedLineItemDiscount['amount'] ?? max($regular - $current, 0))),
+                default => null,
+            };
+        }
+
+        if ($percentage > 0) {
+            return '-' . $percentage . '%';
+        }
+
+        $amount = max(round($regular - $current, 2), 0.0);
+
+        return $amount > 0 ? '-' . $this->formatMoneyLabel($amount) : null;
+    }
+
+    protected function formatMoneyLabel(float $amount): string
+    {
+        $amount = round(max($amount, 0), 2);
+        $decimals = abs($amount - round($amount)) < 0.01 ? 0 : 2;
+
+        return '₦' . number_format($amount, $decimals);
     }
     private function syncCats($product, mixed $category_ids)
     {

@@ -15,7 +15,12 @@ type PreviewRow = {
     variant_name: string
     sku: string | null
     quantity_available: number
+    original_price: number
+    final_price: number
     sales_price: number
+    has_active_discount: boolean
+    discount_label: string | null
+    discount_display_label: string | null
     image_url: string | null
 }
 
@@ -32,6 +37,7 @@ const props = defineProps<{
             total_rows: number
             in_stock_only: boolean
             sort: string
+            sort_label: string
         }
         preview: {
             data: PreviewRow[]
@@ -45,8 +51,10 @@ const props = defineProps<{
 
 const categoryId = ref<number | null>(props.filters?.category_id ?? null)
 const inStockOnly = ref(Boolean(props.filters?.in_stock_only))
-const sort = ref(props.filters?.sort ?? 'alphabetical')
+const sort = ref(props.filters?.sort ?? 'default')
 const { formatCurrency } = useCurrencyFormatter()
+
+const sortLabel = computed(() => props.report.summary.sort_label || 'Default')
 
 const exportUrl = computed(() => {
     if (!categoryId.value) {
@@ -75,7 +83,7 @@ function runPreview(page?: string | null) {
 function clearFilters() {
     categoryId.value = null
     inStockOnly.value = false
-    sort.value = 'alphabetical'
+    sort.value = 'default'
     runPreview(null)
 }
 
@@ -136,8 +144,9 @@ watch(sort, () => {
                 <label class="text-sm">
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Sort</span>
                     <select v-model="sort" class="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
-                        <option value="alphabetical">Alphabetical</option>
-                        <option value="latest">Latest added</option>
+                        <option value="default">Default</option>
+                        <option value="price_asc">Price: Low to High</option>
+                        <option value="price_desc">Price: High to Low</option>
                     </select>
                 </label>
 
@@ -179,6 +188,9 @@ watch(sort, () => {
                 <div class="flex flex-wrap gap-3 text-sm text-slate-500 dark:text-slate-400">
                     <span class="rounded-full bg-slate-100 px-3 py-1.5 dark:bg-slate-800 dark:text-slate-200">
                         {{ report.summary.total_rows }} row{{ report.summary.total_rows === 1 ? '' : 's' }} to export
+                    </span>
+                    <span class="rounded-full bg-slate-100 px-3 py-1.5 dark:bg-slate-800 dark:text-slate-200">
+                        Sort: {{ sortLabel }}
                     </span>
                     <span class="rounded-full bg-slate-100 px-3 py-1.5 dark:bg-slate-800 dark:text-slate-200">
                         {{ report.summary.in_stock_only ? 'In-stock only' : 'All active variants' }}
@@ -240,8 +252,24 @@ watch(sort, () => {
                                     {{ row.quantity_available }}
                                 </span>
                             </td>
-                            <td class="px-5 py-4 text-right font-semibold text-slate-900 dark:text-slate-100">
-                                {{ formatCurrency(row.sales_price) }}
+                            <td class="px-5 py-4 text-right">
+                                <div class="flex flex-col items-end gap-1">
+                                    <span
+                                        v-if="row.has_active_discount && row.discount_display_label"
+                                        class="inline-flex rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
+                                    >
+                                        {{ row.discount_display_label }}
+                                    </span>
+                                    <div
+                                        v-if="row.has_active_discount && row.original_price > row.final_price"
+                                        class="text-xs text-slate-400 line-through dark:text-slate-500"
+                                    >
+                                        {{ formatCurrency(row.original_price) }}
+                                    </div>
+                                    <div class="font-semibold text-slate-900 dark:text-slate-100">
+                                        {{ formatCurrency(row.final_price) }}
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

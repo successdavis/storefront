@@ -23,7 +23,7 @@ class CategoryPriceListReportController extends Controller
         $filters = [
             'category_id' => $request->validated('category_id'),
             'in_stock_only' => $request->boolean('in_stock_only'),
-            'sort' => $request->validated('sort') ?? 'alphabetical',
+            'sort' => $request->validated('sort') ?? 'default',
         ];
 
         $preview = $this->categoryPriceListReportService->preview($filters);
@@ -43,7 +43,7 @@ class CategoryPriceListReportController extends Controller
         $filters = [
             'category_id' => $request->validated('category_id'),
             'in_stock_only' => $request->boolean('in_stock_only'),
-            'sort' => $request->validated('sort') ?? 'alphabetical',
+            'sort' => $request->validated('sort') ?? 'default',
         ];
 
         $payload = $this->categoryPriceListReportService->exportPayload($filters, $request->user());

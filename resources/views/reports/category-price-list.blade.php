@@ -108,6 +108,22 @@
             font-weight: 700;
             font-size: 13px;
         }
+        .price-original {
+            margin-bottom: 4px;
+            color: #64748b;
+            font-size: 10px;
+            text-decoration: line-through;
+        }
+        .discount-badge {
+            display: inline-block;
+            margin-bottom: 5px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #be123c;
+            font-size: 9px;
+            font-weight: 700;
+        }
         .empty-state {
             padding: 18px;
             text-align: center;
@@ -126,7 +142,7 @@
         </div>
         <div class="summary">
             <strong>Total rows:</strong> {{ $summary['total_rows'] ?? 0 }}
-            <span style="margin-left: 14px;"><strong>Sort:</strong> {{ ucfirst($summary['sort'] ?? 'alphabetical') }}</span>
+            <span style="margin-left: 14px;"><strong>Sort:</strong> {{ $summary['sort_label'] ?? 'Default' }}</span>
             <span style="margin-left: 14px;"><strong>Scope:</strong> {{ !empty($summary['in_stock_only']) ? 'In-stock only' : 'All active variants' }}</span>
         </div>
     </div>
@@ -160,7 +176,13 @@
                         <div class="qty-value">{{ number_format((int) $row['quantity_available']) }}</div>
                     </td>
                     <td class="price-col">
-                        <div class="price-value">&#8358;{{ number_format((float) $row['sales_price'], 2) }}</div>
+                        @if (!empty($row['has_active_discount']) && (float) ($row['original_price'] ?? 0) > (float) ($row['final_price'] ?? 0))
+                            @if (!empty($row['discount_display_label']))
+                                <div class="discount-badge">{{ $row['discount_display_label'] }}</div>
+                            @endif
+                            <div class="price-original">&#8358;{{ number_format((float) $row['original_price'], 2) }}</div>
+                        @endif
+                        <div class="price-value">&#8358;{{ number_format((float) ($row['final_price'] ?? $row['sales_price']), 2) }}</div>
                     </td>
                 </tr>
             @empty

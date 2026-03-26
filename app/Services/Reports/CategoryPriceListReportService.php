@@ -8,7 +8,9 @@ use App\Models\User;
 use App\Services\ProductService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator as PaginationLengthAwarePaginator;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class CategoryPriceListReportService
@@ -44,10 +46,20 @@ class CategoryPriceListReportService
             return null;
         }
 
-        return $this->rowsQuery($category, $filters)
-            ->paginate($perPage)
-            ->withQueryString()
-            ->through(fn (ProductVariant $variant): array => $this->mapRow($variant, false));
+        $rows = $this->rows($category, $filters, false);
+        $page = PaginationLengthAwarePaginator::resolveCurrentPage();
+        $items = $rows->forPage($page, $perPage)->values();
+
+        return new PaginationLengthAwarePaginator(
+            $items,
+            $rows->count(),
+            $perPage,
+            $page,
+            [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ],
+        );
     }
 
     public function previewSummary(array $filters, ?LengthAwarePaginator $preview = null): array
@@ -63,6 +75,7 @@ class CategoryPriceListReportService
             'total_rows' => $preview ? (int) $preview->total() : 0,
             'in_stock_only' => $normalized['in_stock_only'],
             'sort' => $normalized['sort'],
+            'sort_label' => $this->sortLabel($normalized['sort']),
         ];
     }
 
@@ -72,10 +85,7 @@ class CategoryPriceListReportService
         $normalized = $this->normalizeFilters($filters);
 
         $rows = $category
-            ? $this->rowsQuery($category, $filters)
-                ->get()
-                ->map(fn (ProductVariant $variant): array => $this->mapRow($variant, true))
-                ->values()
+            ? $this->rows($category, $filters, true)
             : collect();
 
         return [
@@ -88,6 +98,7 @@ class CategoryPriceListReportService
                 'total_rows' => $rows->count(),
                 'in_stock_only' => $normalized['in_stock_only'],
                 'sort' => $normalized['sort'],
+                'sort_label' => $this->sortLabel($normalized['sort']),
             ],
             'generated_at' => now(),
             'generated_by' => $generatedBy?->name,
@@ -115,13 +126,41 @@ class CategoryPriceListReportService
                 'values:id,variant_type_id,value',
                 'values.type:id,name',
             ])
-            ->when($normalized['sort'] === 'alphabetical', function (Builder $query) {
+            ->when(in_array($normalized['sort'], ['default', 'alphabetical'], true), function (Builder $query) {
                 $query
                     ->orderBy('products.name')
                     ->orderBy('product_variants.id');
             }, function (Builder $query) {
                 $query->orderByDesc('product_variants.id');
             });
+    }
+
+    protected function rows(Category $category, array $filters, bool $includePdfImage): Collection
+    {
+        $normalized = $this->normalizeFilters($filters);
+
+        $rows = $this->rowsQuery($category, $filters)
+            ->get()
+            ->map(fn (ProductVariant $variant): array => $this->mapRow($variant, $includePdfImage))
+            ->values();
+
+        return match ($normalized['sort']) {
+            'price_asc' => $rows
+                ->sortBy([
+                    ['final_price', 'asc'],
+                    ['product_name', 'asc'],
+                    ['variant_id', 'asc'],
+                ])
+                ->values(),
+            'price_desc' => $rows
+                ->sortBy([
+                    ['final_price', 'desc'],
+                    ['product_name', 'asc'],
+                    ['variant_id', 'asc'],
+                ])
+                ->values(),
+            default => $rows,
+        };
     }
 
     protected function mapRow(ProductVariant $variant, bool $includePdfImage): array
@@ -137,7 +176,12 @@ class CategoryPriceListReportService
             'variant_name' => $this->productService->describeVariant($variant),
             'sku' => $variant->sku,
             'quantity_available' => (int) ($stock['available'] ?? 0),
+            'original_price' => (float) ($pricing['regular'] ?? 0),
+            'final_price' => (float) ($pricing['current'] ?? 0),
             'sales_price' => (float) ($pricing['current'] ?? 0),
+            'has_active_discount' => (bool) ($pricing['has_discount'] ?? false),
+            'discount_label' => $pricing['discount_label'] ?? null,
+            'discount_display_label' => $pricing['discount_display_label'] ?? null,
             'image_url' => $imageUrl,
             'image_pdf_src' => $includePdfImage ? $this->pdfImageSource($imageUrl) : null,
         ];
@@ -188,9 +232,18 @@ SVG;
         return [
             'category_id' => isset($filters['category_id']) ? (int) $filters['category_id'] : null,
             'in_stock_only' => filter_var($filters['in_stock_only'] ?? false, FILTER_VALIDATE_BOOLEAN),
-            'sort' => in_array(($filters['sort'] ?? 'alphabetical'), ['alphabetical', 'latest'], true)
+            'sort' => in_array(($filters['sort'] ?? 'default'), ['default', 'price_asc', 'price_desc', 'alphabetical', 'latest'], true)
                 ? $filters['sort']
-                : 'alphabetical',
+                : 'default',
         ];
+    }
+
+    protected function sortLabel(string $sort): string
+    {
+        return match ($sort) {
+            'price_asc' => 'Price: Low to High',
+            'price_desc' => 'Price: High to Low',
+            default => 'Default',
+        };
     }
 }

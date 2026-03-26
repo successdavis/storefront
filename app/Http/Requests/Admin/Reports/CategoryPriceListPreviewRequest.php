@@ -16,7 +16,7 @@ class CategoryPriceListPreviewRequest extends FormRequest
         return [
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'in_stock_only' => ['nullable', 'boolean'],
-            'sort' => ['nullable', 'in:alphabetical,latest'],
+            'sort' => ['nullable', 'in:default,price_asc,price_desc,alphabetical,latest'],
             'page' => ['nullable', 'integer', 'min:1'],
         ];
     }
