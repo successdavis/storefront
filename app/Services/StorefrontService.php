@@ -116,11 +116,14 @@ class StorefrontService
 
         $products = Product::query()
             ->active()
+            ->whereHas('variants', fn (Builder $query) => $query->where('is_active', true))
             ->whereHas('categories', fn (Builder $query) => $query->whereIn('categories.id', $categoryIds))
             ->with([
                 'categories:id,name,slug',
                 'images:id,product_id,path,alt,is_primary,sort_order',
-                'variants:id,product_id,sku,quantity,reserved,regular_price,sale_price,sale_starts_at,sale_ends_at',
+                'variants' => fn ($query) => $query
+                    ->where('is_active', true)
+                    ->select('id', 'product_id', 'sku', 'quantity', 'reserved', 'regular_price', 'sale_price', 'sale_starts_at', 'sale_ends_at', 'is_active'),
             ])
             ->latest('id')
             ->get();

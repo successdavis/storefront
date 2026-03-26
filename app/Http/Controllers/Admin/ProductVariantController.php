@@ -12,7 +12,7 @@ class ProductVariantController extends Controller
 {
     public function index(Product $product)
     {
-        $product->load('variants.values.type');
+        $product->load(['variants' => fn ($query) => $query->active()->with('values.type')]);
         return response()->json($product->variants);
     }
 
@@ -44,7 +44,7 @@ class ProductVariantController extends Controller
 
     public function destroy(ProductVariant $variant)
     {
-        $variant->delete();
+        $variant->update(['is_active' => false]);
         return response()->noContent();
     }
 }

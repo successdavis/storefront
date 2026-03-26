@@ -17,7 +17,7 @@ class AdminProductController extends Controller
     {
         $q = Product::query()
             ->with(['categories:id,name', 'brand:id,name'])
-            ->withSum('variants as total_stock', 'quantity')
+            ->withSum(['variants as total_stock' => fn ($query) => $query->where('is_active', true)], 'quantity')
             ->when($request->get('search'), function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name','like',"%{$search}%")
@@ -86,7 +86,13 @@ class AdminProductController extends Controller
         // reshape to { id, name, children: [...] }
         $categories = $roots->map(fn ($root) => $this->catToArray($root))->values();
 
-        $product->load(['images','faqs','variants.values','variants.images']);
+        $product->load([
+            'images',
+            'faqs',
+            'variants' => fn ($query) => $query
+                ->where('is_active', true)
+                ->with(['values', 'images']),
+        ]);
         return Inertia::render('Admin/Products/Edit', [
             'product' => new ProductResource($product),
             'categories'    => $categories,

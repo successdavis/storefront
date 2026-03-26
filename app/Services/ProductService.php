@@ -21,6 +21,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Services\SkuGenerator;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
 
@@ -172,110 +173,452 @@ class ProductService
 
     protected function syncVariants(Product $product, array $variants): void
     {
-        $seen    = [];
-        $storeId = $product->store_id ?? null;
+        /*
+         * Editing a product used to behave like delete-and-recreate:
+         * the frontend recomputed combinations, missing rows disappeared from the payload,
+         * and the backend removed everything not in the submitted list. That broke
+         * inventory/order history because stock ledgers and transactions point at durable
+         * `product_variants.id` values. We now reconcile edited combinations against the
+         * existing variants, preserve IDs whenever the mapping is still one-to-one, create
+         * only truly new combinations, and archive removed variants by setting `is_active`
+         * to false instead of replacing them.
+         */
+        $payloads = collect($variants)
+            ->filter(fn ($variant) => ! (bool) data_get($variant, 'archived', false))
+            ->map(function (array $variant) {
+                $variant['value_ids'] = $this->normalizeVariantValueIds($variant['value_ids'] ?? []);
 
-        foreach ($variants as $v) {
-            $variant = isset($v['id'])
-                ? $product->variants()->find($v['id'])
-                : new ProductVariant(['product_id' => $product->id]);
+                return $variant;
+            })
+            ->values();
 
-            if (!$variant) continue;
+        $existingVariants = $product->variants()
+            ->withTrashed()
+            ->with(['values.type:id,name', 'images'])
+            ->get()
+            ->keyBy('id');
 
+        $this->assertUniqueIncomingVariantIds($payloads, $existingVariants);
+        $this->assertUniqueIncomingVariantSignatures($payloads);
 
-            // Build a readable stem from product + selected attributes
-            $valueIds = $v['value_ids'] ?? [];
-            $attrLabels = [];
-            try {
-                // Use the relation's related model to fetch labels without saving the variant yet
-                $related = $variant->values()->getRelated(); // BelongsToMany related model
-                if (!empty($valueIds)) {
-                    $attrLabels = $related->newQuery()
-                        ->whereIn('id', $valueIds)
-                        ->pluck('value')      // assumes column name 'value'
-                        ->all();
-                }
-            } catch (\Throwable $e) {
-                // If relation or column differs, fall back silently
-                $attrLabels = [];
-            }
+        $assigned = [];
+        $matchedExistingIds = [];
 
-            $brandCode = data_get($product, 'brand.code', data_get($product, 'brand.name', ''));
-            $stem = $this->skuGen->makeStem((string)$brandCode, (string)$product->name, $attrLabels);
-
-            // Decide final SKU
-            $incoming = $v['sku'] ?? '';
-            if ($incoming) {
-                $result = $this->skuGen->acceptOrSuggest($storeId, $incoming, $variant->id ?? null);
-                $finalSku = $result['sku']; // accepted or suggested unique
-            } else {
-                $finalSku = $this->skuGen->uniqueFromStem($storeId, $stem);
-            }
-
-            // Fill and save (keep sku authoritative from generator)
-            $variant->fill(Arr::only($v, [
-                'barcode', 'sale_starts_at','regular_price', 'sale_ends_at', 'weight', 'length', 'width', 'height'
-            ]));
-            $variant->sku = $finalSku;
-            $variant->save();
-
-            $seen[] = $variant->id;
-
-            // Attach variant values & Images
-            $variant->values()->sync($valueIds);
-            $this->syncVariantImages($variant, $v['images'] ?? []);
-
-            if(isset($v['id']) && OpeningBalanceItem::where('variant_id', $v['id'])->exists()) {
+        foreach ($payloads as $index => $payload) {
+            $variantId = data_get($payload, 'id');
+            if (!$variantId) {
                 continue;
             }
-            // --- NEW: Handle Opening Balance if quantity > 0 ---
-            $quantity = (int)($v['quantity'] ?? 0);
-            $unitCost = (float)($v['last_purchase_price'] ?? 0);
-            if ($quantity > 0) {
-                // Create or find existing Opening Balance for this session
-                $openingBalance = OpeningBalance::firstOrCreate(
-                    ['reference' => 'AUTO-' . now()->format('Ymd-His')],
-                    [
-                        'warehouse_id' => $v['warehouse_id'] ?? null,
-                        'vendor_id' => null,
-                        'employee_id' => null,
-                        'effective_at' => now(),
-                        'note' => 'Auto created from product creation',
-                    ]
-                );
 
-                // Create Opening Balance Item
-                $item = OpeningBalanceItem::create([
-                    'opening_balance_id' => $openingBalance->id,
-                    'variant_id' => $variant->id,
-                    'quantity' => $quantity,
-                    'unit_cost' => $unitCost,
+            $variant = $existingVariants->get((int) $variantId);
+            if (!$variant) {
+                throw ValidationException::withMessages([
+                    "variants.{$index}.id" => 'This variant no longer belongs to the product being edited.',
                 ]);
+            }
 
-
-                // Record in Inventory
-                $this->inventoryService->stockIn([
-                    'variant_id' => $variant->id,
-                    'quantity' => $quantity,
-                    'unit_cost' => $unitCost,
-                    'warehouse_id' => $v['warehouse_id'] ?? null,
-                    'reason' => 'Opening Balance',
-                    'employee_id' => null,
-                    'source_type' => OpeningBalanceItem::class,
-                    'source_id' => $item->id,
-                    'effective_at' => now(),
-                    'note' => 'Auto stock-in from opening balance',
+            if (isset($matchedExistingIds[$variant->id])) {
+                throw ValidationException::withMessages([
+                    "variants.{$index}.id" => 'Each existing variant can only be submitted once.',
                 ]);
+            }
+
+            $assigned[$index] = [
+                'variant' => $variant,
+                'preserve_existing_defaults' => false,
+            ];
+            $matchedExistingIds[$variant->id] = true;
+        }
+
+        foreach ($payloads as $index => $payload) {
+            if (isset($assigned[$index])) {
+                continue;
+            }
+
+            $variant = $this->findExactVariantMatch($existingVariants, $matchedExistingIds, $payload['value_ids']);
+            if (!$variant) {
+                continue;
+            }
+
+            $assigned[$index] = [
+                'variant' => $variant,
+                'preserve_existing_defaults' => true,
+            ];
+            $matchedExistingIds[$variant->id] = true;
+        }
+
+        $compatibility = $this->buildCompatibleVariantMatches($existingVariants, $payloads, $assigned, $matchedExistingIds);
+        $this->assertCompatibleHistoryMappingsAreSafe($compatibility, $payloads);
+
+        foreach ($compatibility['unique'] as $index => $variant) {
+            $assigned[$index] = [
+                'variant' => $variant,
+                'preserve_existing_defaults' => true,
+            ];
+            $matchedExistingIds[$variant->id] = true;
+        }
+
+        $preservedVariantIds = [];
+
+        foreach ($payloads as $index => $payload) {
+            $match = $assigned[$index] ?? null;
+            $variant = $match['variant'] ?? new ProductVariant(['product_id' => $product->id]);
+            $wasNewVariant = ! $variant->exists;
+
+            $this->persistVariantReconciliation(
+                product: $product,
+                variant: $variant,
+                payload: $payload,
+                preserveExistingDefaults: (bool) ($match['preserve_existing_defaults'] ?? false),
+            );
+
+            if ($wasNewVariant) {
+                $this->recordOpeningBalanceForNewVariant($variant, $payload);
+            }
+
+            $preservedVariantIds[$variant->id] = true;
+        }
+
+        $existingVariants
+            ->filter(fn (ProductVariant $variant) => !$variant->trashed() && $variant->is_active)
+            ->reject(fn (ProductVariant $variant) => isset($preservedVariantIds[$variant->id]))
+            ->each(function (ProductVariant $variant) {
+                $variant->update(['is_active' => false]);
+            });
+    }
+
+    protected function persistVariantReconciliation(
+        Product $product,
+        ProductVariant $variant,
+        array $payload,
+        bool $preserveExistingDefaults = false
+    ): void {
+        $valueIds = $this->normalizeVariantValueIds($payload['value_ids'] ?? []);
+        $finalSku = $this->resolveVariantSku($product, $variant, $payload, $preserveExistingDefaults, $valueIds);
+
+        if ($variant->trashed()) {
+            $variant->restore();
+        }
+
+        $attributes = Arr::only($payload, [
+            'barcode',
+            'sale_starts_at',
+            'regular_price',
+            'sale_price',
+            'sale_ends_at',
+            'weight',
+            'length',
+            'width',
+            'height',
+        ]);
+
+        if ($preserveExistingDefaults && blank(data_get($payload, 'barcode')) && filled($variant->barcode)) {
+            unset($attributes['barcode']);
+        }
+
+        $variant->fill($attributes);
+        $variant->sku = $finalSku;
+        $variant->is_active = true;
+        $variant->save();
+
+        $variant->values()->sync($valueIds);
+
+        $hasIncomingImages = !empty($payload['images'] ?? []);
+        if (!$preserveExistingDefaults || $hasIncomingImages || !$variant->images()->exists()) {
+            $this->syncVariantImages($variant, $payload['images'] ?? []);
+        }
+    }
+
+    protected function recordOpeningBalanceForNewVariant(ProductVariant $variant, array $payload): void
+    {
+        $quantity = (int) ($payload['quantity'] ?? 0);
+        $unitCost = (float) ($payload['last_purchase_price'] ?? 0);
+
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $openingBalance = OpeningBalance::firstOrCreate(
+            ['reference' => 'AUTO-' . now()->format('Ymd-His')],
+            [
+                'warehouse_id' => $payload['warehouse_id'] ?? null,
+                'vendor_id' => null,
+                'employee_id' => null,
+                'effective_at' => now(),
+                'note' => 'Auto created from product creation',
+            ]
+        );
+
+        $item = OpeningBalanceItem::create([
+            'opening_balance_id' => $openingBalance->id,
+            'variant_id' => $variant->id,
+            'quantity' => $quantity,
+            'unit_cost' => $unitCost,
+        ]);
+
+        $this->inventoryService->stockIn([
+            'variant_id' => $variant->id,
+            'quantity' => $quantity,
+            'unit_cost' => $unitCost,
+            'warehouse_id' => $payload['warehouse_id'] ?? null,
+            'reason' => 'Opening Balance',
+            'employee_id' => null,
+            'source_type' => OpeningBalanceItem::class,
+            'source_id' => $item->id,
+            'effective_at' => now(),
+            'note' => 'Auto stock-in from opening balance',
+        ]);
+    }
+
+    protected function resolveVariantSku(
+        Product $product,
+        ProductVariant $variant,
+        array $payload,
+        bool $preserveExistingDefaults,
+        array $valueIds
+    ): string {
+        $incomingSku = trim((string) ($payload['sku'] ?? ''));
+        if ($preserveExistingDefaults && $variant->exists && $incomingSku === '' && filled($variant->sku)) {
+            return $variant->sku;
+        }
+
+        $storeId = $product->store_id ?? null;
+        $attrLabels = $this->resolveVariantValueLabels($valueIds);
+        $brandCode = data_get($product, 'brand.code', data_get($product, 'brand.name', ''));
+        $stem = $this->skuGen->makeStem((string) $brandCode, (string) $product->name, $attrLabels);
+
+        if ($incomingSku !== '') {
+            return $this->skuGen->acceptOrSuggest($storeId, $incomingSku, $variant->id ?: null)['sku'];
+        }
+
+        if ($variant->exists && filled($variant->sku)) {
+            return $variant->sku;
+        }
+
+        return $this->skuGen->uniqueFromStem($storeId, $stem);
+    }
+
+    protected function resolveVariantValueLabels(array $valueIds): array
+    {
+        if (empty($valueIds)) {
+            return [];
+        }
+
+        return ProductVariant::query()
+            ->getModel()
+            ->values()
+            ->getRelated()
+            ->newQuery()
+            ->whereIn('id', $valueIds)
+            ->orderBy('variant_type_id')
+            ->orderBy('value')
+            ->pluck('value')
+            ->all();
+    }
+
+    protected function findExactVariantMatch(Collection $existingVariants, array $matchedExistingIds, array $valueIds): ?ProductVariant
+    {
+        $signature = $this->variantSignature($valueIds);
+
+        return $existingVariants
+            ->reject(fn (ProductVariant $variant) => isset($matchedExistingIds[$variant->id]))
+            ->filter(fn (ProductVariant $variant) => $this->variantSignature($variant->values->modelKeys()) === $signature)
+            ->sortBy(fn (ProductVariant $variant) => sprintf(
+                '%d-%010d',
+                $variant->trashed() ? 2 : ($variant->is_active ? 0 : 1),
+                $variant->id
+            ))
+            ->first();
+    }
+
+    protected function buildCompatibleVariantMatches(
+        Collection $existingVariants,
+        Collection $payloads,
+        array $assigned,
+        array $matchedExistingIds
+    ): array {
+        $incomingCandidates = [];
+        $candidateCountByVariant = [];
+        $protectedCandidateCountByVariant = [];
+
+        foreach ($payloads as $index => $payload) {
+            if (isset($assigned[$index])) {
+                continue;
+            }
+
+            $candidates = $existingVariants
+                ->reject(fn (ProductVariant $variant) => isset($matchedExistingIds[$variant->id]))
+                ->filter(fn (ProductVariant $variant) => $this->variantSetsAreCompatible(
+                    $variant->values->modelKeys(),
+                    $payload['value_ids']
+                ))
+                ->sortBy(fn (ProductVariant $variant) => sprintf(
+                    '%d-%03d-%010d',
+                    $variant->hasDurableHistory() ? 0 : 1,
+                    $this->variantDifferenceSize($variant->values->modelKeys(), $payload['value_ids']),
+                    $variant->id
+                ))
+                ->values();
+
+            $incomingCandidates[$index] = $candidates;
+
+            foreach ($candidates as $candidate) {
+                $candidateCountByVariant[$candidate->id] = ($candidateCountByVariant[$candidate->id] ?? 0) + 1;
+                if ($candidate->hasDurableHistory()) {
+                    $protectedCandidateCountByVariant[$candidate->id] = ($protectedCandidateCountByVariant[$candidate->id] ?? 0) + 1;
+                }
             }
         }
 
+        $unique = [];
+        foreach ($incomingCandidates as $index => $candidates) {
+            $protectedCandidates = $candidates
+                ->filter(fn (ProductVariant $variant) => $variant->hasDurableHistory())
+                ->values();
 
-        // Delete removed variants (cascade their images and pivot)
-        $product->variants()->whereNotIn('id', $seen)->get()->each(function ($var) {
-            $var->images()->delete();
-            $var->values()->detach();
-            $var->delete();
-        });
+            if ($protectedCandidates->count() === 1) {
+                $candidate = $protectedCandidates->first();
+                if (($protectedCandidateCountByVariant[$candidate->id] ?? 0) === 1) {
+                    $unique[$index] = $candidate;
+                    continue;
+                }
+            }
+
+            if ($candidates->count() !== 1) {
+                continue;
+            }
+
+            $candidate = $candidates->first();
+            if (($candidateCountByVariant[$candidate->id] ?? 0) !== 1) {
+                continue;
+            }
+
+            $unique[$index] = $candidate;
+        }
+
+        return [
+            'incoming' => $incomingCandidates,
+            'counts' => $candidateCountByVariant,
+            'unique' => $unique,
+        ];
+    }
+
+    protected function assertCompatibleHistoryMappingsAreSafe(array $compatibility, Collection $payloads): void
+    {
+        $errors = [];
+        $protectedIncomingByVariant = [];
+
+        foreach ($compatibility['incoming'] as $index => $candidates) {
+            $protectedCandidates = $candidates
+                ->filter(fn (ProductVariant $variant) => $variant->hasDurableHistory())
+                ->values();
+
+            if ($protectedCandidates->count() > 1) {
+                $errors["variants.{$index}.value_ids"] = 'This edited combination would merge multiple variants that already have inventory or transaction history.';
+            }
+
+            foreach ($protectedCandidates as $candidate) {
+                $protectedIncomingByVariant[$candidate->id][] = $index;
+            }
+        }
+
+        foreach ($protectedIncomingByVariant as $variantId => $indexes) {
+            if (count($indexes) <= 1) {
+                continue;
+            }
+
+            $payloadLabel = $this->describeVariantCompatibilityConflict($compatibility['incoming'][$indexes[0]]->firstWhere('id', $variantId));
+            $errors['variants'] = "Variant {$payloadLabel} already has inventory or transaction history and cannot be split into multiple edited combinations.";
+            break;
+        }
+
+        if (!empty($errors)) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    protected function describeVariantCompatibilityConflict(?ProductVariant $variant): string
+    {
+        if (!$variant) {
+            return 'identity';
+        }
+
+        $label = $variant->values
+            ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
+            ->implode(' / ');
+
+        return $label !== '' ? "\"{$label}\"" : "\"{$variant->sku}\"";
+    }
+
+    protected function assertUniqueIncomingVariantIds(Collection $payloads, Collection $existingVariants): void
+    {
+        $duplicateIds = $payloads
+            ->pluck('id')
+            ->filter()
+            ->groupBy(fn ($id) => (int) $id)
+            ->filter(fn (Collection $rows) => $rows->count() > 1)
+            ->keys()
+            ->all();
+
+        if (empty($duplicateIds)) {
+            return;
+        }
+
+        $firstDuplicate = (int) $duplicateIds[0];
+        throw ValidationException::withMessages([
+            'variants' => "Variant #{$firstDuplicate} was submitted more than once.",
+        ]);
+    }
+
+    protected function assertUniqueIncomingVariantSignatures(Collection $payloads): void
+    {
+        $duplicates = $payloads
+            ->map(fn (array $payload) => $this->variantSignature($payload['value_ids']))
+            ->groupBy(fn (string $signature) => $signature)
+            ->filter(fn (Collection $group) => $group->count() > 1);
+
+        if ($duplicates->isEmpty()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'variants' => 'Each edited variant combination must be unique.',
+        ]);
+    }
+
+    protected function normalizeVariantValueIds(array $valueIds): array
+    {
+        return collect($valueIds)
+            ->map(fn ($valueId) => (int) $valueId)
+            ->filter(fn ($valueId) => $valueId > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    protected function variantSignature(array $valueIds): string
+    {
+        return json_encode($this->normalizeVariantValueIds($valueIds));
+    }
+
+    protected function variantSetsAreCompatible(array $existingValueIds, array $incomingValueIds): bool
+    {
+        $existing = $this->normalizeVariantValueIds($existingValueIds);
+        $incoming = $this->normalizeVariantValueIds($incomingValueIds);
+
+        $existingDiff = array_diff($existing, $incoming);
+        $incomingDiff = array_diff($incoming, $existing);
+
+        return empty($existingDiff) || empty($incomingDiff);
+    }
+
+    protected function variantDifferenceSize(array $left, array $right): int
+    {
+        $left = $this->normalizeVariantValueIds($left);
+        $right = $this->normalizeVariantValueIds($right);
+
+        return count(array_diff($left, $right)) + count(array_diff($right, $left));
     }
 
     protected function syncVariantImages(ProductVariant $variant, array $images): void
@@ -352,7 +695,7 @@ class ProductService
             $valuePivot = [];
             $oldToNewVariant = [];
 
-            $source->variants()->with(['values', 'images'])->get()->each(function ($variant) use ($new, &$oldToNewVariant, &$valuePivot, $source) {
+            $source->variants()->active()->with(['values', 'images'])->get()->each(function ($variant) use ($new, &$oldToNewVariant, &$valuePivot, $source) {
                 $v = $variant->replicate(['product_id','sku','created_at','updated_at']);
 
                 // Build a readable stem and generate a unique SKU for the duplicated variant
@@ -456,6 +799,7 @@ class ProductService
             'images:id,product_id,path,alt,is_primary,sort_order',
             'faqs:id,product_id,product_variant_id,question,answer,is_active,position',
             'variants' => fn ($query) => $query
+                ->active()
                 ->select([
                     'id',
                     'product_id',
@@ -675,10 +1019,12 @@ class ProductService
 
     public function resolveProductStock(Product $product): array
     {
-        $product->loadMissing('variants:id,product_id,quantity,reserved');
+        $variants = $product->relationLoaded('variants')
+            ? $product->variants->where('is_active', true)
+            : $product->variants()->active()->get(['id', 'product_id', 'quantity', 'reserved', 'is_active']);
 
-        $onHand = (int) $product->variants->sum('quantity');
-        $reserved = (int) $product->variants->sum('reserved');
+        $onHand = (int) $variants->sum('quantity');
+        $reserved = (int) $variants->sum('reserved');
         $available = max($onHand - $reserved, 0);
 
         return [
@@ -736,6 +1082,7 @@ class ProductService
     {
         return Product::query()
             ->active()
+            ->whereHas('variants', fn (Builder $query) => $query->where('is_active', true))
             ->with($this->storeCardRelations())
             ->when($search, function (Builder $query, string $term) {
                 $query->where(function (Builder $searchQuery) use ($term) {
@@ -757,6 +1104,7 @@ class ProductService
             'categories:id,name,slug',
             'images:id,product_id,path,alt,is_primary,sort_order',
             'variants' => fn ($query) => $query
+                ->active()
                 ->select([
                     'id',
                     'product_id',

@@ -38,6 +38,7 @@ class ProductStoreRequest extends FormRequest
 
             'variants' => ['array'],
             'variants.*.sku'                    => ['nullable','string','max:64','unique:product_variants,sku'],
+            'variants.*.archived'               => ['nullable','boolean'],
             'variants.*.quantity'               => ['integer','min:0'],
             'variants.*.barcode'                => ['nullable','string','max:64','unique:product_variants,barcode'],
             'variants.*.last_purchase_price'    => ['required','numeric','min:0'],

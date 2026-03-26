@@ -41,6 +41,6 @@ class ProductVariantService
 
     public function delete(ProductVariant $variant)
     {
-        $variant->delete();
+        $variant->update(['is_active' => false]);
     }
 }

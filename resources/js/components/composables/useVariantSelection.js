@@ -4,6 +4,49 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
     const state = reactive({ selected: {} }) // Map typeId -> [valueId]
     const selectionDirty = ref(false)
 
+    function normalizeValueIds(valueIds) {
+        return [...new Set((valueIds || []).map(id => String(id)).filter(Boolean))].sort()
+    }
+
+    function keyFromValueIds(valueIds) {
+        return JSON.stringify(normalizeValueIds(valueIds))
+    }
+
+    function keyFromRow(row) {
+        return keyFromValueIds(row?.value_ids || [])
+    }
+
+    function isSubset(left, right) {
+        const rightSet = new Set(normalizeValueIds(right))
+        return normalizeValueIds(left).every(valueId => rightSet.has(valueId))
+    }
+
+    function isCompatible(row, comboValueIds) {
+        return isSubset(row.value_ids, comboValueIds) || isSubset(comboValueIds, row.value_ids)
+    }
+
+    function toDraftRow(value_ids) {
+        return {
+            id: null,
+            archived: false,
+            has_history: false,
+            sku: '',
+            quantity: 0,
+            barcode: '',
+            last_purchase_price: null,
+            regular_price: null,
+            sale_starts_at: null,
+            sale_ends_at: null,
+            weight: null,
+            length: null,
+            width: null,
+            height: null,
+            value_ids: normalizeValueIds(value_ids),
+            images: [],
+            _objectURL: '',
+        }
+    }
+
     // selection helpers
     function toggleValue(typeId, valueId) {
         selectionDirty.value = true
@@ -42,7 +85,7 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
     // seed selection from existing rows so tabs do not explode variants
     function seedSelectionFromRows() {
         const next = {}
-        for (const r of rows) {
+        for (const r of rows.filter(row => !row.archived)) {
             for (const vid of (r.value_ids || [])) {
                 const svid = String(vid)
                 const type = (props.variantTypes || []).find(t =>
@@ -59,7 +102,7 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
         }
     }
     function ensureSelectionSeeded() {
-        if (Object.keys(state.selected).length === 0 && rows.length > 0 && (props.variantTypes?.length || 0) > 0) {
+        if (Object.keys(state.selected).length === 0 && rows.some(row => !row.archived) && (props.variantTypes?.length || 0) > 0) {
             seedSelectionFromRows()
         }
     }
@@ -67,37 +110,97 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
     // generate rows from combos, preserving existing ones
     function generateRows() {
         if (!selectionDirty.value) return
-        const combos = allCombos.value || []
-        const keyFromRow = v => JSON.stringify((v.value_ids || []).map(id => String(id)).sort())
-        const existing = new Map(rows.map(v => [keyFromRow(v), v]))
-        const created = []
 
+        const combos = (allCombos.value || []).map(combo => normalizeValueIds(combo))
+        const currentRows = rows.slice()
+        const nextActiveRows = []
+        const nextArchivedRows = []
+        const reusedRows = new Set()
+
+        const exactCandidates = new Map()
+        for (const row of currentRows.filter(candidate => candidate.id || !candidate.archived)) {
+            const key = keyFromRow(row)
+            if (!exactCandidates.has(key)) {
+                exactCandidates.set(key, [])
+            }
+            exactCandidates.get(key).push(row)
+        }
+
+        const unmatchedCombos = []
         for (const combo of combos) {
-            const value_ids = combo.slice()
-            const key = JSON.stringify(value_ids.map(id => String(id)).sort())
-            if (existing.has(key)) {
-                created.push(existing.get(key))
-            } else {
-                created.push({
-                    id: null,
-                    sku: '',
-                    quantity: 0,
-                    barcode: '',
-                    last_purchase_price: null,
-                    regular_price: null,
-                    sale_starts_at: null,
-                    sale_ends_at: null,
-                    weight: null, length: null, width: null, height: null,
-                    value_ids,
-                    images: [],
-                    _objectURL: '',
-                })
+            const key = keyFromValueIds(combo)
+            const candidates = exactCandidates.get(key) || []
+            const row = candidates.find(candidate => !reusedRows.has(candidate))
+
+            if (row) {
+                row.value_ids = combo
+                row.archived = false
+                nextActiveRows.push(row)
+                reusedRows.add(row)
+                continue
+            }
+
+            unmatchedCombos.push(combo)
+        }
+
+        const unmatchedRows = currentRows.filter(row => (row.id || !row.archived) && !reusedRows.has(row))
+        const compatibleCandidates = unmatchedCombos.map(combo => ({
+            combo,
+            candidates: unmatchedRows.filter(row => isCompatible(row, combo)),
+        }))
+
+        const candidateUseCount = new Map()
+        const protectedCandidateUseCount = new Map()
+        for (const { candidates } of compatibleCandidates) {
+            for (const row of candidates) {
+                candidateUseCount.set(row, (candidateUseCount.get(row) || 0) + 1)
+                if (row.has_history) {
+                    protectedCandidateUseCount.set(row, (protectedCandidateUseCount.get(row) || 0) + 1)
+                }
             }
         }
 
-        rows.splice(0, rows.length, ...created)
+        for (const { combo, candidates } of compatibleCandidates) {
+            const protectedCandidates = candidates.filter(row => row.has_history)
+            const protectedCandidate = protectedCandidates.length === 1 ? protectedCandidates[0] : null
+            if (protectedCandidate && protectedCandidateUseCount.get(protectedCandidate) === 1 && !reusedRows.has(protectedCandidate)) {
+                protectedCandidate.value_ids = combo
+                protectedCandidate.archived = false
+                nextActiveRows.push(protectedCandidate)
+                reusedRows.add(protectedCandidate)
+                continue
+            }
+
+            const uniqueCandidate = candidates.length === 1 ? candidates[0] : null
+            if (uniqueCandidate && candidateUseCount.get(uniqueCandidate) === 1 && !reusedRows.has(uniqueCandidate)) {
+                uniqueCandidate.value_ids = combo
+                uniqueCandidate.archived = false
+                nextActiveRows.push(uniqueCandidate)
+                reusedRows.add(uniqueCandidate)
+                continue
+            }
+
+            nextActiveRows.push(toDraftRow(combo))
+        }
+
+        for (const row of currentRows) {
+            if (reusedRows.has(row)) {
+                continue
+            }
+
+            if (row.id) {
+                row.archived = true
+                nextArchivedRows.push(row)
+                continue
+            }
+
+            revokePreview(row)
+        }
+
+        const nextRows = [...nextActiveRows, ...nextArchivedRows]
+        rows.splice(0, rows.length, ...nextRows)
         pruneSkuStatus()
-        emit('update:modelValue', created)
+        emit('update:modelValue', nextRows)
     }
     watch(allCombos, generateRows)
 
@@ -110,8 +213,8 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
                 .filter(id => allowedValueIds.has(id))
             if (filtered.length === 0) continue
 
-            const sorted = [...filtered].sort()
-            const key = JSON.stringify(sorted)
+            const sorted = normalizeValueIds(filtered)
+            const key = keyFromValueIds(sorted)
 
             if (!byKey.has(key)) {
                 r.value_ids = sorted
@@ -129,7 +232,11 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
     watch(
         () => props.modelValue,
         v => {
-            rows.splice(0, rows.length, ...(Array.isArray(v) ? v : []))
+            rows.splice(0, rows.length, ...((Array.isArray(v) ? v : []).map(row => ({
+                archived: false,
+                ...row,
+                value_ids: normalizeValueIds(row.value_ids),
+            }))))
             pruneSkuStatus()
             ensureSelectionSeeded()
         },

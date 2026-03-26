@@ -58,6 +58,7 @@ class ProductVariantFactory extends Factory
             'length'         => $length,     // cm
             'width'          => $width,      // cm
             'height'         => $height,     // cm
+            'is_active'      => true,
         ];
     }
 

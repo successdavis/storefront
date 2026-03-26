@@ -126,6 +126,7 @@ class PricingQuoteService
             ->all();
 
         $variants = ProductVariant::query()
+            ->active()
             ->with('product.categories:id')
             ->whereIn('id', $variantIds)
             ->get()

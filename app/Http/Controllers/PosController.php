@@ -46,7 +46,9 @@ class PosController extends Controller
         $categoryId = $request->input('category_id');
         $brandId = $request->input('brand_id');
 
-        $variantsQuery = ProductVariant::with(['product', 'product.images', 'values.type'])
+        $variantsQuery = ProductVariant::query()
+            ->active()
+            ->with(['product', 'product.images', 'values.type'])
             ->when($q, function ($query, $q) {
                 $query->where(function ($q2) use ($q) {
                     $q2->where('sku', 'like', "%{$q}%")
@@ -90,7 +92,9 @@ class PosController extends Controller
     // Optional separate endpoint for infinite load or client-side fetching
     public function productsApi(Request $request)
     {
-        $variants = ProductVariant::with(['product','product.images'])
+        $variants = ProductVariant::query()
+            ->active()
+            ->with(['product','product.images'])
             ->when($request->input('q'), function ($q) use ($request) {
                 $term = $request->input('q');
                 $q->where('sku', 'like', "%{$term}%")

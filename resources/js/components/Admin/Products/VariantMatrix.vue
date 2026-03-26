@@ -47,7 +47,17 @@ const {
 // remove a row
 function removeRow(idx) {
     const victim = rows[idx]
-    if (victim) revokePreview(victim)
+    if (!victim) {
+        return
+    }
+
+    if (victim.id) {
+        victim.archived = true
+        emit('update:modelValue', [...rows])
+        return
+    }
+
+    revokePreview(victim)
     const next = rows.slice()
     next.splice(idx, 1)
     rows.splice(0, rows.length, ...next)
@@ -90,6 +100,13 @@ onBeforeUnmount(() => {
             {{ tableErrorCount }} issue(s) found in the table. Fields with problems are highlighted below.
         </div>
 
+        <div
+            v-if="rows.some(row => row.archived)"
+            class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+        >
+            Existing variants removed from the selected combinations stay attached to the product record and will be archived on save instead of being silently replaced.
+        </div>
+
         <!-- Variant table -->
         <div class="border rounded overflow-x-auto bg-white dark:bg-gray-900 dark:border-gray-700">
             <table class="w-full text-sm">
@@ -106,9 +123,22 @@ onBeforeUnmount(() => {
                 </thead>
 
                 <tbody>
-                <tr v-for="(r, i) in rows" :key="i" class="border-t dark:border-gray-700 align-top">
+                <tr
+                    v-for="(r, i) in rows"
+                    :key="i"
+                    class="border-t dark:border-gray-700 align-top"
+                    :class="r.archived ? 'bg-amber-50/70 dark:bg-amber-950/20 opacity-80' : ''"
+                >
                     <td class="p-2 align-middle">
-                        <span class="text-gray-700">{{ resolveValueNames(r.value_ids).join(' / ') }}</span>
+                        <div class="flex flex-col gap-1">
+                            <span class="text-gray-700">{{ resolveValueNames(r.value_ids).join(' / ') }}</span>
+                            <span
+                                v-if="r.archived"
+                                class="text-xs font-medium text-amber-700 dark:text-amber-300"
+                            >
+                                Archived on save
+                            </span>
+                        </div>
                     </td>
 
                     <td class="p-2">
@@ -118,7 +148,7 @@ onBeforeUnmount(() => {
                             @input="onSkuInput(i)"
                             @blur="validateTableRow(i)"
                             autocomplete="off"
-                            :disabled="r.id"
+                            :disabled="r.id || r.archived"
                             autocapitalize="characters"
                             spellcheck="false"
                             aria-invalid="true"
@@ -137,7 +167,7 @@ onBeforeUnmount(() => {
                         <input
                             v-model.number="r.last_purchase_price"
                             type="number" min="0"
-                            :disabled="r.id"
+                            :disabled="r.id || r.archived"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.last_purchase_price ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateTableRow(i)"
@@ -150,6 +180,7 @@ onBeforeUnmount(() => {
                         <input
                             v-model.number="r.regular_price"
                             type="number" step="0.01" min="0"
+                            :disabled="r.archived"
                             class="border rounded w-full py-1 px-2"
                             :class="errors.table[i]?.regular_price ? 'border-red-400 ' : ''"
                             @blur="validateTableRow(i)"
@@ -162,7 +193,7 @@ onBeforeUnmount(() => {
                         <input
                             v-model.number="r.quantity"
                             type="number" min="0"
-                            :disabled="r.id"
+                            :disabled="r.id || r.archived"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.quantity ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateTableRow(i)"
@@ -175,6 +206,7 @@ onBeforeUnmount(() => {
                     <td class="p-2">
                         <input
                             v-model="r.barcode"
+                            :disabled="r.archived"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.barcode ? 'border-red-400 bg-red-50' : ''"
                             @blur="validateTableRow(i)"
@@ -186,8 +218,24 @@ onBeforeUnmount(() => {
 
                     <td class="p-2">
                         <div class="flex items-center gap-2">
-                            <button type="button" class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-500" @click="openDetails(r, i)" title="Open details">Details</button>
-                            <button type="button" class="px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50" @click="removeRow(i)" aria-label="Remove variant" title="Remove">Remove</button>
+                            <button
+                                type="button"
+                                class="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="r.archived"
+                                @click="openDetails(r, i)"
+                                title="Open details"
+                            >
+                                Details
+                            </button>
+                            <button
+                                type="button"
+                                class="px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50"
+                                @click="removeRow(i)"
+                                aria-label="Remove variant"
+                                :title="r.id ? 'Archive variant' : 'Remove variant'"
+                            >
+                                {{ r.id ? 'Archive' : 'Remove' }}
+                            </button>
                         </div>
                     </td>
                 </tr>

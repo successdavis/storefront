@@ -7,7 +7,6 @@ use App\Models\Order;
 use App\Models\ProductVariant;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -60,34 +59,34 @@ class CartService
         $quantityToAdd = max(1, (int) ($data['quantity'] ?? 1));
         $variantId = (int) $data['variant_id'];
 
-        // Load variant from cache / DB (same select as before)
-        $variant = Cache::remember(
-            "variant:{$variantId}",
-            3600,
-            function () use ($variantId) {
-                return ProductVariant::query()
-                    ->select([
-                        'id',
-                        'product_id',
-                        'sku',
-                        'quantity',
-                        'reserved',
-                        'regular_price',
-                        'sale_price',
-                        'sale_starts_at',
-                        'sale_ends_at'
-                    ])
-                    ->with([
-                        'product:id,name,slug',
-                        'product.categories:id',
-                        'product.images:id,product_id,path,is_primary,sort_order',
-                        'images:id,product_variant_id,path,is_primary,sort_order',
-                        'values:id,variant_type_id,value',
-                        'values.type:id,name',
-                    ])
-                    ->findOrFail($variantId);
-            }
-        );
+        $variant = ProductVariant::query()
+            ->active()
+            ->select([
+                'id',
+                'product_id',
+                'sku',
+                'quantity',
+                'reserved',
+                'regular_price',
+                'sale_price',
+                'sale_starts_at',
+                'sale_ends_at'
+            ])
+            ->with([
+                'product:id,name,slug',
+                'product.categories:id',
+                'product.images:id,product_id,path,is_primary,sort_order',
+                'images:id,product_variant_id,path,is_primary,sort_order',
+                'values:id,variant_type_id,value',
+                'values.type:id,name',
+            ])
+            ->findOrFail($variantId);
+
+        if (!$variant->product || !$variant->product->is_active) {
+            throw ValidationException::withMessages([
+                'variant_id' => 'This product variant is no longer available.',
+            ]);
+        }
 
         $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
 
@@ -157,11 +156,7 @@ class CartService
         }
 
         // re-check availability
-        $variant = Cache::remember(
-            "variant:{$variantId}",
-            3600,
-            fn() => ProductVariant::select('id', 'quantity', 'reserved', 'sku')->findOrFail($variantId)
-        );
+        $variant = ProductVariant::active()->select('id', 'quantity', 'reserved', 'sku')->findOrFail($variantId);
 
         $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
 
@@ -323,7 +318,7 @@ class CartService
             }
 
             $variant = $variants[$vid] ?? null;
-            if (!$variant || !$variant->product) {
+            if (!$variant || !$variant->product || !$variant->is_active || !$variant->product->is_active) {
                 continue;
             }
 

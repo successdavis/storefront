@@ -130,7 +130,7 @@ class CustomerSavedItemService
 
         $variant = $this->loadVariant((int) $item->variant_id);
 
-        if (!$variant->product || !$variant->product->is_active || $variant->trashed()) {
+        if (!$variant->product || !$variant->product->is_active || !$variant->is_active || $variant->trashed()) {
             throw ValidationException::withMessages([
                 'item' => 'This product is no longer available.',
             ]);
@@ -205,7 +205,7 @@ class CustomerSavedItemService
         $product = $variant?->product;
         $stock = $variant ? $this->productService->resolveVariantStock($variant) : null;
         $pricing = $variant ? $this->productService->resolveVariantPricing($variant) : null;
-        $isUnavailable = !$variant || !$product || !$product->is_active || $variant->trashed();
+        $isUnavailable = !$variant || !$product || !$product->is_active || !$variant->is_active || $variant->trashed();
 
         $message = null;
         if ($isUnavailable) {

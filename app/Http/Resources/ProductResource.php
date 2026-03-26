@@ -65,6 +65,8 @@ class ProductResource extends JsonResource
             'variants' => $this->variants->load('values', 'images')->map(function ($v) {
                 return [
                     'id'                        => (int) $v->id,
+                    'is_active'                 => (bool) $v->is_active,
+                    'has_history'               => $v->hasDurableHistory(),
                     'sku'                       => $v->sku,
                     'quantity'                  => (int) $v->quantity,
                     'barcode'                   => $v->barcode,

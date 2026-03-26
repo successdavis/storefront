@@ -6,9 +6,7 @@ use App\Models\Admin\VariantImage;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ProductVariant extends Model
@@ -18,7 +16,7 @@ class ProductVariant extends Model
     protected $fillable = [
         'product_id','sku','quantity','barcode','cost_price',
         'regular_price','sale_price','sale_starts_at','sale_ends_at',
-        'weight','length','width','height',
+        'weight','length','width','height','track_inventory','reorder_point','is_active',
     ];
 
     protected $casts = [
@@ -28,6 +26,8 @@ class ProductVariant extends Model
         'length' => 'decimal:2',
         'width' => 'decimal:2',
         'height' => 'decimal:2',
+        'track_inventory' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     /**
@@ -58,6 +58,10 @@ class ProductVariant extends Model
         return $this->hasMany(VariantImage::class)->orderBy('sort_order');
     }
 
+    public function openingBalanceItems()
+    {
+        return $this->hasMany(OpeningBalanceItem::class, 'variant_id');
+    }
 
     public function stockEntries()
     {
@@ -77,9 +81,54 @@ class ProductVariant extends Model
         return $query->where('quantity', '>', 0);
     }
 
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
     public function cartItems(): HasMany
     {
         return $this->hasMany(CartItem::class, 'variant_id');
+    }
+
+    public function saleItems()
+    {
+        return $this->hasMany(SaleItem::class, 'variant_id');
+    }
+
+    public function stockReservations()
+    {
+        return $this->hasMany(StockReservation::class, 'variant_id');
+    }
+
+    public function purchaseOrderItems()
+    {
+        return $this->hasMany(PurchaseOrderItem::class, 'product_variant_id');
+    }
+
+    public function itemReceiptItems()
+    {
+        return $this->hasMany(ItemReceiptItem::class, 'product_variant_id');
+    }
+
+    public function vendorBillItems()
+    {
+        return $this->hasMany(VendorBillItem::class, 'product_variant_id');
+    }
+
+    public function inventoryCostAdjustments()
+    {
+        return $this->hasMany(InventoryCostAdjustment::class, 'product_variant_id');
+    }
+
+    public function stockAdjustments()
+    {
+        return $this->hasMany(StockAdjustment::class, 'variant_id');
+    }
+
+    public function inventoryAlerts()
+    {
+        return $this->hasMany(InventoryAlert::class, 'variant_id');
     }
 
     public function getIsOnSaleAttribute(): bool
@@ -116,5 +165,25 @@ class ProductVariant extends Model
             ->implode(' ');
 
         return trim("{$this->product->name} {$values}");
+    }
+
+    public function hasDurableHistory(): bool
+    {
+        if ((int) $this->quantity > 0 || (int) ($this->reserved ?? 0) > 0) {
+            return true;
+        }
+
+        return $this->openingBalanceItems()->exists()
+            || $this->stockEntries()->exists()
+            || $this->orderItems()->exists()
+            || $this->saleItems()->exists()
+            || $this->stockReservations()->exists()
+            || $this->purchaseOrderItems()->exists()
+            || $this->itemReceiptItems()->exists()
+            || $this->vendorBillItems()->exists()
+            || $this->inventoryCostAdjustments()->exists()
+            || $this->stockAdjustments()->exists()
+            || $this->stockAuditItems()->exists()
+            || $this->inventoryAlerts()->exists();
     }
 }

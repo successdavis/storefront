@@ -180,9 +180,9 @@
                             @if (!empty($row['discount_display_label']))
                                 <div class="discount-badge">{{ $row['discount_display_label'] }}</div>
                             @endif
-                            <div class="price-original">&#8358;{{ number_format((float) $row['original_price'], 2) }}</div>
+                            <div class="price-original">N{{ number_format((float) $row['original_price'], 2) }}</div>
                         @endif
-                        <div class="price-value">&#8358;{{ number_format((float) ($row['final_price'] ?? $row['sales_price']), 2) }}</div>
+                        <div class="price-value">N{{ number_format((float) ($row['final_price'] ?? $row['sales_price']), 2) }}</div>
                     </td>
                 </tr>
             @empty

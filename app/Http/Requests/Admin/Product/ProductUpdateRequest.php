@@ -40,6 +40,7 @@ class ProductUpdateRequest extends FormRequest
 
             'variants' => ['array'],
             'variants.*.id'            => ['nullable','integer','exists:product_variants,id'],
+            'variants.*.archived'      => ['nullable','boolean'],
             'variants.*.quantity'      => ['integer','min:0'],
             'variants.*.last_purchase_price'    => ['nullable','numeric','min:0'],
             'variants.*.regular_price' => ['required','numeric','min:0'],
