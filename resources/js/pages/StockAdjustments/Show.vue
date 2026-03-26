@@ -29,6 +29,11 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Product Variant</p>
+                    <p class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ adjustment.product_variant }}</p>
+                </div>
+
+                <div>
                     <p class="text-sm text-gray-500 dark:text-gray-400">Product SKU</p>
                     <p class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ adjustment.product_sku }}</p>
                 </div>

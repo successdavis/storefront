@@ -28,6 +28,10 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    routes: {
+        type: Object,
+        required: true,
+    },
     defaultAuditNote: {
         type: String,
         default: '',
@@ -125,7 +129,7 @@ function submitAudit() {
         physical_quantity: Number(physicalByVariant.value[variant.id] ?? 0),
     }))
 
-    form.post('/admin/inventory/stock-audit', {
+    form.post(props.routes.store, {
         preserveScroll: true,
     })
 }
@@ -151,7 +155,7 @@ async function persistVariant(variantId) {
     persistingVariantId.value = variantId
 
     try {
-        const { data } = await axios.post('/admin/inventory/stock-audit/items', {
+        const { data } = await axios.post(props.routes.upsert_item, {
             session_id: sessionState.value.id,
             variant_id: variantId,
             physical_quantity: Number(physicalByVariant.value[variantId] ?? 0),
@@ -169,7 +173,7 @@ async function persistVariant(variantId) {
 
 function applyScope() {
     router.get(
-        '/admin/inventory/stock-audit',
+        props.routes.index,
         {
             scope_type: scopeType.value,
             category_id: scopeType.value === 'category' ? selectedCategoryId.value : null,
@@ -183,16 +187,16 @@ function applyScope() {
 }
 
 function openResumeSessions() {
-    router.get('/admin/inventory/stock-audit/sessions')
+    router.get(props.routes.sessions)
 }
 
 function resumeSession(sessionId, mode = 'manual') {
     if (mode === 'mobile') {
-        router.get('/admin/inventory/stock-audit/mobile', { session_id: sessionId, ready: 1 })
+        router.get(props.routes.mobile, { session_id: sessionId, ready: 1 })
         return
     }
 
-    router.get('/admin/inventory/stock-audit', { session_id: sessionId })
+    router.get(props.routes.index, { session_id: sessionId })
 }
 </script>
 

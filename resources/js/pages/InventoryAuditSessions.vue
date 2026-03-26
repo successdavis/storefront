@@ -7,6 +7,10 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    routes: {
+        type: Object,
+        required: true,
+    },
 })
 
 const deletingId = ref(null)
@@ -25,7 +29,7 @@ function discardSession(sessionId) {
     }
 
     deletingId.value = sessionId
-    router.delete(`/admin/inventory/stock-audit/sessions/${sessionId}`, {
+    router.delete(props.routes.session_discard_base.replace('__SESSION__', String(sessionId)), {
         preserveScroll: true,
         onFinish: () => {
             deletingId.value = null
@@ -84,13 +88,13 @@ function discardSession(sessionId) {
                         <td class="px-4 py-3">
                             <div class="flex flex-wrap gap-2">
                                 <Link
-                                    :href="`/admin/inventory/stock-audit?session_id=${session.id}`"
+                                    :href="`${routes.index}?session_id=${session.id}`"
                                     class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
                                 >
                                     Resume Manual
                                 </Link>
                                 <Link
-                                    :href="`/admin/inventory/stock-audit/mobile?session_id=${session.id}&ready=1`"
+                                    :href="`${routes.mobile}?session_id=${session.id}&ready=1`"
                                     class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800"
                                 >
                                     Resume Mobile

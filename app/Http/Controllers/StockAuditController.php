@@ -64,6 +64,7 @@ class StockAuditController extends Controller
             'session' => $this->stockAuditService->sessionSummary($session),
             'resumableSessions' => $resumableSessions,
             'resumeShortcut' => $resumableSessions->first(),
+            'routes' => $this->auditRouteMap($request),
             'defaultAuditNote' => sprintf(
                 'Physical stock check for %s',
                 now()->format('F j, Y')
@@ -102,8 +103,8 @@ class StockAuditController extends Controller
         }
 
         $destination = $source === 'mobile'
-            ? 'admin.inventory.stock-audit.mobile'
-            : 'admin.inventory.stock-audit.index';
+            ? $this->auditRouteName($request, 'mobile')
+            : $this->auditRouteName($request, 'index');
 
         return redirect()
             ->route($destination, [
@@ -158,6 +159,7 @@ class StockAuditController extends Controller
             'totalVariants' => (int) $session->total_expected_items,
             'session' => $this->stockAuditService->sessionSummary($session),
             'sessionItems' => $sessionItems,
+            'routes' => $this->auditRouteMap($request),
             'categories' => Category::query()
                 ->orderBy('name')
                 ->get(['id', 'name']),
@@ -217,10 +219,11 @@ class StockAuditController extends Controller
         ]);
     }
 
-    public function sessions(): Response
+    public function sessions(Request $request): Response
     {
         return Inertia::render('InventoryAuditSessions', [
             'sessions' => $this->stockAuditService->resumableSessions(auth()->id()),
+            'routes' => $this->auditRouteMap($request),
         ]);
     }
 
@@ -317,5 +320,32 @@ class StockAuditController extends Controller
                 'source' => $sourceFilter,
             ],
         ]);
+    }
+
+    protected function auditRouteMap(Request $request): array
+    {
+        $prefix = $this->auditRoutePrefix($request);
+
+        return [
+            'index' => route($prefix . '.inventory.stock-audit.index'),
+            'store' => route($prefix . '.inventory.stock-audit.store'),
+            'mobile' => route($prefix . '.inventory.stock-audit.mobile'),
+            'sessions' => route($prefix . '.inventory.stock-audit.sessions'),
+            'lookup' => route($prefix . '.inventory.stock-audit.lookup'),
+            'upsert_item' => route($prefix . '.inventory.stock-audit.items.upsert'),
+            'session_discard_base' => route($prefix . '.inventory.stock-audit.sessions.discard', ['session' => '__SESSION__']),
+        ];
+    }
+
+    protected function auditRouteName(Request $request, string $page): string
+    {
+        return $this->auditRoutePrefix($request) . '.inventory.stock-audit.' . $page;
+    }
+
+    protected function auditRoutePrefix(Request $request): string
+    {
+        return str_starts_with((string) $request->route()?->getName(), 'sales.')
+            ? 'sales'
+            : 'admin';
     }
 }

@@ -203,6 +203,28 @@ Route::prefix('sales')
         Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->middleware('permission.any:sales.pos.use')->name('pos.placeOrder');
         Route::get('/pos/sales', [PosController::class, 'salesOrders'])->middleware('permission.any:sales.pos.use')->name('pos.orders');
         Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->middleware('permission.any:sales.pos.use')->name('pos.print');
+
+        Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.index');
+        Route::get('inventory/stock-audit/sessions', [StockAuditController::class, 'sessions'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.sessions');
+        Route::delete('inventory/stock-audit/sessions/{session}', [StockAuditController::class, 'discardSession'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.sessions.discard');
+        Route::post('inventory/stock-audit', [StockAuditController::class, 'store'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.store');
+        Route::get('inventory/stock-audit/mobile', [StockAuditController::class, 'mobile'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.mobile');
+        Route::get('inventory/stock-audit/lookup', [StockAuditController::class, 'lookupByBarcode'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.lookup');
+        Route::post('inventory/stock-audit/items', [StockAuditController::class, 'upsertItem'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.items.upsert');
     });
 
 /*

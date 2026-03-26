@@ -23,7 +23,7 @@
                 <tr
                     class="bg-gray-50 dark:bg-gray-700 text-left text-sm font-semibold text-gray-700 dark:text-gray-200 border-b dark:border-gray-600"
                 >
-                    <th class="p-3">Variant</th>
+                    <th class="p-3">Product Variant</th>
                     <th class="p-3 text-right">Previous</th>
                     <th class="p-3 text-right">Adjusted</th>
                     <th class="p-3 text-right">New Qty</th>
@@ -40,7 +40,7 @@
                     :key="item.id"
                     class="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
                 >
-                    <td class="p-3 font-medium text-gray-900 dark:text-gray-100">{{ item.product_name + ' - ' + item.variant_sku }}</td>
+                    <td class="p-3 font-medium text-gray-900 dark:text-gray-100">{{ item.variant_label }}</td>
                     <td class="p-3 text-right text-gray-700 dark:text-gray-300">
                         {{ item.previous_quantity }}
                     </td>

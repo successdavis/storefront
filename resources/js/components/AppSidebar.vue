@@ -144,6 +144,14 @@ const salesNavItems: MainNavItem[] = [
         href: '/sales/customers',
         icon: Users,
     },
+    {
+        title: 'Inventory Audit',
+        icon: Boxes,
+        subItems: [
+            { title: 'Stock Audit', href: '/sales/inventory/stock-audit' },
+            { title: 'Mobile Audit', href: '/sales/inventory/stock-audit/mobile' },
+        ],
+    },
 ];
 
 const customerNavItems: MainNavItem[] = [

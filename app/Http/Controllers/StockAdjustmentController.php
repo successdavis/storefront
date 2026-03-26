@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\ProductVariant;
 use App\Models\StockAdjustment;
 use App\Services\StockAdjustmentApprovalService;
@@ -14,6 +15,7 @@ class StockAdjustmentController extends Controller
 {
     public function __construct(
         protected StockAdjustmentApprovalService $approvalService,
+        protected VariantNameFormatter $variantNameFormatter,
     ) {}
 
     public function index()
@@ -21,6 +23,8 @@ class StockAdjustmentController extends Controller
         $adjustments = StockAdjustment::with([
             'variant:id,product_id,sku',
             'variant.product:id,name',
+            'variant.values:id,variant_type_id,value',
+            'variant.values.type:id,name',
             'warehouse:id,name',
             'employee:id,name',
             'approver:id,name',
@@ -30,8 +34,8 @@ class StockAdjustmentController extends Controller
             ->paginate(15)
             ->through(fn ($item) => [
                 'id' => $item->id,
+                'variant_label' => $item->variant ? $this->variantNameFormatter->format($item->variant) : 'N/A',
                 'variant_sku' => $item->variant?->sku,
-                'product_name' => $item->variant?->product?->name,
                 'warehouse' => $item->warehouse?->name,
                 'employee' => $item->employee?->name,
                 'previous_quantity' => $item->previous_quantity,
@@ -53,14 +57,18 @@ class StockAdjustmentController extends Controller
 
     public function create()
     {
-        $variants = ProductVariant::with('product:id,name')
+        $variants = ProductVariant::with([
+            'product:id,name',
+            'values:id,variant_type_id,value',
+            'values.type:id,name',
+        ])
             ->select('id', 'product_id', 'sku', 'quantity')
             ->distinct()
             ->get()
             ->map(function ($variant) {
                 return [
                     'id' => $variant->id,
-                    'label' => $variant->product->name . ' - ' . $variant->sku,
+                    'label' => $this->variantNameFormatter->format($variant),
                     'current_quantity' => $variant->quantity ?? 0,
                 ];
             });
@@ -102,20 +110,21 @@ class StockAdjustmentController extends Controller
     public function show(StockAdjustment $stockAdjustment)
     {
         $stockAdjustment->load([
+            'variant:id,product_id,sku',
             'variant.product:id,name',
+            'variant.values:id,variant_type_id,value',
+            'variant.values.type:id,name',
             'warehouse:id,name',
             'employee:id,name',
             'approver:id,name',
             'rejector:id,name',
         ]);
 
-        $productName = $stockAdjustment->variant?->product?->name ?? 'N/A';
-        $sku = $stockAdjustment->variant?->sku ?? 'N/A';
-
         return Inertia::render('StockAdjustments/Show', [
             'adjustment' => [
                 'id' => $stockAdjustment->id,
-                'product_sku' => "{$productName} - {$sku}",
+                'product_variant' => $stockAdjustment->variant ? $this->variantNameFormatter->format($stockAdjustment->variant) : 'N/A',
+                'product_sku' => $stockAdjustment->variant?->sku ?? 'N/A',
                 'previous_quantity' => $stockAdjustment->previous_quantity,
                 'adjusted_quantity' => $stockAdjustment->adjusted_quantity,
                 'new_quantity' => $stockAdjustment->new_quantity,

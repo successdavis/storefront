@@ -28,6 +28,10 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    routes: {
+        type: Object,
+        required: true,
+    },
 })
 
 const scopeType = ref(props.session?.scope_type || 'full')
@@ -162,7 +166,7 @@ async function lookupBarcode(rawBarcode) {
     scannerError.value = ''
 
     try {
-        const { data } = await axios.get('/admin/inventory/stock-audit/lookup', {
+        const { data } = await axios.get(props.routes.lookup, {
             params: {
                 barcode,
                 session_id: form.session_id,
@@ -202,7 +206,7 @@ async function addToBatch() {
     autoSaveState.value = 'saving'
 
     try {
-        const { data } = await axios.post('/admin/inventory/stock-audit/items', {
+        const { data } = await axios.post(props.routes.upsert_item, {
             session_id: form.session_id,
             variant_id: payload.variant_id,
             physical_quantity: payload.physical_quantity,
@@ -292,7 +296,7 @@ const selectedCategoryName = computed(() => {
 
 function applyScope() {
     router.get(
-        '/admin/inventory/stock-audit/mobile',
+        props.routes.mobile,
         {
             scope_type: scopeType.value,
             category_id: scopeType.value === 'category' ? selectedCategoryId.value : null,
@@ -306,21 +310,21 @@ function applyScope() {
 }
 
 function openResumeSessions() {
-    router.get('/admin/inventory/stock-audit/sessions')
+    router.get(props.routes.sessions)
 }
 
 function resumeSession(sessionId, mode = 'mobile') {
     if (mode === 'manual') {
-        router.get('/admin/inventory/stock-audit', { session_id: sessionId })
+        router.get(props.routes.index, { session_id: sessionId })
         return
     }
 
-    router.get('/admin/inventory/stock-audit/mobile', { session_id: sessionId, ready: 1 })
+    router.get(props.routes.mobile, { session_id: sessionId, ready: 1 })
 }
 
 function changeScope() {
     router.get(
-        '/admin/inventory/stock-audit/mobile',
+        props.routes.mobile,
         {
             scope_type: scopeType.value,
             category_id: scopeType.value === 'category' ? selectedCategoryId.value : null,
@@ -359,7 +363,7 @@ function performSubmit() {
         physical_quantity: Number(entry.physical_quantity),
     }))
 
-    form.post('/admin/inventory/stock-audit', {
+    form.post(props.routes.store, {
         preserveScroll: true,
         onSuccess: () => {
             entries.value = []

@@ -117,7 +117,7 @@ export default {
                             :tabindex="1"
                             autocomplete="email"
                             placeholder="name@company.com"
-                            class="h-13 rounded-2xl border-slate-200 dark:bg-white bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
+                            class="h-13 rounded-2xl border-slate-200 dark:bg-white dark:text-black bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
                         />
                     </div>
 
@@ -154,7 +154,7 @@ export default {
                             :tabindex="2"
                             autocomplete="current-password"
                             placeholder="Enter your password"
-                            class="h-13 rounded-2xl border-slate-200 bg-white dark:bg-white pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
+                            class="h-13 rounded-2xl border-slate-200 bg-white dark:bg-white dark:text-black pl-11 text-sm shadow-sm transition focus-visible:ring-2 focus-visible:ring-slate-900/20"
                         />
                     </div>
 
