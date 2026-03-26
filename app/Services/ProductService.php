@@ -608,9 +608,12 @@ class ProductService
         return null;
     }
 
-    public function resolveVariantPricing(ProductVariant $variant, ?User $user = null, ?Product $product = null): array
+    public function resolveVariantPricing(ProductVariant $variant, ?User $user = null, ?Product $product = null, bool $allowAuthenticatedFallback = true): array
     {
-        $user ??= auth()->user();
+        if ($allowAuthenticatedFallback && $user === null) {
+            $user = auth()->user();
+        }
+
         $product ??= $variant->product;
 
         if (!$product) {
@@ -686,6 +689,17 @@ class ProductService
             'available' => $available,
             'is_in_stock' => $available > 0,
         ];
+    }
+
+    public function describeVariant(ProductVariant $variant): string
+    {
+        $variant->loadMissing(['values.type']);
+
+        $label = $variant->values
+            ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
+            ->implode(' / ');
+
+        return $label ?: $variant->sku;
     }
 
     public function listStoreCategories(): array
@@ -784,14 +798,10 @@ class ProductService
         $stock = $this->resolveVariantStock($variant);
         $price = $this->resolveVariantPricing($variant, $user, $product);
 
-        $label = $variant->values
-            ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
-            ->implode(' / ');
-
         return [
             'id' => (int) $variant->id,
             'sku' => $variant->sku,
-            'label' => $label ?: $variant->sku,
+            'label' => $this->describeVariant($variant),
             'stock' => $stock,
             'price' => $price,
             'images' => $variant->images

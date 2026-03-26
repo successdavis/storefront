@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminBrandController;
 use App\Http\Controllers\Admin\AdminCategoryController;
+use App\Http\Controllers\Admin\CategoryPriceListReportController;
 use App\Http\Controllers\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Admin\DiscountController as AdminDiscountController;
 use App\Http\Controllers\Admin\AdminOrderController;
@@ -342,6 +343,12 @@ Route::prefix('admin')
         Route::patch('shipping-rates/{shippingRate}/toggle-status', [AdminShippingRateController::class, 'toggleStatus'])
             ->middleware('permission.any:admin.catalog.manage')
             ->name('shipping-rates.toggle-status');
+        Route::get('reports/category-price-list', [CategoryPriceListReportController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('reports.category-price-list.index');
+        Route::get('reports/category-price-list/export', [CategoryPriceListReportController::class, 'export'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('reports.category-price-list.export');
 
         Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');
