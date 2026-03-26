@@ -73,7 +73,7 @@ class CartService
                 'sale_ends_at'
             ])
             ->with([
-                'product:id,name,slug',
+                'product:id,name,slug,is_active',
                 'product.categories:id',
                 'product.images:id,product_id,path,is_primary,sort_order',
                 'images:id,product_variant_id,path,is_primary,sort_order',
@@ -293,8 +293,9 @@ class CartService
 
         $variantIds = array_map('intval', array_keys($redisCart));
         $variants = ProductVariant::query()
+            ->withTrashed()
             ->with([
-                'product:id,name,slug',
+                'product' => fn ($query) => $query->withTrashed()->select('id', 'name', 'slug', 'is_active'),
                 'product.categories:id',
                 'product.images:id,product_id,path,is_primary,sort_order',
                 'images:id,product_variant_id,path,is_primary,sort_order',
@@ -309,6 +310,7 @@ class CartService
         $items = [];
         $discountItems = [];
         $subtotal = 0.0;
+        $unavailableItemCount = 0;
 
         foreach ($redisCart as $vid => $entry) {
             $vid = (int) $vid;
@@ -317,49 +319,25 @@ class CartService
                 continue;
             }
 
-            $variant = $variants[$vid] ?? null;
-            if (!$variant || !$variant->product || !$variant->is_active || !$variant->product->is_active) {
+            $variant = $variants->get($vid);
+            $item = $this->buildDetailedCartItemPayload($variant, $vid, $quantity, $user);
+            $items[] = $item;
+
+            if (!($item['availability']['is_available'] ?? false)) {
+                $unavailableItemCount++;
+            }
+
+            if (!($item['availability']['included_in_totals'] ?? false)) {
                 continue;
             }
 
-            $categoryIds = $variant->product->categories?->pluck('id')->all() ?? [];
-            $pricing = $this->productService->resolveVariantPricing($variant, $user, $variant->product);
-            $stock = $this->productService->resolveVariantStock($variant);
-            $lineTotal = round(((float) $pricing['current']) * $quantity, 2);
-            $subtotal += $lineTotal;
-
-            $variantLabel = $variant->values
-                ? $variant->values->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))->implode(' / ')
-                : $variant->sku;
-
-            $items[] = [
-                'id' => null, // there is no DB CartItem id yet
-                'variant_id' => (int) $variant->id,
-                'quantity' => (int) $quantity,
-                'subtotal' => $lineTotal,
-                'category_ids' => $categoryIds,
-                'product' => [
-                    'id' => (int) $variant->product->id,
-                    'name' => $variant->product->name,
-                    'slug' => $variant->product->slug,
-                    'image' => $this->productService->resolveProductImage($variant->product, $variant),
-                ],
-                'variant' => [
-                    'id' => (int) $variant->id,
-                    'sku' => $variant->sku,
-                    'label' => $variantLabel ?: $variant->sku,
-                    'image' => $this->productService->resolveProductImage($variant->product, $variant),
-                    'price' => $pricing,
-                    'stock' => $stock,
-                ],
-            ];
-
+            $subtotal += (float) $item['subtotal'];
             $discountItems[] = [
-                'variant_id' => (int) $variant->id,
-                'quantity' => (float) $quantity,
-                'unit_price' => (float) $pricing['current'],
-                'product_id' => (int) $variant->product->id,
-                'category_ids' => $categoryIds,
+                'variant_id' => (int) $item['variant']['id'],
+                'quantity' => (float) $item['quantity'],
+                'unit_price' => (float) $item['variant']['price']['current'],
+                'product_id' => (int) ($item['product']['id'] ?? 0),
+                'category_ids' => $item['category_ids'] ?? [],
             ];
         }
 
@@ -394,9 +372,15 @@ class CartService
                 'id' => null, // no DB cart id until persisted at checkout
                 'status' => 'active',
                 'items' => $items,
+                'has_unavailable_items' => $unavailableItemCount > 0,
+                'unavailable_items_count' => $unavailableItemCount,
             ],
             'summary' => [
-                'item_count' => (int) collect($items)->sum('quantity'),
+                'item_count' => (int) collect($items)->sum(
+                    fn (array $item) => ($item['availability']['included_in_totals'] ?? false)
+                        ? (int) $item['quantity']
+                        : 0
+                ),
                 'subtotal' => round($subtotal, 2),
                 'discount' => $discountAmount,
                 'discount_id' => $discount['discount_id'] ?? null,
@@ -417,6 +401,8 @@ class CartService
                 'id' => null,
                 'status' => 'active',
                 'items' => [],
+                'has_unavailable_items' => false,
+                'unavailable_items_count' => 0,
             ],
             'summary' => [
                 'item_count' => 0,
@@ -433,6 +419,149 @@ class CartService
         ];
     }
 
+    protected function buildDetailedCartItemPayload(?ProductVariant $variant, int $variantId, int $quantity, ?User $user = null): array
+    {
+        $availability = $this->resolveCartItemAvailability($variant, $quantity);
+        $pricing = $this->resolveCartItemPricing($variant, $user);
+        $stock = $variant ? $this->productService->resolveVariantStock($variant) : $this->emptyCartItemStock();
+        $lineTotal = round(((float) ($pricing['current'] ?? 0)) * $quantity, 2);
+        $variantLabel = $this->describeCartVariant($variant);
+        $product = $variant?->product;
+
+        return [
+            'id' => null,
+            'variant_id' => $variantId,
+            'quantity' => $quantity,
+            'subtotal' => $lineTotal,
+            'category_ids' => $product?->categories?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [],
+            'product' => [
+                'id' => $product?->id ? (int) $product->id : null,
+                'name' => $product?->name ?: 'Unavailable product',
+                'slug' => $product?->slug,
+                'image' => $product && $variant
+                    ? $this->productService->resolveProductImage($product, $variant)
+                    : null,
+            ],
+            'variant' => [
+                'id' => $variant?->id ? (int) $variant->id : null,
+                'sku' => $variant?->sku,
+                'label' => $variantLabel,
+                'image' => $product && $variant
+                    ? $this->productService->resolveProductImage($product, $variant)
+                    : null,
+                'price' => $pricing,
+                'stock' => $stock,
+            ],
+            'availability' => $availability,
+        ];
+    }
+
+    protected function resolveCartItemAvailability(?ProductVariant $variant, int $quantity): array
+    {
+        if (!$variant || $variant->trashed()) {
+            return [
+                'is_available' => false,
+                'included_in_totals' => false,
+                'message' => 'This product variant is no longer available. Remove it from your cart to continue.',
+            ];
+        }
+
+        if (!$variant->product || $variant->product->trashed() || !$variant->product->is_active) {
+            return [
+                'is_available' => false,
+                'included_in_totals' => false,
+                'message' => 'This product is no longer available. Remove it from your cart to continue.',
+            ];
+        }
+
+        if (!$variant->is_active) {
+            return [
+                'is_available' => false,
+                'included_in_totals' => false,
+                'message' => 'This product variant is no longer available. Remove it from your cart to continue.',
+            ];
+        }
+
+        $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
+
+        if ($available <= 0) {
+            return [
+                'is_available' => false,
+                'included_in_totals' => false,
+                'message' => 'This item is out of stock. Remove it or save it for later to continue.',
+            ];
+        }
+
+        if ($quantity > $available) {
+            $unitLabel = $available === 1 ? 'unit' : 'units';
+
+            return [
+                'is_available' => false,
+                'included_in_totals' => false,
+                'message' => "Only {$available} {$unitLabel} of this item are currently available. Reduce the quantity to continue.",
+            ];
+        }
+
+        return [
+            'is_available' => true,
+            'included_in_totals' => true,
+            'message' => null,
+        ];
+    }
+
+    protected function resolveCartItemPricing(?ProductVariant $variant, ?User $user = null): array
+    {
+        if ($variant && !$variant->trashed() && $variant->product) {
+            return $this->productService->resolveVariantPricing($variant, $user, $variant->product);
+        }
+
+        $regular = round((float) ($variant?->regular_price ?? 0), 2);
+        $sale = $variant?->sale_price !== null ? round((float) $variant->sale_price, 2) : null;
+        $current = $sale !== null && $sale > 0 && $sale < $regular ? $sale : $regular;
+        $hasDiscount = $sale !== null && $sale > 0 && $sale < $regular;
+        $discountAmount = $hasDiscount ? round(max($regular - $current, 0), 2) : 0.0;
+        $discountPercentage = $hasDiscount && $regular > 0
+            ? (int) round((($regular - $current) / $regular) * 100)
+            : 0;
+
+        return [
+            'regular' => $regular,
+            'sale' => $sale,
+            'current' => round($current, 2),
+            'has_discount' => $hasDiscount,
+            'discount_amount' => $discountAmount,
+            'discount_percentage' => $discountPercentage,
+            'discount_label' => $hasDiscount ? 'Sale' : null,
+            'discount_display_label' => $hasDiscount ? 'Sale' : null,
+            'discount_source' => $hasDiscount ? 'sale' : null,
+            'discount_id' => null,
+        ];
+    }
+
+    protected function describeCartVariant(?ProductVariant $variant): string
+    {
+        if (!$variant) {
+            return 'Unavailable variant';
+        }
+
+        $variant->loadMissing(['values.type']);
+        $label = $variant->values
+            ->map(fn ($value) => trim(($value->type?->name ? $value->type->name . ': ' : '') . $value->value))
+            ->implode(' / ');
+
+        return $label ?: ($variant->sku ?: 'Unavailable variant');
+    }
+
+    protected function emptyCartItemStock(): array
+    {
+        return [
+            'on_hand' => 0,
+            'reserved' => 0,
+            'available' => 0,
+            'is_in_stock' => false,
+        ];
+    }
+
     /**
      * Checkout: persist session and cart snapshot to DB, call order service, then clear Redis cart.
      */
@@ -444,6 +573,12 @@ class CartService
         if (empty($cartData['cart']['items'])) {
             throw ValidationException::withMessages([
                 'cart' => 'Your cart is empty.',
+            ]);
+        }
+
+        if (!empty($cartData['cart']['has_unavailable_items'])) {
+            throw ValidationException::withMessages([
+                'stock' => 'Please update the unavailable items in your cart before checking out.',
             ]);
         }
 

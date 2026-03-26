@@ -770,6 +770,7 @@ class ProductService
     {
         return Product::query()
             ->active()
+            ->whereHas('variants', fn (Builder $query) => $query->where('is_active', true))
             ->with($this->storeCardRelations())
             ->latest('created_at')
             ->limit(max(1, $limit))
@@ -810,6 +811,7 @@ class ProductService
                     'sale_price',
                     'sale_starts_at',
                     'sale_ends_at',
+                    'is_active',
                 ])
                 ->with([
                     'values:id,variant_type_id,value',
@@ -873,6 +875,7 @@ class ProductService
 
         $query = Product::query()
             ->active()
+            ->whereHas('variants', fn (Builder $variantQuery) => $variantQuery->where('is_active', true))
             ->with($this->storeCardRelations())
             ->where('id', '!=', $product->id)
             ->when(!empty($categoryIds), function (Builder $builder) use ($categoryIds) {
@@ -1064,7 +1067,9 @@ class ProductService
     {
         return Category::query()
             ->select('id', 'name', 'slug', 'featured', 'order')
-            ->whereHas('products', fn (Builder $query) => $query->where('is_active', true))
+            ->whereHas('products', fn (Builder $query) => $query
+                ->where('is_active', true)
+                ->whereHas('variants', fn (Builder $variantQuery) => $variantQuery->where('is_active', true)))
             ->orderByDesc('featured')
             ->orderBy('order')
             ->orderBy('name')
@@ -1115,6 +1120,7 @@ class ProductService
                     'sale_price',
                     'sale_starts_at',
                     'sale_ends_at',
+                    'is_active',
                 ])
                 ->orderBy('regular_price')
                 ->orderBy('id'),

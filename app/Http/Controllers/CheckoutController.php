@@ -34,20 +34,8 @@ class CheckoutController extends Controller
     public function applyDiscount(Request $request): RedirectResponse
     {
         $data = $request->validate($this->selectionRules($request));
-        $coupon = trim((string) ($data['coupon'] ?? ''));
 
-        return redirect()->route('checkout.index', [
-            'coupon' => $coupon !== '' ? $coupon : null,
-            'address_id' => $data['address_id'] ?? null,
-            'shipping_method_id' => $data['shipping_method_id'] ?? null,
-            'state_id' => $data['state_id'] ?? null,
-            'lga_id' => $data['lga_id'] ?? null,
-            'pickup_location_id' => $data['pickup_location_id'] ?? null,
-            'phone' => $data['phone'] ?? null,
-            'line1' => $data['line1'] ?? null,
-            'line2' => $data['line2'] ?? null,
-            'save_address' => $data['save_address'] ?? null,
-        ]);
+        return redirect()->route('checkout.index', $this->selectionRouteParams($data));
     }
 
     public function initializePayment(Request $request): HttpResponse
@@ -59,7 +47,12 @@ class CheckoutController extends Controller
 
             return Inertia::location((string) $paymentData['authorization_url']);
         } catch (ValidationException $exception) {
-            return back()->withErrors($exception->errors())->withInput();
+            $firstError = collect($exception->errors())->flatten()->first();
+
+            return redirect()
+                ->route('checkout.index', $this->selectionRouteParams($data))
+                ->withErrors($exception->errors())
+                ->with('error', $firstError);
         } catch (\Throwable $exception) {
             report($exception);
 
@@ -191,6 +184,24 @@ class CheckoutController extends Controller
             'line1' => ['nullable', 'string', 'max:255'],
             'line2' => ['nullable', 'string', 'max:255'],
             'save_address' => ['nullable', 'boolean'],
+        ];
+    }
+
+    protected function selectionRouteParams(array $data): array
+    {
+        $coupon = trim((string) ($data['coupon'] ?? ''));
+
+        return [
+            'coupon' => $coupon !== '' ? $coupon : null,
+            'address_id' => $data['address_id'] ?? null,
+            'shipping_method_id' => $data['shipping_method_id'] ?? null,
+            'state_id' => $data['state_id'] ?? null,
+            'lga_id' => $data['lga_id'] ?? null,
+            'pickup_location_id' => $data['pickup_location_id'] ?? null,
+            'phone' => $data['phone'] ?? null,
+            'line1' => $data['line1'] ?? null,
+            'line2' => $data['line2'] ?? null,
+            'save_address' => $data['save_address'] ?? null,
         ];
     }
 }

@@ -80,7 +80,12 @@ function saveForLater() {
 </script>
 
 <template>
-    <article class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
+    <article
+        :class="[
+            'flex flex-col gap-4 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center',
+            item.availability?.is_available === false ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200',
+        ]"
+    >
         <img
             v-if="item.product?.image"
             :src="item.product.image"
@@ -93,9 +98,16 @@ function saveForLater() {
         </div>
 
         <div class="flex-1">
-            <Link :href="route('store.product', item.product.slug)" class="text-sm font-semibold text-slate-900 hover:text-slate-600">
+            <Link
+                v-if="item.product?.slug"
+                :href="route('store.product', item.product.slug)"
+                class="text-sm font-semibold text-slate-900 hover:text-slate-600"
+            >
                 {{ item.product.name }}
             </Link>
+            <p v-else class="text-sm font-semibold text-slate-900">
+                {{ item.product?.name }}
+            </p>
             <p class="mt-1 text-xs text-slate-500">{{ item.variant.label }}</p>
             <div class="mt-1 flex flex-wrap items-center gap-2">
                 <p class="text-sm font-semibold text-slate-800">{{ money(item.variant.price.current) }}</p>
@@ -110,7 +122,25 @@ function saveForLater() {
                 </span>
             </div>
 
-            <!-- Validation Error -->
+            <p
+                v-if="item.availability?.message"
+                :class="[
+                    'mt-2 rounded-xl px-3 py-2 text-xs font-medium',
+                    item.availability?.is_available === false
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-amber-100 text-amber-700',
+                ]"
+            >
+                {{ item.availability.message }}
+            </p>
+
+            <p
+                v-if="item.availability?.included_in_totals === false"
+                class="mt-2 text-xs font-medium text-slate-500"
+            >
+                This item is not included in the order total until the issue is fixed.
+            </p>
+
             <p v-if="errorMessage" class="mt-2 text-xs font-medium text-red-600">
                 {{ errorMessage }}
             </p>

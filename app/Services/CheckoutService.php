@@ -40,12 +40,16 @@ class CheckoutService
 
         $cartData = $this->cartService->getDetailedCart($selection['coupon'], (int) $user->id);
         $cartItems = $cartData['cart']['items'] ?? [];
+        $payableCartItems = collect($cartItems)
+            ->filter(fn (array $item) => (bool) ($item['availability']['included_in_totals'] ?? true))
+            ->values()
+            ->all();
 
         $couponError = $cartData['coupon_error'] ?? null;
         $shippingError = null;
 
         $quoteSummary = [
-            'item_count' => (int) collect($cartItems)->sum('quantity'),
+            'item_count' => (int) collect($payableCartItems)->sum('quantity'),
             'subtotal' => round((float) ($cartData['summary']['subtotal'] ?? 0), 2),
             'discount' => round((float) ($cartData['summary']['discount'] ?? 0), 2),
             'discount_id' => null,
@@ -58,7 +62,7 @@ class CheckoutService
         ];
 
         $pricingQuote = null;
-        if (!empty($cartItems)) {
+        if (!empty($payableCartItems)) {
             $shippingPayload = $this->buildQuoteShippingPayload($selection);
             if (!empty($selection['shipping_method_id'])) {
                 if ($isPickupMethod) {
@@ -77,7 +81,7 @@ class CheckoutService
                     'user' => $user,
                     'channel' => 'online',
                     'coupon' => $selection['coupon'] ?? ($cartData['summary']['coupon'] ?? null),
-                    'items' => collect($cartItems)->map(fn (array $item) => [
+                    'items' => collect($payableCartItems)->map(fn (array $item) => [
                         'variant_id' => (int) ($item['variant']['id'] ?? 0),
                         'quantity' => (float) ($item['quantity'] ?? 0),
                     ])->values()->all(),
@@ -114,6 +118,8 @@ class CheckoutService
                 'id' => $cartData['cart']['id'] ?? null,
                 'status' => $cartData['cart']['status'] ?? 'active',
                 'items' => $cartItems,
+                'has_unavailable_items' => (bool) ($cartData['cart']['has_unavailable_items'] ?? false),
+                'unavailable_items_count' => (int) ($cartData['cart']['unavailable_items_count'] ?? 0),
             ],
             'summary' => $quoteSummary,
             'coupon_error' => $couponError,
@@ -169,7 +175,7 @@ class CheckoutService
             );
         } catch (InsufficientStockException $exception) {
             throw ValidationException::withMessages([
-                'stock' => $exception->getMessage(),
+                'stock' => $this->formatReservationStockError($exception, $checkoutData['cart']['items'] ?? []),
             ]);
         }
 
@@ -374,7 +380,23 @@ class CheckoutService
     protected function assertCheckoutCanProceed(array $checkoutData): void
     {
         $items = $checkoutData['cart']['items'] ?? [];
-        if (empty($items)) {
+        $unavailableItems = collect($items)
+            ->filter(fn (array $item) => !($item['availability']['is_available'] ?? true))
+            ->values();
+
+        if ($unavailableItems->isNotEmpty()) {
+            $firstMessage = $unavailableItems->pluck('availability.message')->filter()->first();
+
+            throw ValidationException::withMessages([
+                'stock' => $firstMessage ?: 'Please update the unavailable items in your cart before paying.',
+            ]);
+        }
+
+        $payableItems = collect($items)
+            ->filter(fn (array $item) => (bool) ($item['availability']['included_in_totals'] ?? true))
+            ->values()
+            ->all();
+        if (empty($payableItems)) {
             throw ValidationException::withMessages([
                 'cart' => 'Your cart is empty.',
             ]);
@@ -746,6 +768,26 @@ class CheckoutService
         ];
     }
 
+    protected function formatReservationStockError(InsufficientStockException $exception, array $cartItems): string
+    {
+        $detail = collect($exception->getDetails())->first();
+        if (!is_array($detail)) {
+            return $exception->getMessage();
+        }
+
+        $variantId = (int) ($detail['variant_id'] ?? 0);
+        $available = max((int) ($detail['available'] ?? 0), 0);
+        $cartItem = collect($cartItems)->first(fn (array $item) => (int) ($item['variant_id'] ?? 0) === $variantId);
+        $label = $cartItem['variant']['label'] ?? $cartItem['product']['name'] ?? ($detail['sku'] ?? 'An item in your cart');
+        $unitLabel = $available === 1 ? 'unit' : 'units';
+
+        if ($available <= 0) {
+            return "{$label} is now out of stock. Please update your cart before trying again.";
+        }
+
+        return "Only {$available} {$unitLabel} of {$label} are currently available. Please update your cart before trying again.";
+    }
+
     protected function listLgas(?int $stateId): array
     {
         if (!$stateId) {
@@ -764,7 +806,6 @@ class CheckoutService
             ->all();
     }
 }
-
 
 
 

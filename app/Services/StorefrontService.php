@@ -98,9 +98,13 @@ class StorefrontService
     {
         $categories = Category::query()
             ->select(['id', 'name', 'slug', 'featured', 'order'])
-            ->whereHas('products', fn (Builder $query) => $query->where('is_active', true))
+            ->whereHas('products', fn (Builder $query) => $query
+                ->where('is_active', true)
+                ->whereHas('variants', fn (Builder $variantQuery) => $variantQuery->where('is_active', true)))
             ->withCount([
-                'products as active_products_count' => fn (Builder $query) => $query->where('is_active', true),
+                'products as active_products_count' => fn (Builder $query) => $query
+                    ->where('is_active', true)
+                    ->whereHas('variants', fn (Builder $variantQuery) => $variantQuery->where('is_active', true)),
             ])
             ->orderByDesc('featured')
             ->orderBy('order')

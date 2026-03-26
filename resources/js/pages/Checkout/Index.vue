@@ -1,7 +1,7 @@
 <script setup>
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
 import axios from 'axios'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 
 defineOptions({ layout: StorefrontLayout })
@@ -84,6 +84,8 @@ const lgas = ref(initialLgas || [])
 const pickupLocations = ref(pickup_locations || [])
 const loadingPickupLocations = ref(false)
 const pendingAddressLgaId = ref(selected_shipping?.lga_id ? String(selected_shipping.lga_id) : '')
+const totalsAreUpdating = ref(false)
+const totalsRefreshTimer = ref(null)
 
 const form = useForm({
     coupon: summary?.coupon || '',
@@ -202,6 +204,8 @@ watch([() => form.state_id, isPickupMethod], async ([state, isPickup]) => {
 const hasItems = computed(() => {
     return Array.isArray(cart?.items) && cart.items.length > 0
 })
+const unavailableItems = computed(() => (cart?.items || []).filter(item => item.availability?.is_available === false))
+const hasUnavailableItems = computed(() => unavailableItems.value.length > 0)
 
 const formatter = new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -212,18 +216,81 @@ function money(value) {
     return formatter.format(Number(value || 0))
 }
 
-function updateTotals() {
-    form.post(route('checkout.discount'), {
+function buildCheckoutQuery() {
+    return {
+        coupon: form.coupon || undefined,
+        address_id: form.address_id || undefined,
+        shipping_method_id: form.shipping_method_id || undefined,
+        state_id: form.state_id || undefined,
+        lga_id: form.lga_id || undefined,
+        pickup_location_id: form.pickup_location_id || undefined,
+        phone: form.phone || undefined,
+        line1: form.line1 || undefined,
+        line2: form.line2 || undefined,
+        save_address: form.save_address ? 1 : undefined,
+    }
+}
+
+function clearTotalsRefreshTimer() {
+    if (totalsRefreshTimer.value) {
+        clearTimeout(totalsRefreshTimer.value)
+        totalsRefreshTimer.value = null
+    }
+}
+
+function refreshTotals() {
+    clearTotalsRefreshTimer()
+    totalsAreUpdating.value = true
+
+    router.get(route('checkout.index'), buildCheckoutQuery(), {
         preserveScroll: true,
         preserveState: true,
+        replace: true,
+        onFinish: () => {
+            totalsAreUpdating.value = false
+        },
     })
 }
 
+function scheduleTotalsRefresh(delay = 250) {
+    clearTotalsRefreshTimer()
+
+    totalsRefreshTimer.value = setTimeout(() => {
+        refreshTotals()
+    }, delay)
+}
+
 function payNow() {
+    clearTotalsRefreshTimer()
+
     form.post(route('checkout.pay'), {
         preserveScroll: true,
     })
 }
+
+watch(
+    () => [form.address_id, form.shipping_method_id, form.state_id, form.lga_id, form.pickup_location_id],
+    () => {
+        scheduleTotalsRefresh(250)
+    },
+)
+
+watch(() => form.coupon, (value, oldValue) => {
+    if (value === oldValue) {
+        return
+    }
+
+    const normalized = String(value || '').trim()
+    if (normalized !== '' && normalized.length < 3) {
+        return
+    }
+
+    scheduleTotalsRefresh(600)
+})
+
+onBeforeUnmount(() => {
+    clearTotalsRefreshTimer()
+})
 </script>
 
 <template>
@@ -259,12 +326,29 @@ function payNow() {
 
     <section v-else class="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
         <div class="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div
+                v-if="page.props.flash?.error"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"
+            >
+                {{ page.props.flash.error }}
+            </div>
+
+            <div
+                v-if="hasUnavailableItems"
+                class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+            >
+                {{ unavailableItems.length }} item{{ unavailableItems.length === 1 ? '' : 's' }} in this checkout need attention. Totals exclude unavailable lines until you update or remove them.
+            </div>
+
             <h2 class="text-base font-semibold text-slate-900">Cart Summary</h2>
 
             <article
                 v-for="item in cart.items"
                 :key="item.id"
-                class="flex items-center gap-3 rounded-xl border border-slate-100 p-3"
+                :class="[
+                    'flex items-center gap-3 rounded-xl border p-3',
+                    item.availability?.is_available === false ? 'border-rose-200 bg-rose-50/40' : 'border-slate-100',
+                ]"
             >
                 <img
                     v-if="item.product?.image"
@@ -298,6 +382,25 @@ function payNow() {
                         <span class="text-xs font-semibold text-rose-700">On Sale</span>
                         <span class="text-xs text-slate-400 line-through">{{ money(item.variant.price.regular) }}</span>
                     </div>
+
+                    <p
+                        v-if="item.availability?.message"
+                        :class="[
+                            'mt-2 rounded-xl px-3 py-2 text-xs font-medium',
+                            item.availability?.is_available === false
+                                ? 'bg-rose-100 text-rose-700'
+                                : 'bg-amber-100 text-amber-700',
+                        ]"
+                    >
+                        {{ item.availability.message }}
+                    </p>
+
+                    <p
+                        v-if="item.availability?.included_in_totals === false"
+                        class="mt-2 text-xs font-medium text-slate-500"
+                    >
+                        This line is not included in the payable total yet.
+                    </p>
                 </div>
 
                 <p class="text-sm font-semibold text-slate-900">
@@ -363,6 +466,7 @@ function payNow() {
                             type="text"
                             placeholder="Enter coupon code"
                             class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            @blur="scheduleTotalsRefresh(0)"
                         />
 
                         <p v-if="coupon_error" class="mt-1 text-xs font-medium text-rose-600">
@@ -522,6 +626,10 @@ function payNow() {
                         {{ shipping_error }}
                     </p>
 
+                    <p v-if="page.props.errors?.stock" class="text-xs font-medium text-rose-600">
+                        {{ page.props.errors.stock }}
+                    </p>
+
                     <p v-if="page.props.errors?.payment" class="text-xs font-medium text-rose-600">
                         {{ page.props.errors.payment }}
                     </p>
@@ -531,14 +639,9 @@ function payNow() {
                     </p>
                 </div>
 
-                <button
-                    type="button"
-                    class="mt-4 w-full rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="form.processing"
-                    @click="updateTotals"
-                >
-                    Update totals
-                </button>
+                <p class="mt-4 text-xs font-medium text-slate-500">
+                    {{ totalsAreUpdating ? 'Refreshing totals...' : 'Totals update automatically when you change shipping details or coupon code.' }}
+                </p>
 
                 <dl class="mt-4 space-y-3 text-sm">
                     <div class="flex justify-between text-slate-600">
@@ -578,10 +681,18 @@ function payNow() {
                 <button
                     type="button"
                     class="mt-5 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="form.processing"
+                    :disabled="form.processing || totalsAreUpdating || hasUnavailableItems"
                     @click="payNow"
                 >
-                    {{ form.processing ? 'Redirecting to Paystack...' : 'Pay now' }}
+                    {{
+                        form.processing
+                            ? 'Redirecting to Paystack...'
+                            : totalsAreUpdating
+                                ? 'Refreshing totals...'
+                                : hasUnavailableItems
+                                    ? 'Resolve cart issues to continue'
+                                    : 'Pay now'
+                    }}
                 </button>
             </div>
         </aside>

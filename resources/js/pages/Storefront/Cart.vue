@@ -47,6 +47,8 @@ const couponCode = ref(props.summary?.coupon || '')
 
 const isLoggedIn = computed(() => !!page.props.auth?.user)
 const hasItems = computed(() => Array.isArray(props.cart?.items) && props.cart.items.length > 0)
+const unavailableItems = computed(() => (props.cart?.items || []).filter(item => item.availability?.is_available === false))
+const hasUnavailableItems = computed(() => unavailableItems.value.length > 0)
 
 const formatter = new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -117,6 +119,20 @@ function removeSaved(id) {
 
     <section v-else class="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
         <div class="space-y-4">
+            <div
+                v-if="page.props.flash?.error"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"
+            >
+                {{ page.props.flash.error }}
+            </div>
+
+            <div
+                v-if="hasUnavailableItems"
+                class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+            >
+                {{ unavailableItems.length }} cart item{{ unavailableItems.length === 1 ? '' : 's' }} need attention before checkout. Fix the highlighted line{{ unavailableItems.length === 1 ? '' : 's' }} below.
+            </div>
+
             <CartItem
                 v-for="item in cart.items"
                 :key="item.id"
@@ -250,11 +266,16 @@ function removeSaved(id) {
 
                 <button
                     type="button"
-                    class="mt-5 w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-600"
+                    class="mt-5 w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-200"
+                    :disabled="hasUnavailableItems"
                     @click="checkout"
                 >
                     Checkout
                 </button>
+
+                <p v-if="hasUnavailableItems" class="mt-2 text-xs font-medium text-amber-700">
+                    Remove or adjust unavailable items before proceeding to checkout.
+                </p>
             </div>
         </aside>
     </section>

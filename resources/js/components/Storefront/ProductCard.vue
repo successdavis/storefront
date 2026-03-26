@@ -20,7 +20,7 @@ function money(value) {
 </script>
 
 <template>
-    <Link :href="route('store.product', product.slug)" class="group relative pb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+    <div class="group relative pb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
         <div class="relative aspect-[4/3] overflow-hidden bg-slate-100">
             <img
                 v-if="product.image"
@@ -89,5 +89,5 @@ function money(value) {
                 />
             </div>
         </div>
-    </Link>
+    </div>
 </template>
