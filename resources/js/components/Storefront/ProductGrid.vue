@@ -29,7 +29,7 @@ const props = defineProps({
 
         <div
             v-else
-            class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4"
+            class="grid grid-cols-2 gap-4 xl:grid-cols-4"
         >
             <ProductCard
                 v-for="product in products"

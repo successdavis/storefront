@@ -20,8 +20,8 @@ function money(value) {
 </script>
 
 <template>
-    <div class="group relative pb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
-        <Link :href="route('store.product', product.slug)">
+    <div class="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+        <Link :href="route('store.product', product.slug)" class="flex flex-1 flex-col">
             <div class="relative aspect-[4/3] overflow-hidden bg-slate-100">
                 <img
                     v-if="product.image"
@@ -51,19 +51,16 @@ function money(value) {
                 </div>
             </div>
 
-            <div class="space-y-3 p-4 ">
+            <div class="flex flex-1 flex-col space-y-3 p-3 sm:p-4">
                 <div class="space-y-1">
-                    <h3 class="line-clamp-2 text-sm font-semibold text-slate-900">
+                    <h3 class="line-clamp-2 text-sm font-semibold text-slate-900 sm:text-base">
                         {{ product.name }}
                     </h3>
-                    <p class="line-clamp-2 text-xs text-slate-500">
-                        {{ product.description || 'Premium product for modern retail operations.' }}
-                    </p>
                 </div>
 
-                <div class="flex items-end justify-between gap-2">
-                    <div>
-                        <p class="text-base font-bold text-slate-900">
+                <div class="mt-auto space-y-2">
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold text-slate-900 sm:text-base">
                             <span v-if="product.price?.from" class="mr-1 text-xs text-slate-500">From</span>
                             {{ money(product.price?.current) }}
                         </p>
@@ -73,17 +70,16 @@ function money(value) {
                     </div>
                     <span
                         :class="[
-                        'rounded-full px-2 py-1 text-[11px] font-semibold',
+                        'inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold',
                         product.stock?.is_in_stock ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700',
                     ]"
                     >
-                    {{ product.stock?.is_in_stock ? 'In Stock' : 'Out of Stock' }}
-                </span>
+                        {{ product.stock?.is_in_stock ? 'In Stock' : 'Out of Stock' }}
+                    </span>
                 </div>
-
             </div>
         </Link>
-        <div class="grid grid-cols-2 px-4 gap-2 absolute bottom-3">
+        <div class="p-3 pt-0 sm:p-4 sm:pt-0">
             <AddToCartButton
                 :variant-id="product.default_variant_id"
                 :disabled="!product.stock?.is_in_stock"

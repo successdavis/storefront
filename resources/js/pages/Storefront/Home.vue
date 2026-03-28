@@ -2,6 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
+import ProductCarousel from '@/components/Storefront/ProductCarousel.vue'
 import ProductGrid from '@/components/Storefront/ProductGrid.vue'
 
 defineOptions({ layout: StorefrontLayout })
@@ -63,15 +64,14 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
         <div class="relative grid gap-8 lg:grid-cols-2 lg:items-center">
             <div class="space-y-4">
                 <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">
-<!--                    {{ pageTitle }}-->
                     Shop with Confidence!
                 </h1>
                 <p class="max-w-xl text-sm text-slate-200 sm:text-base">
-                    Discover curated products, transparent pricing, stock-aware purchasing, and checkout backed by your existing service layer.
+                    S-Tech-Max store isn’t just another option — it’s the better way to shop.
                 </p>
             </div>
 
-            <form class="rounded-2xl bg-white p-4 text-slate-900 shadow-xl" @submit.prevent="applyFilters">
+            <form class="rounded-2xl  bg-white p-4 text-slate-900 shadow-xl" @submit.prevent="applyFilters">
                 <div class="grid gap-3 sm:grid-cols-3">
                     <input
                         v-model="search"
@@ -108,8 +108,11 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
     </section>
 
     <section class="mt-10 space-y-4">
-        <h2 class="text-xl font-bold text-slate-900">Latest Products</h2>
-        <ProductGrid :products="latestProducts" empty-title="No recent products yet" />
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold text-slate-900">Latest Products</h2>
+            <p class="text-sm text-slate-500">Swipe or use the arrows to browse newly added items.</p>
+        </div>
+        <ProductCarousel :products="latestProducts" empty-title="No recent products yet" />
     </section>
 
     <section class="mt-10 space-y-4">
