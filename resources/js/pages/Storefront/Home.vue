@@ -42,12 +42,12 @@ const selectedCategory = ref(props.filters?.category || '')
 
 function applyFilters() {
     router.get(
-        route('store.home'),
+        route('store.search'),
         {
             q: search.value || undefined,
             category: selectedCategory.value || undefined,
         },
-        { preserveState: true, replace: true },
+        { preserveState: true },
     )
 }
 
@@ -101,22 +101,22 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
 
     <section class="mt-10 space-y-4">
         <div class="flex items-center justify-between">
-            <h2 class="text-xl font-bold text-slate-900">Featured Products</h2>
-            <Link :href="route('store.home')" class="text-sm font-medium text-slate-600 hover:text-slate-900">Browse all</Link>
+            <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Featured Products</h2>
+            <Link :href="route('store.home')" class="text-sm font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-300 dark:hover:text-amber-300">Browse all</Link>
         </div>
         <ProductGrid :products="featuredProducts" empty-title="No featured products yet" />
     </section>
 
     <section class="mt-10 space-y-4">
         <div class="flex items-center justify-between">
-            <h2 class="text-xl font-bold text-slate-900">Latest Products</h2>
-            <p class="text-sm text-slate-500">Swipe or use the arrows to browse newly added items.</p>
+            <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Latest Products</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-300">Swipe or use the arrows to browse newly added items.</p>
         </div>
         <ProductCarousel :products="latestProducts" empty-title="No recent products yet" />
     </section>
 
     <section class="mt-10 space-y-4">
-        <h2 class="text-xl font-bold text-slate-900">Shop Catalog</h2>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Shop Catalog</h2>
         <ProductGrid :products="products.data" empty-title="No products matched your filters" />
 
         <div v-if="hasProducts && products.links" class="flex flex-wrap gap-2">
@@ -139,22 +139,22 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
     </section>
 
     <section class="mt-10 space-y-6">
-        <h2 class="text-xl font-bold text-slate-900">Category Highlights</h2>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Category Highlights</h2>
 
         <div class="space-y-6">
             <article
                 v-for="category in categoryPreviews"
                 :key="category.id"
-                class="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm"
+                class="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950"
             >
                 <div class="mb-4 flex items-center justify-between">
                     <div>
-                        <h3 class="text-lg font-semibold text-slate-900">{{ category.name }}</h3>
-                        <p class="text-xs text-slate-500">{{ category.active_products_count }} active products</p>
+                        <h3 class="text-lg font-semibold text-slate-900 dark:text-slate-100">{{ category.name }}</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-300">{{ category.active_products_count }} active products</p>
                     </div>
                     <Link
                         :href="route('store.category', category.id)"
-                        class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500"
+                        class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400"
                     >
                         View Category
                     </Link>

@@ -3,12 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerSavedItem;
-use App\Models\CartItem;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\CartService;
 use App\Services\CustomerSavedItemService;
 use App\Services\StorefrontService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,10 +31,20 @@ class StorefrontController extends Controller
 
     public function search(Request $request): Response
     {
-        return Inertia::render('Storefront/Home', $this->storefrontService->homeData(array_merge(
-            $request->only(['per_page', 'category']),
-            ['q' => $request->string('q')->toString()]
-        )));
+        return Inertia::render('Storefront/Search', $this->storefrontService->searchData(
+            $request->query()
+        ));
+    }
+
+    public function suggestions(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        return response()->json(
+            $this->storefrontService->searchSuggestions(trim((string) ($validated['q'] ?? '')))
+        );
     }
 
     public function category(Request $request, Category $category): Response

@@ -87,6 +87,84 @@
             'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
             'Noto Color Emoji';
     }
+
+    .storefront-category-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: hsl(38 92% 50% / 0.8) hsl(30 30% 92%);
+    }
+
+    .storefront-carousel-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: hsl(38 92% 50% / 0.75) hsl(210 25% 92%);
+    }
+
+    .storefront-category-scroll::-webkit-scrollbar {
+        height: 6px;
+    }
+
+    .storefront-carousel-scroll::-webkit-scrollbar {
+        height: 6px;
+    }
+
+    .storefront-category-scroll::-webkit-scrollbar-track {
+        background: hsl(30 30% 94%);
+        border-radius: 9999px;
+    }
+
+    .storefront-carousel-scroll::-webkit-scrollbar-track {
+        background: hsl(210 25% 94%);
+        border-radius: 9999px;
+    }
+
+    .storefront-category-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(90deg, hsl(38 92% 50%), hsl(24 95% 58%));
+        border-radius: 9999px;
+    }
+
+    .storefront-carousel-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(90deg, hsl(38 92% 50%), hsl(18 90% 60%));
+        border-radius: 9999px;
+    }
+
+    .storefront-category-scroll::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(90deg, hsl(38 96% 46%), hsl(24 92% 52%));
+    }
+
+    .storefront-carousel-scroll::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(90deg, hsl(42 96% 48%), hsl(20 92% 54%));
+    }
+
+    .dark .storefront-category-scroll {
+        scrollbar-color: hsl(38 92% 50% / 0.9) hsl(222 33% 14%);
+    }
+
+    .dark .storefront-carousel-scroll {
+        scrollbar-color: hsl(38 92% 52% / 0.9) hsl(222 28% 16%);
+    }
+
+    .dark .storefront-category-scroll::-webkit-scrollbar-track {
+        background: hsl(222 33% 14%);
+    }
+
+    .dark .storefront-carousel-scroll::-webkit-scrollbar-track {
+        background: hsl(222 28% 16%);
+    }
+
+    .dark .storefront-category-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(90deg, hsl(38 92% 52%), hsl(28 92% 60%));
+    }
+
+    .dark .storefront-carousel-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(90deg, hsl(40 92% 54%), hsl(26 92% 62%));
+    }
+
+    .dark .storefront-category-scroll::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(90deg, hsl(42 96% 58%), hsl(30 96% 64%));
+    }
+
+    .dark .storefront-carousel-scroll::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(90deg, hsl(44 96% 58%), hsl(30 96% 66%));
+    }
 }
 
 :root {

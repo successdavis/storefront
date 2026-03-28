@@ -78,17 +78,17 @@ watch(
     <div>
         <div
             v-if="!hasProducts"
-            class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"
+            class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-950"
         >
-            <p class="text-base font-semibold text-slate-700">{{ emptyTitle }}</p>
-            <p class="mt-2 text-sm text-slate-500">{{ emptyDescription }}</p>
+            <p class="text-base font-semibold text-slate-700 dark:text-slate-100">{{ emptyTitle }}</p>
+            <p class="mt-2 text-sm text-slate-500 dark:text-slate-300">{{ emptyDescription }}</p>
         </div>
 
         <div v-else class="space-y-4">
             <div class="flex items-center justify-end gap-2">
                 <button
                     type="button"
-                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-700 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-700 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-amber-400"
                     :disabled="!canScrollPrev"
                     @click="scrollCarousel(-1)"
                 >
@@ -96,7 +96,7 @@ watch(
                 </button>
                 <button
                     type="button"
-                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-700 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-lg text-slate-700 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-amber-400"
                     :disabled="!canScrollNext"
                     @click="scrollCarousel(1)"
                 >
@@ -106,7 +106,7 @@ watch(
 
             <div
                 ref="track"
-                class="scrollbar-thin flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 scroll-smooth"
+                class="storefront-carousel-scroll flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 scroll-smooth"
                 @scroll="updateScrollState"
             >
                 <div

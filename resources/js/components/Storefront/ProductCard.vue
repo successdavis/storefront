@@ -20,9 +20,9 @@ function money(value) {
 </script>
 
 <template>
-    <div class="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+    <div class="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl dark:border-slate-800 dark:bg-slate-950">
         <Link :href="route('store.product', product.slug)" class="flex flex-1 flex-col">
-            <div class="relative aspect-[4/3] overflow-hidden bg-slate-100">
+            <div class="relative aspect-[4/3] overflow-hidden bg-slate-100 dark:bg-slate-900">
                 <img
                     v-if="product.image"
                     :src="product.image"
@@ -30,7 +30,7 @@ function money(value) {
                     class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     loading="lazy"
                 >
-                <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
+                <div v-else class="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                     No image
                 </div>
 
@@ -53,18 +53,31 @@ function money(value) {
 
             <div class="flex flex-1 flex-col space-y-3 p-3 sm:p-4">
                 <div class="space-y-1">
-                    <h3 class="line-clamp-2 text-sm font-semibold text-slate-900 sm:text-base">
+                    <p v-if="product.brand?.name" class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {{ product.brand.name }}
+                    </p>
+                    <h3 class="line-clamp-2 text-sm font-semibold text-slate-900 dark:text-slate-100 sm:text-base">
                         {{ product.name }}
                     </h3>
+
+                    <div v-if="product.specs_summary?.length" class="flex flex-wrap gap-1.5 pt-1">
+                        <span
+                            v-for="spec in product.specs_summary"
+                            :key="`${product.id}-${spec.label}-${spec.value}`"
+                            class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600 dark:bg-slate-900 dark:text-slate-300"
+                        >
+                            {{ spec.label }}: {{ spec.value }}
+                        </span>
+                    </div>
                 </div>
 
                 <div class="mt-auto space-y-2">
                     <div class="min-w-0">
-                        <p class="text-sm font-bold text-slate-900 sm:text-base">
+                        <p class="text-sm font-bold text-slate-900 dark:text-slate-100 sm:text-base">
                             <span v-if="product.price?.from" class="mr-1 text-xs text-slate-500">From</span>
                             {{ money(product.price?.current) }}
                         </p>
-                        <p v-if="product.price?.has_discount" class="text-xs text-slate-400 line-through">
+                        <p v-if="product.price?.has_discount" class="text-xs text-slate-400 line-through dark:text-slate-500">
                             {{ money(product.price?.regular) }}
                         </p>
                     </div>

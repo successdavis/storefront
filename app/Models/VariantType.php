@@ -12,7 +12,23 @@ class VariantType extends Model
 
     protected $fillable = [
         'name',
+        'slug',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (VariantType $type) {
+            if (blank($type->slug)) {
+                $type->slug = static::generateUniqueSlug($type->name);
+            }
+        });
+
+        static::updating(function (VariantType $type) {
+            if (blank($type->slug)) {
+                $type->slug = static::generateUniqueSlug($type->name, $type->id);
+            }
+        });
+    }
 
     /**
      * 🔗 A variant type has many variant values
@@ -36,5 +52,23 @@ class VariantType extends Model
     public function scopeSearch($query, $term)
     {
         return $query->where('name', 'like', '%' . $term . '%');
+    }
+
+    protected static function generateUniqueSlug(?string $name, ?int $ignoreId = null): string
+    {
+        $base = \Illuminate\Support\Str::slug((string) $name, '_');
+        $base = $base !== '' ? $base : 'filter';
+        $slug = $base;
+        $suffix = 2;
+
+        while (static::query()
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->where('slug', $slug)
+            ->exists()) {
+            $slug = "{$base}_{$suffix}";
+            $suffix++;
+        }
+
+        return $slug;
     }
 }

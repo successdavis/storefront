@@ -77,6 +77,7 @@ Route::post('/barcodes/print', [BarcodePrintController::class, 'print'])
 Route::prefix('store')->name('store.')->group(function () {
     Route::get('/', [StorefrontController::class, 'home'])->name('home');
     Route::get('/search', [StorefrontController::class, 'search'])->name('search');
+    Route::get('/search/suggestions', [StorefrontController::class, 'suggestions'])->name('search.suggestions');
     Route::get('/product/{product:slug}', [StorefrontController::class, 'product'])->name('product');
     Route::get('/category/{category}', [StorefrontController::class, 'category'])->name('category');
     Route::get('/cart', [StorefrontController::class, 'cart'])->name('cart');

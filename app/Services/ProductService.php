@@ -894,7 +894,7 @@ class ProductService
             ->all();
     }
 
-    public function toStorefrontCard(Product $product, ?User $user = null): array
+    public function toStorefrontCard(Product $product, ?User $user = null, bool $includeSpecs = false): array
     {
         $product->loadMissing($this->storeCardRelations());
 
@@ -909,6 +909,9 @@ class ProductService
             'name' => $product->name,
             'description' => $product->description,
             'image' => $this->resolveProductImage($product, $primaryVariant),
+            'brand' => [
+                'name' => $product->brand?->name,
+            ],
             'price' => $pricing,
             'stock' => $stock,
             'categories' => $product->categories->map(fn (Category $category) => [
@@ -920,6 +923,7 @@ class ProductService
             'is_new' => $product->created_at?->gt(now()->subDays(14)) ?? false,
             'default_variant_id' => $primaryVariant?->id,
             'badges' => $badges,
+            'specs_summary' => $includeSpecs ? $this->buildStorefrontSpecSummary($primaryVariant) : [],
         ];
     }
 
@@ -1106,6 +1110,7 @@ class ProductService
     protected function storeCardRelations(): array
     {
         return [
+            'brand:id,name,slug',
             'categories:id,name,slug',
             'images:id,product_id,path,alt,is_primary,sort_order',
             'variants' => fn ($query) => $query
@@ -1125,6 +1130,25 @@ class ProductService
                 ->orderBy('regular_price')
                 ->orderBy('id'),
         ];
+    }
+
+    protected function buildStorefrontSpecSummary(?ProductVariant $variant): array
+    {
+        if (!$variant) {
+            return [];
+        }
+
+        $variant->loadMissing(['values.type']);
+
+        return $variant->values
+            ->filter(fn ($value) => filled($value->value))
+            ->map(fn ($value) => [
+                'label' => $value->type?->name ?? 'Specification',
+                'value' => $value->value,
+            ])
+            ->take(3)
+            ->values()
+            ->all();
     }
 
     protected function cardBadges(Product $product, array $pricing): array

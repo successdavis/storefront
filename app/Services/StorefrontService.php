@@ -12,6 +12,7 @@ class StorefrontService
 {
     public function __construct(
         protected ProductService $productService,
+        protected StorefrontSearchService $storefrontSearchService,
         protected CartService $cartService,
         protected CustomerSavedItemService $savedItemService,
     ) {}
@@ -58,6 +59,19 @@ class StorefrontService
         ];
 
         return $data;
+    }
+
+    public function searchData(array $filters = []): array
+    {
+        return array_merge(
+            $this->storefrontSearchService->search($filters),
+            $this->sharedData(),
+        );
+    }
+
+    public function searchSuggestions(string $query): array
+    {
+        return $this->storefrontSearchService->suggestions($query);
     }
 
     public function productData(Product $product): array
