@@ -71,69 +71,6 @@ export function useStorefrontLocation() {
 
         return window.isSecureContext || ['localhost', '127.0.0.1', '::1'].includes(hostname)
     })
-    const showPromptBanner = computed(() => {
-        if (!isStorefrontPage.value || hasReliableLocation.value) {
-            return false
-        }
-
-        return [
-            'denied',
-            'timeout',
-            'unavailable',
-            'failed',
-            'match_failed',
-            'unsupported',
-        ].includes(status.value)
-    })
-    const canRetryBrowserLocation = computed(() => {
-        return canRequestBrowserLocation.value
-            && hasSecureGeolocationContext.value
-            && !isResolving.value
-            && !['denied', 'unsupported'].includes(status.value)
-    })
-    const requestButtonLabel = computed(() => {
-        if (isResolving.value) {
-            return 'Checking location...'
-        }
-
-        if (['timeout', 'unavailable', 'failed', 'match_failed'].includes(status.value)) {
-            return 'Try again'
-        }
-
-        return permissionState.value === 'granted' ? 'Use current location' : 'Allow location access'
-    })
-    const promptMessage = computed(() => {
-        if (status.value === 'resolving') {
-            return 'Checking your current location so we can show delivery estimates for your area.'
-        }
-
-        if (status.value === 'match_failed') {
-            return 'We received your current coordinates, but could not match them to a delivery area yet. You can still continue to checkout and choose your destination there.'
-        }
-
-        if (status.value === 'denied') {
-            return 'Location access is blocked in your browser right now. Enable it for this site to see delivery estimates for your area before checkout.'
-        }
-
-        if (status.value === 'timeout') {
-            return 'We could not confirm your location in time. Try again to fetch your current location for delivery estimates.'
-        }
-
-        if (status.value === 'unavailable' || status.value === 'failed') {
-            return 'We could not complete the location request automatically. Try again to fetch your current location for delivery estimates.'
-        }
-
-        if (status.value === 'unsupported' || !hasSecureGeolocationContext.value) {
-            return 'This browser or site context cannot provide your location. If you are on a non-secure http page, switch to https to use location access. You can still see delivery timing after choosing a destination at checkout.'
-        }
-
-        if (permissionState.value === 'granted') {
-            return 'Use your current location to get a delivery estimate for your area.'
-        }
-
-        return 'Allow location access to see delivery estimates for your area before checkout.'
-    })
-
     async function reloadStorefrontData() {
         router.reload({
             only: RELOAD_ONLY,
@@ -310,14 +247,9 @@ export function useStorefrontLocation() {
     })
 
     return {
-        canRetryBrowserLocation,
         hasReliableLocation,
         isResolving,
         permissionState,
-        promptMessage,
-        requestButtonLabel,
-        requestBrowserLocation,
-        showPromptBanner,
         status,
     }
 }

@@ -5,7 +5,7 @@ import { Link, usePage } from '@inertiajs/vue3'
 import { computed } from 'vue'
 
 const page = usePage()
-const storefrontLocation = useStorefrontLocation()
+useStorefrontLocation()
 
 const authUser = computed(() => page.props.auth?.user ?? null)
 const cartCount = computed(() => Number(page.props.cartCount ?? 0))
@@ -125,36 +125,6 @@ const initialQuery = computed(() => {
         </header>
 
         <main class="mx-auto w-full max-w-8xl px-4 py-8 sm:px-6 lg:px-12">
-            <section
-                v-if="storefrontLocation.showPromptBanner"
-                class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-slate-800 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-slate-100"
-            >
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <p class="text-sm font-semibold">Use your current location</p>
-                        <p class="mt-1 text-sm text-slate-700 dark:text-slate-300">
-                            {{ storefrontLocation.promptMessage }}
-                        </p>
-                    </div>
-
-                    <button
-                        v-if="storefrontLocation.canRetryBrowserLocation"
-                        type="button"
-                        class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
-                        :disabled="storefrontLocation.isResolving"
-                        @click="storefrontLocation.requestBrowserLocation"
-                    >
-                        {{ storefrontLocation.requestButtonLabel }}
-                    </button>
-                    <p
-                        v-else-if="storefrontLocation.status === 'denied'"
-                        class="text-sm font-medium text-slate-700 dark:text-slate-300"
-                    >
-                        Enable location in your browser settings, then refresh this page.
-                    </p>
-                </div>
-            </section>
-
             <slot />
         </main>
     </div>
