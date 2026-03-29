@@ -83,7 +83,9 @@ function saveForLater() {
     <article
         :class="[
             'flex flex-col gap-4 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center',
-            item.availability?.is_available === false ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200',
+            item.availability?.is_available === false
+                ? 'border-rose-200 bg-rose-50/40 dark:border-rose-900/60 dark:bg-rose-950/30'
+                : 'border-slate-200 dark:border-slate-800 dark:bg-slate-950',
         ]"
     >
         <img
@@ -93,7 +95,7 @@ function saveForLater() {
             class="h-24 w-24 rounded-xl object-cover"
             loading="lazy"
         >
-        <div v-else class="flex h-24 w-24 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-500">
+        <div v-else class="flex h-24 w-24 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-300">
             No image
         </div>
 
@@ -101,22 +103,22 @@ function saveForLater() {
             <Link
                 v-if="item.product?.slug"
                 :href="route('store.product', item.product.slug)"
-                class="text-sm font-semibold text-slate-900 hover:text-slate-600"
+                class="text-sm font-semibold text-slate-900 hover:text-slate-600 dark:text-slate-100 dark:hover:text-slate-300"
             >
                 {{ item.product.name }}
             </Link>
-            <p v-else class="text-sm font-semibold text-slate-900">
+            <p v-else class="text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {{ item.product?.name }}
             </p>
-            <p class="mt-1 text-xs text-slate-500">{{ item.variant.label }}</p>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-300">{{ item.variant.label }}</p>
             <div class="mt-1 flex flex-wrap items-center gap-2">
-                <p class="text-sm font-semibold text-slate-800">{{ money(item.variant.price.current) }}</p>
-                <p v-if="item.variant.price.has_discount" class="text-xs text-slate-400 line-through">
+                <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ money(item.variant.price.current) }}</p>
+                <p v-if="item.variant.price.has_discount" class="text-xs text-slate-400 line-through dark:text-slate-500">
                     {{ money(item.variant.price.regular) }}
                 </p>
                 <span
                     v-if="item.variant.price.has_discount"
-                    class="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700"
+                    class="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"
                 >
                     On Sale
                 </span>
@@ -127,8 +129,8 @@ function saveForLater() {
                 :class="[
                     'mt-2 rounded-xl px-3 py-2 text-xs font-medium',
                     item.availability?.is_available === false
-                        ? 'bg-rose-100 text-rose-700'
-                        : 'bg-amber-100 text-amber-700',
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
                 ]"
             >
                 {{ item.availability.message }}
@@ -136,7 +138,7 @@ function saveForLater() {
 
             <p
                 v-if="item.availability?.included_in_totals === false"
-                class="mt-2 text-xs font-medium text-slate-500"
+                class="mt-2 text-xs font-medium text-slate-500 dark:text-slate-300"
             >
                 This item is not included in the order total until the issue is fixed.
             </p>
@@ -149,7 +151,7 @@ function saveForLater() {
         <div class="flex items-center gap-2">
             <button
                 type="button"
-                class="h-9 w-9 rounded-lg border border-slate-300 text-slate-700 transition hover:border-slate-500"
+                class="h-9 w-9 rounded-lg border border-slate-300 text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
                 @click="decrement"
             >
                 -
@@ -159,13 +161,13 @@ function saveForLater() {
                 v-model.number="quantity"
                 type="number"
                 min="1"
-                class="h-9 w-14 rounded-lg border border-slate-300 text-center text-sm"
+                class="h-9 w-14 rounded-lg border border-slate-300 bg-white text-center text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 @change="updateQuantity"
             >
 
             <button
                 type="button"
-                class="h-9 w-9 rounded-lg border border-slate-300 text-slate-700 transition hover:border-slate-500"
+                class="h-9 w-9 rounded-lg border border-slate-300 text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
                 @click="increment"
             >
                 +
@@ -173,10 +175,10 @@ function saveForLater() {
         </div>
 
         <div class="space-y-2 text-right sm:min-w-28">
-            <p class="text-sm font-bold text-slate-900">{{ money(item.subtotal) }}</p>
+            <p class="text-sm font-bold text-slate-900 dark:text-slate-100">{{ money(item.subtotal) }}</p>
             <button
                 type="button"
-                class="block text-xs font-medium text-slate-600 transition hover:text-slate-800"
+                class="block text-xs font-medium text-slate-600 transition hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100"
                 @click="saveForLater"
             >
                 Save for later

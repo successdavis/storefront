@@ -12,6 +12,7 @@ class Warehouse extends Model
     protected $fillable = ['name','code', 'address', 'lga_id', 'state_id', 'contact_person','phone', 'email', 'country_id', 'active'];
 
     protected $casts = ['active' => 'boolean'];
+
     public function stockEntries()
     {
         return $this->hasMany(StockEntry::class);
@@ -25,5 +26,25 @@ class Warehouse extends Model
     public function posTerminals()
     {
         return $this->hasMany(PosTerminal::class);
+    }
+
+    public function country()
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    public function state()
+    {
+        return $this->belongsTo(State::class);
+    }
+
+    public function lga()
+    {
+        return $this->belongsTo(Lga::class);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('active', true);
     }
 }

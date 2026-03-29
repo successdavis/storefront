@@ -30,6 +30,7 @@ class CheckoutService
         protected DiscountService $discountService,
         protected CustomerAddressService $customerAddressService,
         protected ShippingCostService $shippingCostService,
+        protected DeliveryEstimateService $deliveryEstimateService,
     ) {}
 
     public function getCheckoutData(User $user, array $params = []): array
@@ -113,6 +114,20 @@ class CheckoutService
             }
         }
 
+        $deliveryEstimate = $this->deliveryEstimateService->estimateForCheckoutItems(
+            items: collect($payableCartItems)->map(fn (array $item) => [
+                'variant_id' => (int) ($item['variant']['id'] ?? 0),
+                'quantity' => (int) ($item['quantity'] ?? 1),
+            ])->values()->all(),
+            destination: $this->buildEstimateDestination($selection),
+            options: [
+                'scope' => 'checkout',
+                'shipping_method_id' => $selection['shipping_method_id'] ?? null,
+                'pickup_location_id' => $selection['pickup_location_id'] ?? null,
+                'subtotal' => $quoteSummary['subtotal'] ?? 0,
+            ],
+        );
+
         return [
             'cart' => [
                 'id' => $cartData['cart']['id'] ?? null,
@@ -134,6 +149,7 @@ class CheckoutService
             'cartCount' => $this->cartService->getCartCount((int) $user->id),
             'categories' => $this->productService->listStoreCategories(),
             'pricing_quote' => $pricingQuote,
+            'delivery_estimate' => $deliveryEstimate,
         ];
     }
 
@@ -805,8 +821,21 @@ class CheckoutService
             ->values()
             ->all();
     }
-}
 
+    protected function buildEstimateDestination(array $selection): ?array
+    {
+        if (empty($selection['state_id']) && empty($selection['pickup_location_id'])) {
+            return null;
+        }
+
+        return [
+            'country_id' => $selection['country_id'] ?? null,
+            'state_id' => $selection['state_id'] ?? null,
+            'lga_id' => $selection['lga_id'] ?? null,
+            'destination_label' => null,
+        ];
+    }
+}
 
 
 

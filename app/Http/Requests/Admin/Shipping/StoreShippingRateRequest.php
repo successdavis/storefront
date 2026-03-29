@@ -28,6 +28,13 @@ class StoreShippingRateRequest extends FormRequest
             'surcharge' => ['nullable', 'numeric', 'min:0'],
             'free_shipping_threshold' => ['nullable', 'numeric', 'min:0'],
             'estimated_delivery_text' => ['nullable', 'string', 'max:120'],
+            'processing_days_min' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'processing_days_max' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'transit_days_min' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'transit_days_max' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'cutoff_time' => ['nullable', 'date_format:H:i'],
+            'business_days_only' => ['nullable', 'boolean'],
+            'supports_weekend_delivery' => ['nullable', 'boolean'],
             'min_weight' => ['nullable', 'numeric', 'min:0'],
             'max_weight' => ['nullable', 'numeric', 'min:0'],
             'min_subtotal' => ['nullable', 'numeric', 'min:0'],
@@ -81,6 +88,14 @@ class StoreShippingRateRequest extends FormRequest
 
             if ($this->filled('min_subtotal') && $this->filled('max_subtotal') && (float) $this->input('max_subtotal') < (float) $this->input('min_subtotal')) {
                 $validator->errors()->add('max_subtotal', 'Maximum subtotal must be greater than or equal to minimum subtotal.');
+            }
+
+            if ($this->filled('processing_days_min') && $this->filled('processing_days_max') && (int) $this->input('processing_days_max') < (int) $this->input('processing_days_min')) {
+                $validator->errors()->add('processing_days_max', 'Maximum processing days must be greater than or equal to minimum processing days.');
+            }
+
+            if ($this->filled('transit_days_min') && $this->filled('transit_days_max') && (int) $this->input('transit_days_max') < (int) $this->input('transit_days_min')) {
+                $validator->errors()->add('transit_days_max', 'Maximum transit days must be greater than or equal to minimum transit days.');
             }
 
             if ($rateType === 'flat' && $this->filled('per_kg') && (float) $this->input('per_kg') > 0) {

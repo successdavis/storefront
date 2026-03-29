@@ -17,6 +17,13 @@ interface ShippingRatePayload {
     surcharge?: number | null
     free_shipping_threshold?: number | null
     estimated_delivery_text?: string | null
+    processing_days_min?: number | null
+    processing_days_max?: number | null
+    transit_days_min?: number | null
+    transit_days_max?: number | null
+    cutoff_time?: string | null
+    business_days_only?: boolean | null
+    supports_weekend_delivery?: boolean | null
     min_weight?: number | null
     max_weight?: number | null
     min_subtotal?: number | null
@@ -53,6 +60,13 @@ const form = useForm({
     surcharge: props.shippingRate?.surcharge ?? 0,
     free_shipping_threshold: props.shippingRate?.free_shipping_threshold ?? null,
     estimated_delivery_text: props.shippingRate?.estimated_delivery_text ?? '',
+    processing_days_min: props.shippingRate?.processing_days_min ?? null,
+    processing_days_max: props.shippingRate?.processing_days_max ?? null,
+    transit_days_min: props.shippingRate?.transit_days_min ?? null,
+    transit_days_max: props.shippingRate?.transit_days_max ?? null,
+    cutoff_time: props.shippingRate?.cutoff_time ?? '',
+    business_days_only: props.shippingRate?.business_days_only ?? true,
+    supports_weekend_delivery: props.shippingRate?.supports_weekend_delivery ?? false,
     min_weight: props.shippingRate?.min_weight ?? null,
     max_weight: props.shippingRate?.max_weight ?? null,
     min_subtotal: props.shippingRate?.min_subtotal ?? null,
@@ -229,6 +243,48 @@ function submit() {
                             <input v-model="form.estimated_delivery_text" type="text" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
                             <InputError :message="form.errors.estimated_delivery_text" class="mt-2" />
                         </div>
+
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Processing days (min)</label>
+                            <input v-model="form.processing_days_min" type="number" min="0" step="1" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                            <InputError :message="form.errors.processing_days_min" class="mt-2" />
+                        </div>
+
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Processing days (max)</label>
+                            <input v-model="form.processing_days_max" type="number" min="0" step="1" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                            <InputError :message="form.errors.processing_days_max" class="mt-2" />
+                        </div>
+
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Transit days (min)</label>
+                            <input v-model="form.transit_days_min" type="number" min="0" step="1" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                            <InputError :message="form.errors.transit_days_min" class="mt-2" />
+                        </div>
+
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Transit days (max)</label>
+                            <input v-model="form.transit_days_max" type="number" min="0" step="1" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                            <InputError :message="form.errors.transit_days_max" class="mt-2" />
+                        </div>
+
+                        <div>
+                            <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Daily cutoff time</label>
+                            <input v-model="form.cutoff_time" type="time" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                            <InputError :message="form.errors.cutoff_time" class="mt-2" />
+                        </div>
+                    </div>
+
+                    <div class="mt-5 grid gap-4 md:grid-cols-2">
+                        <label class="flex items-center gap-3 rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200">
+                            <input v-model="form.business_days_only" type="checkbox" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-900">
+                            Use business days only
+                        </label>
+
+                        <label class="flex items-center gap-3 rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200">
+                            <input v-model="form.supports_weekend_delivery" type="checkbox" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-900">
+                            Supports weekend delivery
+                        </label>
                     </div>
                 </section>
 
@@ -339,6 +395,12 @@ function submit() {
                         <div class="flex justify-between gap-4">
                             <dt>Status</dt>
                             <dd class="font-semibold text-slate-900 dark:text-slate-100">{{ form.is_active ? 'Active' : 'Inactive' }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt>Delivery window</dt>
+                            <dd class="font-semibold text-slate-900 dark:text-slate-100">
+                                {{ form.processing_days_min ?? 0 }}-{{ form.processing_days_max ?? form.processing_days_min ?? 0 }} proc / {{ form.transit_days_min ?? 0 }}-{{ form.transit_days_max ?? form.transit_days_min ?? 0 }} transit
+                            </dd>
                         </div>
                     </dl>
 

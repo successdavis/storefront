@@ -178,6 +178,13 @@ class ShippingManagementService
             'name' => $method->name,
             'description' => $method->description,
             'method_type' => $method->method_type,
+            'processing_days_min' => $method->processing_days_min !== null ? (int) $method->processing_days_min : null,
+            'processing_days_max' => $method->processing_days_max !== null ? (int) $method->processing_days_max : null,
+            'transit_days_min' => $method->transit_days_min !== null ? (int) $method->transit_days_min : null,
+            'transit_days_max' => $method->transit_days_max !== null ? (int) $method->transit_days_max : null,
+            'cutoff_time' => $method->cutoff_time,
+            'business_days_only' => (bool) $method->business_days_only,
+            'supports_weekend_delivery' => (bool) $method->supports_weekend_delivery,
             'sort_order' => (int) $method->sort_order,
             'is_active' => (bool) $method->is_active,
         ];
@@ -200,6 +207,13 @@ class ShippingManagementService
             'surcharge' => (float) $rate->surcharge,
             'free_shipping_threshold' => $rate->free_shipping_threshold !== null ? (float) $rate->free_shipping_threshold : null,
             'estimated_delivery_text' => $rate->estimated_delivery_text,
+            'processing_days_min' => $rate->processing_days_min !== null ? (int) $rate->processing_days_min : null,
+            'processing_days_max' => $rate->processing_days_max !== null ? (int) $rate->processing_days_max : null,
+            'transit_days_min' => $rate->transit_days_min !== null ? (int) $rate->transit_days_min : null,
+            'transit_days_max' => $rate->transit_days_max !== null ? (int) $rate->transit_days_max : null,
+            'cutoff_time' => $rate->cutoff_time,
+            'business_days_only' => $rate->business_days_only,
+            'supports_weekend_delivery' => $rate->supports_weekend_delivery,
             'sort_order' => (int) $rate->sort_order,
             'is_active' => (bool) $rate->is_active,
             'status' => $this->statusLabel($rate),
@@ -227,6 +241,13 @@ class ShippingManagementService
             'surcharge' => (float) $rate->surcharge,
             'free_shipping_threshold' => $rate->free_shipping_threshold !== null ? (float) $rate->free_shipping_threshold : null,
             'estimated_delivery_text' => $rate->estimated_delivery_text,
+            'processing_days_min' => $rate->processing_days_min !== null ? (int) $rate->processing_days_min : null,
+            'processing_days_max' => $rate->processing_days_max !== null ? (int) $rate->processing_days_max : null,
+            'transit_days_min' => $rate->transit_days_min !== null ? (int) $rate->transit_days_min : null,
+            'transit_days_max' => $rate->transit_days_max !== null ? (int) $rate->transit_days_max : null,
+            'cutoff_time' => $rate->cutoff_time ? substr((string) $rate->cutoff_time, 0, 5) : null,
+            'business_days_only' => $rate->business_days_only,
+            'supports_weekend_delivery' => $rate->supports_weekend_delivery,
             'min_weight' => $rate->min_weight !== null ? (float) $rate->min_weight : null,
             'max_weight' => $rate->max_weight !== null ? (float) $rate->max_weight : null,
             'min_subtotal' => $rate->min_subtotal !== null ? (float) $rate->min_subtotal : null,
@@ -262,6 +283,13 @@ class ShippingManagementService
             'name' => trim((string) $data['name']),
             'description' => $this->nullableString($data['description'] ?? null),
             'method_type' => $data['method_type'],
+            'processing_days_min' => $this->nullableInt($data['processing_days_min'] ?? null),
+            'processing_days_max' => $this->nullableInt($data['processing_days_max'] ?? null),
+            'transit_days_min' => $this->nullableInt($data['transit_days_min'] ?? null),
+            'transit_days_max' => $this->nullableInt($data['transit_days_max'] ?? null),
+            'cutoff_time' => $this->nullableString($data['cutoff_time'] ?? null),
+            'business_days_only' => (bool) ($data['business_days_only'] ?? true),
+            'supports_weekend_delivery' => (bool) ($data['supports_weekend_delivery'] ?? false),
             'sort_order' => (int) ($data['sort_order'] ?? 0),
             'is_active' => (bool) ($data['is_active'] ?? true),
         ]);
@@ -318,6 +346,13 @@ class ShippingManagementService
             'surcharge' => $isPickup ? 0 : (float) ($data['surcharge'] ?? 0),
             'free_shipping_threshold' => $isPickup ? null : $this->nullableFloat($data['free_shipping_threshold'] ?? null),
             'estimated_delivery_text' => $this->nullableString($data['estimated_delivery_text'] ?? null),
+            'processing_days_min' => $this->nullableInt($data['processing_days_min'] ?? null),
+            'processing_days_max' => $this->nullableInt($data['processing_days_max'] ?? null),
+            'transit_days_min' => $this->nullableInt($data['transit_days_min'] ?? null),
+            'transit_days_max' => $this->nullableInt($data['transit_days_max'] ?? null),
+            'cutoff_time' => $this->nullableString($data['cutoff_time'] ?? null),
+            'business_days_only' => array_key_exists('business_days_only', $data) ? (bool) $data['business_days_only'] : null,
+            'supports_weekend_delivery' => array_key_exists('supports_weekend_delivery', $data) ? (bool) $data['supports_weekend_delivery'] : null,
             'currency' => 'NGN',
             'min_weight' => $isPickup ? null : $this->nullableFloat($data['min_weight'] ?? null),
             'max_weight' => $isPickup ? null : $this->nullableFloat($data['max_weight'] ?? null),
@@ -459,5 +494,14 @@ class ShippingManagementService
         }
 
         return (float) $value;
+    }
+
+    protected function nullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
     }
 }

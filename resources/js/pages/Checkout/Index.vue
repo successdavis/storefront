@@ -17,6 +17,7 @@ const {
     pickup_locations,
     saved_addresses,
     selected_shipping,
+    delivery_estimate,
 } = defineProps({
     cart: {
         type: Object,
@@ -76,6 +77,10 @@ const {
             line2: null,
             save_address: false,
         }),
+    },
+    delivery_estimate: {
+        type: Object,
+        default: () => null,
     },
 })
 
@@ -206,6 +211,13 @@ const hasItems = computed(() => {
 })
 const unavailableItems = computed(() => (cart?.items || []).filter(item => item.availability?.is_available === false))
 const hasUnavailableItems = computed(() => unavailableItems.value.length > 0)
+const visibleDeliveryEstimate = computed(() => {
+    if (!delivery_estimate?.available || !delivery_estimate?.checkout_message) {
+        return null
+    }
+
+    return delivery_estimate
+})
 
 const formatter = new Intl.NumberFormat('en-NG', {
     style: 'currency',
@@ -298,23 +310,23 @@ onBeforeUnmount(() => {
 
     <section class="mb-8 flex flex-wrap items-end justify-between gap-3">
         <div>
-            <h1 class="text-3xl font-bold tracking-tight text-slate-900">Checkout</h1>
-            <p class="mt-1 text-sm text-slate-500">
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Checkout</h1>
+            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
                 Confirm your order totals, reuse saved delivery details when you have them, and continue securely with Paystack.
             </p>
         </div>
 
         <Link
             :href="route('store.cart')"
-            class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500"
+            class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
         >
             Back to Cart
         </Link>
     </section>
 
-    <section v-if="!hasItems" class="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h2 class="text-lg font-semibold text-slate-900">Your cart is empty</h2>
-        <p class="mt-2 text-sm text-slate-500">Add products from the storefront before checkout.</p>
+    <section v-if="!hasItems" class="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Your cart is empty</h2>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Add products from the storefront before checkout.</p>
 
         <Link
             :href="route('store.home')"
@@ -325,7 +337,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else class="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-        <div class="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <div
                 v-if="page.props.flash?.error"
                 class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"
@@ -340,14 +352,14 @@ onBeforeUnmount(() => {
                 {{ unavailableItems.length }} item{{ unavailableItems.length === 1 ? '' : 's' }} in this checkout need attention. Totals exclude unavailable lines until you update or remove them.
             </div>
 
-            <h2 class="text-base font-semibold text-slate-900">Cart Summary</h2>
+            <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Cart Summary</h2>
 
             <article
                 v-for="item in cart.items"
                 :key="item.id"
                 :class="[
                     'flex items-center gap-3 rounded-xl border p-3',
-                    item.availability?.is_available === false ? 'border-rose-200 bg-rose-50/40' : 'border-slate-100',
+                    item.availability?.is_available === false ? 'border-rose-200 bg-rose-50/40 dark:border-rose-900/60 dark:bg-rose-950/30' : 'border-slate-100 dark:border-slate-800',
                 ]"
             >
                 <img
@@ -360,27 +372,27 @@ onBeforeUnmount(() => {
 
                 <div
                     v-else
-                    class="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500"
+                    class="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300"
                 >
                     No image
                 </div>
 
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-sm font-semibold text-slate-900">
+                    <p class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                         {{ item.product?.name }}
                     </p>
 
-                    <p class="truncate text-xs text-slate-500">
+                    <p class="truncate text-xs text-slate-600 dark:text-slate-300">
                         {{ item.variant?.label }}
                     </p>
 
-                    <p class="mt-1 text-xs text-slate-500">
+                    <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">
                         Qty: {{ item.quantity }}
                     </p>
 
                     <div v-if="item.variant?.price?.has_discount" class="mt-2 flex flex-wrap items-center gap-2">
                         <span class="text-xs font-semibold text-rose-700">On Sale</span>
-                        <span class="text-xs text-slate-400 line-through">{{ money(item.variant.price.regular) }}</span>
+                        <span class="text-xs text-slate-400 line-through dark:text-slate-500">{{ money(item.variant.price.regular) }}</span>
                     </div>
 
                     <p
@@ -388,8 +400,8 @@ onBeforeUnmount(() => {
                         :class="[
                             'mt-2 rounded-xl px-3 py-2 text-xs font-medium',
                             item.availability?.is_available === false
-                                ? 'bg-rose-100 text-rose-700'
-                                : 'bg-amber-100 text-amber-700',
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
                         ]"
                     >
                         {{ item.availability.message }}
@@ -397,42 +409,42 @@ onBeforeUnmount(() => {
 
                     <p
                         v-if="item.availability?.included_in_totals === false"
-                        class="mt-2 text-xs font-medium text-slate-500"
+                        class="mt-2 text-xs font-medium text-slate-600 dark:text-slate-300"
                     >
                         This line is not included in the payable total yet.
                     </p>
                 </div>
 
-                <p class="text-sm font-semibold text-slate-900">
+                <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {{ money(item.subtotal) }}
                 </p>
             </article>
         </div>
 
         <aside class="space-y-4">
-            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                 <div class="flex items-start justify-between gap-3">
                     <div>
-                        <h2 class="text-base font-semibold text-slate-900">Checkout Details</h2>
-                        <p class="mt-1 text-sm text-slate-500">Choose shipping, review charges, and proceed when everything looks right.</p>
+                        <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Checkout Details</h2>
+                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Choose shipping, review charges, and proceed when everything looks right.</p>
                     </div>
                     <Link
                         :href="route('account.addresses.index')"
-                        class="text-xs font-semibold text-slate-600 transition hover:text-slate-900"
+                        class="text-xs font-semibold text-slate-700 transition hover:text-slate-900 dark:text-slate-200 dark:hover:text-slate-100"
                     >
                         Manage addresses
                     </Link>
                 </div>
 
                 <div class="mt-4 space-y-4">
-                    <div v-if="saved_addresses.length" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    <div v-if="saved_addresses.length" class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Saved address
                         </label>
 
                         <select
                             v-model="form.address_id"
-                            class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+                            class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         >
                             <option value="">Use a new address</option>
                             <option
@@ -444,20 +456,20 @@ onBeforeUnmount(() => {
                             </option>
                         </select>
 
-                        <div v-if="selectedSavedAddress" class="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
-                            <p class="font-semibold text-slate-900">{{ selectedSavedAddress.recipient_name }}</p>
+                        <div v-if="selectedSavedAddress" class="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                            <p class="font-semibold text-slate-900 dark:text-slate-100">{{ selectedSavedAddress.recipient_name }}</p>
                             <p class="mt-1">{{ selectedSavedAddress.line1 }}<span v-if="selectedSavedAddress.line2">, {{ selectedSavedAddress.line2 }}</span></p>
                             <p class="mt-1">{{ [selectedSavedAddress.lga?.name, selectedSavedAddress.state?.name, selectedSavedAddress.country?.name].filter(Boolean).join(', ') }}</p>
                             <p v-if="selectedSavedAddress.phone" class="mt-1">{{ selectedSavedAddress.phone }}</p>
                         </div>
                     </div>
 
-                    <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                    <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                         No saved addresses yet. Save one from your account area to make future checkout faster.
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Discount code
                         </label>
 
@@ -465,7 +477,7 @@ onBeforeUnmount(() => {
                             v-model="form.coupon"
                             type="text"
                             placeholder="Enter coupon code"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                             @blur="scheduleTotalsRefresh(0)"
                         />
 
@@ -475,13 +487,13 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Shipping method
                         </label>
 
                         <select
                             v-model="form.shipping_method_id"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         >
                             <option value="">Select method</option>
 
@@ -494,13 +506,13 @@ onBeforeUnmount(() => {
                             </option>
                         </select>
 
-                        <p v-if="currentMethod?.description" class="mt-2 text-xs text-slate-500">
+                        <p v-if="currentMethod?.description" class="mt-2 text-xs text-slate-600 dark:text-slate-300">
                             {{ currentMethod.description }}
                         </p>
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Phone number
                         </label>
 
@@ -508,18 +520,18 @@ onBeforeUnmount(() => {
                             v-model="form.phone"
                             type="text"
                             placeholder="Enter phone number"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                         />
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             State
                         </label>
 
                         <select
                             v-model="form.state_id"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         >
                             <option value="">Select state</option>
 
@@ -534,13 +546,13 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div v-if="!isPickupMethod">
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             City / LGA
                         </label>
 
                         <select
                             v-model="form.lga_id"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         >
                             <option value="">Select city/LGA</option>
 
@@ -555,13 +567,13 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div v-if="isPickupMethod">
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Pickup location
                         </label>
 
                         <select
                             v-model="form.pickup_location_id"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         >
                             <option value="">
                                 {{ loadingPickupLocations ? 'Loading...' : 'Select pickup location' }}
@@ -576,13 +588,13 @@ onBeforeUnmount(() => {
                             </option>
                         </select>
 
-                        <p v-if="!loadingPickupLocations && !pickupLocations.length && form.state_id" class="mt-1 text-xs text-slate-500">
+                        <p v-if="!loadingPickupLocations && !pickupLocations.length && form.state_id" class="mt-1 text-xs text-slate-600 dark:text-slate-300">
                             No pickup locations available for this state.
                         </p>
                     </div>
 
                     <div v-if="!isPickupMethod">
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Address line 1
                         </label>
 
@@ -590,12 +602,12 @@ onBeforeUnmount(() => {
                             v-model="form.line1"
                             type="text"
                             placeholder="Street address"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                         />
                     </div>
 
                     <div v-if="!isPickupMethod">
-                        <label class="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
                             Address line 2
                         </label>
 
@@ -603,21 +615,21 @@ onBeforeUnmount(() => {
                             v-model="form.line2"
                             type="text"
                             placeholder="Apartment, suite, landmark (optional)"
-                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                            class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                         />
                     </div>
 
                     <label
                         v-if="!isPickupMethod && !form.address_id"
-                        class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+                        class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
                     >
-                        <input v-model="form.save_address" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
+                        <input v-model="form.save_address" type="checkbox" class="h-4 w-4 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-950" />
                         Save this delivery address for future purchases
                     </label>
 
                     <div
                         v-else-if="!isPickupMethod && form.address_id"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
+                        class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
                     >
                         This checkout is using an address already saved to your account.
                     </div>
@@ -639,26 +651,41 @@ onBeforeUnmount(() => {
                     </p>
                 </div>
 
-                <p class="mt-4 text-xs font-medium text-slate-500">
+                <p class="mt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
                     {{ totalsAreUpdating ? 'Refreshing totals...' : 'Totals update automatically when you change shipping details or coupon code.' }}
                 </p>
 
+                <div v-if="visibleDeliveryEstimate" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+                    <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        Expected delivery
+                    </p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        {{ visibleDeliveryEstimate.checkout_message }}
+                    </p>
+                    <p
+                        v-if="visibleDeliveryEstimate?.warehouse?.name"
+                        class="mt-1 text-xs text-slate-600 dark:text-slate-300"
+                    >
+                        Fulfillment estimate based on {{ visibleDeliveryEstimate.warehouse.name }}.
+                    </p>
+                </div>
+
                 <dl class="mt-4 space-y-3 text-sm">
-                    <div class="flex justify-between text-slate-600">
+                    <div class="flex justify-between text-slate-600 dark:text-slate-300">
                         <dt>Subtotal</dt>
                         <dd>{{ money(summary.subtotal) }}</dd>
                     </div>
 
-                    <div class="flex justify-between text-slate-600">
+                    <div class="flex justify-between text-slate-600 dark:text-slate-300">
                         <dt>Discount</dt>
                         <dd class="text-emerald-600">-{{ money(summary.discount) }}</dd>
                     </div>
 
-                    <div v-if="summary.discount_label" class="text-xs text-slate-500">
+                    <div v-if="summary.discount_label" class="text-xs text-slate-600 dark:text-slate-300">
                         Applied: {{ summary.discount_label }}
                     </div>
 
-                    <div class="flex justify-between text-slate-600">
+                    <div class="flex justify-between text-slate-600 dark:text-slate-300">
                         <dt>Shipping</dt>
 
                         <dd v-if="summary.shipping_free" class="font-semibold text-emerald-600">
@@ -670,7 +697,7 @@ onBeforeUnmount(() => {
                         </dd>
                     </div>
 
-                    <div class="border-t border-slate-200 pt-3 text-base font-bold text-slate-900">
+                    <div class="border-t border-slate-200 pt-3 text-base font-bold text-slate-900 dark:border-slate-800 dark:text-slate-100">
                         <div class="flex justify-between">
                             <dt>Total</dt>
                             <dd>{{ money(summary.total) }}</dd>

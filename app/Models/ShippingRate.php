@@ -6,7 +6,10 @@ class ShippingRate extends Model
 {
     protected $fillable = [
       'shipping_method_id', 'shipping_zone_id', 'state_id', 'lga_id', 'min_weight', 'max_weight', 'min_subtotal', 'max_subtotal',
-      'rate_type', 'base_rate', 'per_kg', 'surcharge', 'free_shipping_threshold', 'estimated_delivery_text', 'currency', 'starts_at', 'ends_at', 'is_active', 'sort_order'
+      'rate_type', 'base_rate', 'per_kg', 'surcharge', 'free_shipping_threshold', 'estimated_delivery_text',
+      'processing_days_min', 'processing_days_max', 'transit_days_min', 'transit_days_max', 'cutoff_time',
+      'business_days_only', 'supports_weekend_delivery',
+      'currency', 'starts_at', 'ends_at', 'is_active', 'sort_order'
     ];
 
     protected $casts = [
@@ -14,6 +17,12 @@ class ShippingRate extends Model
       'ends_at' => 'datetime',
       'is_active' => 'boolean',
       'sort_order' => 'integer',
+      'processing_days_min' => 'integer',
+      'processing_days_max' => 'integer',
+      'transit_days_min' => 'integer',
+      'transit_days_max' => 'integer',
+      'business_days_only' => 'boolean',
+      'supports_weekend_delivery' => 'boolean',
     ];
 
     public function method()

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Category;
 use App\Models\CustomerSavedItem;
 use App\Models\Product;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
@@ -15,6 +16,8 @@ class StorefrontService
         protected StorefrontSearchService $storefrontSearchService,
         protected CartService $cartService,
         protected CustomerSavedItemService $savedItemService,
+        protected CustomerLocationResolver $customerLocationResolver,
+        protected DeliveryEstimateService $deliveryEstimateService,
     ) {}
 
     public function homeData(array $filters = []): array
@@ -24,12 +27,14 @@ class StorefrontService
             ? (int) $filters['category']
             : null;
         $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
+        $browsingLocation = $this->resolveBrowsingLocation();
 
         $products = $this->productService->paginateStorefrontProducts(
             perPage: $perPage,
             search: $search !== '' ? $search : null,
             categoryId: $categoryId,
         );
+        $products = $this->enrichPaginatedCards($products, $browsingLocation);
 
         return array_merge([
             'filters' => [
@@ -38,11 +43,12 @@ class StorefrontService
                 'per_page' => $perPage,
             ],
             'products' => $products,
-            'featuredProducts' => $this->productService->getFeaturedProducts(8),
-            'latestProducts' => $this->productService->getLatestProducts(8),
-            'categoryPreviews' => $this->buildCategoryPreviews(4, 4),
+            'featuredProducts' => $this->enrichCardPayloads($this->productService->getFeaturedProducts(8), $browsingLocation),
+            'latestProducts' => $this->enrichCardPayloads($this->productService->getLatestProducts(8), $browsingLocation),
+            'categoryPreviews' => $this->buildCategoryPreviews(4, 4, $browsingLocation),
             'pageTitle' => $this->resolveHomeTitle($search, $categoryId),
-        ], $this->sharedData());
+            'browsingLocation' => $browsingLocation,
+        ], $this->sharedData($browsingLocation));
     }
 
     public function categoryData(Category $category, array $filters = []): array
@@ -63,9 +69,19 @@ class StorefrontService
 
     public function searchData(array $filters = []): array
     {
+        $browsingLocation = $this->resolveBrowsingLocation();
+        $searchData = $this->storefrontSearchService->search($filters);
+
+        if (($searchData['results'] ?? null) instanceof LengthAwarePaginator) {
+            $searchData['results'] = $this->enrichPaginatedCards($searchData['results'], $browsingLocation);
+        }
+
         return array_merge(
-            $this->storefrontSearchService->search($filters),
-            $this->sharedData(),
+            $searchData,
+            [
+                'browsingLocation' => $browsingLocation,
+            ],
+            $this->sharedData($browsingLocation),
         );
     }
 
@@ -76,10 +92,13 @@ class StorefrontService
 
     public function productData(Product $product): array
     {
+        $browsingLocation = $this->resolveBrowsingLocation();
+
         return array_merge([
-            'product' => $this->productService->getProductDetails($product),
-            'relatedProducts' => $this->productService->getRelatedProducts($product, 8),
-        ], $this->sharedData());
+            'product' => $this->enrichProductPayload($this->productService->getProductDetails($product), $browsingLocation),
+            'relatedProducts' => $this->enrichCardPayloads($this->productService->getRelatedProducts($product, 8), $browsingLocation),
+            'browsingLocation' => $browsingLocation,
+        ], $this->sharedData($browsingLocation));
     }
 
     public function cartData(?string $couponCode = null): array
@@ -94,6 +113,7 @@ class StorefrontService
             CustomerSavedItem::TYPE_WISHLIST => 0,
             CustomerSavedItem::TYPE_SAVED_FOR_LATER => 0,
         ];
+        $browsingLocation = $this->resolveBrowsingLocation();
 
         if (Auth::user()) {
             $savedForLater = $this->savedItemService
@@ -105,10 +125,11 @@ class StorefrontService
         return array_merge($cartData, [
             'savedForLater' => $savedForLater,
             'savedItemCounts' => $savedItemCounts,
-        ], $this->sharedData());
+            'browsingLocation' => $browsingLocation,
+        ], $this->sharedData($browsingLocation));
     }
 
-    protected function buildCategoryPreviews(int $limit, int $productsPerCategory): array
+    protected function buildCategoryPreviews(int $limit, int $productsPerCategory, ?array $browsingLocation = null): array
     {
         $categories = Category::query()
             ->select(['id', 'name', 'slug', 'featured', 'order'])
@@ -146,7 +167,7 @@ class StorefrontService
             ->latest('id')
             ->get();
 
-        return $categories->map(function (Category $category) use ($products, $productsPerCategory) {
+        return $categories->map(function (Category $category) use ($products, $productsPerCategory, $browsingLocation) {
             $categoryProducts = $products
                 ->filter(fn (Product $product) => $product->categories->contains('id', $category->id))
                 ->take($productsPerCategory)
@@ -159,16 +180,17 @@ class StorefrontService
                 'name' => $category->name,
                 'slug' => $category->slug,
                 'active_products_count' => (int) $category->active_products_count,
-                'products' => $categoryProducts,
+                'products' => $this->enrichCardPayloads($categoryProducts, $browsingLocation),
             ];
         })->values()->all();
     }
 
-    protected function sharedData(): array
+    protected function sharedData(?array $browsingLocation = null): array
     {
         return [
             'cartCount' => $this->cartService->getCartCount(),
             'categories' => $this->productService->listStoreCategories(),
+            'browsingLocation' => $browsingLocation,
         ];
     }
 
@@ -184,5 +206,93 @@ class StorefrontService
         }
 
         return 'All Products';
+    }
+
+    protected function resolveBrowsingLocation(): ?array
+    {
+        return $this->customerLocationResolver->resolveForRequest(request());
+    }
+
+    protected function enrichPaginatedCards(LengthAwarePaginator $paginator, ?array $browsingLocation = null): LengthAwarePaginator
+    {
+        $paginator->setCollection(
+            collect($this->enrichCardPayloads($paginator->getCollection()->all(), $browsingLocation))
+        );
+
+        return $paginator;
+    }
+
+    protected function enrichCardPayloads(array $cards, ?array $browsingLocation = null): array
+    {
+        if (empty($cards)) {
+            return [];
+        }
+
+        $destination = $this->normalizeEstimateDestination($browsingLocation);
+        $variantIds = collect($cards)
+            ->pluck('default_variant_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $estimates = $this->deliveryEstimateService->estimateManyForVariantIds($variantIds, $destination, [
+            'scope' => 'storefront',
+        ]);
+
+        return collect($cards)->map(function (array $card) use ($estimates) {
+            $variantId = (int) ($card['default_variant_id'] ?? 0);
+
+            return array_merge($card, [
+                'delivery_estimate' => $variantId > 0 ? ($estimates[$variantId] ?? null) : null,
+            ]);
+        })->all();
+    }
+
+    protected function enrichProductPayload(array $productPayload, ?array $browsingLocation = null): array
+    {
+        $destination = $this->normalizeEstimateDestination($browsingLocation);
+        $variantIds = collect($productPayload['variants'] ?? [])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values()
+            ->all();
+        $estimates = $this->deliveryEstimateService->estimateManyForVariantIds($variantIds, $destination, [
+            'scope' => 'storefront',
+        ]);
+        $defaultVariantId = (int) ($productPayload['default_variant_id'] ?? 0);
+
+        $productPayload['variants'] = collect($productPayload['variants'] ?? [])
+            ->map(function (array $variant) use ($estimates) {
+                $variantId = (int) ($variant['id'] ?? 0);
+
+                return array_merge($variant, [
+                    'delivery_estimate' => $variantId > 0 ? ($estimates[$variantId] ?? null) : null,
+                ]);
+            })
+            ->all();
+
+        $productPayload['delivery_estimate'] = $defaultVariantId > 0
+            ? ($estimates[$defaultVariantId] ?? null)
+            : null;
+
+        return $productPayload;
+    }
+
+    protected function normalizeEstimateDestination(?array $browsingLocation = null): ?array
+    {
+        if (!$browsingLocation) {
+            return null;
+        }
+
+        return [
+            'country_id' => $browsingLocation['country_id'] ?? null,
+            'state_id' => $browsingLocation['state_id'] ?? null,
+            'lga_id' => $browsingLocation['lga_id'] ?? null,
+            'state_name' => $browsingLocation['state_name'] ?? null,
+            'city_name' => $browsingLocation['city_name'] ?? null,
+            'destination_label' => $browsingLocation['destination_label'] ?? null,
+        ];
     }
 }

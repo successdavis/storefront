@@ -8,7 +8,6 @@ use App\Models\ProductVariant;
 use App\Models\ShippingMethod;
 use App\Models\ShippingRate;
 use App\Models\State;
-use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -16,64 +15,29 @@ use Illuminate\Support\Facades\Log;
 
 class ShippingCostService
 {
+    protected array $methodCache = [];
+
+    protected array $zoneByStateCache = [];
+
+    protected array $pickupLocationCache = [];
+
+    protected array $activeRatesCache = [];
+
     public function calculate(array $payload): array
     {
-        if (!isset($payload['shipping_method_id'])) {
-            throw new \InvalidArgumentException('shipping_method_id is required');
-        }
-
-        $method = $this->resolveMethod((int) $payload['shipping_method_id']);
-        if (!$method || !$method->is_active) {
-            throw new ShippingRateNotFoundException('The selected shipping method is not available.');
-        }
-
-        $subtotal = isset($payload['subtotal']) ? (float) $payload['subtotal'] : 0.0;
-        $weightKg = isset($payload['weight_kg']) ? (float) $payload['weight_kg'] : (float) ($payload['weight'] ?? 0.0);
-        $shippingZoneId = !empty($payload['shipping_zone_id']) ? (int) $payload['shipping_zone_id'] : null;
-        $stateId = !empty($payload['state_id']) ? (int) $payload['state_id'] : null;
-        $lgaId = !empty($payload['lga_id']) ? (int) $payload['lga_id'] : null;
-        $pickupLocationId = !empty($payload['pickup_location_id']) ? (int) $payload['pickup_location_id'] : null;
-        $volumetricDivisor = (float) ($payload['volumetric_divisor'] ?? 5000.0);
-        $useVolumetric = (bool) ($payload['use_volumetric'] ?? true);
-        $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
-
-        if ($shippingZoneId === null && $stateId !== null) {
-            $shippingZoneId = $this->resolveZoneForState($stateId);
-        }
+        $context = $this->resolveRateContext($payload);
+        $method = $context['method'];
+        $rate = $context['rate'];
+        $subtotal = $context['subtotal'];
+        $weightKg = $context['weight_kg'];
+        $shippingZoneId = $context['shipping_zone_id'];
+        $stateId = $context['state_id'];
+        $lgaId = $context['lga_id'];
 
         if ($this->isPickupMethod($method)) {
-            return $this->calculatePickup($method, $pickupLocationId, $stateId, $shippingZoneId);
+            return $this->calculatePickup($method, $context['pickup_location'], $stateId, $shippingZoneId);
         }
 
-        if ($useVolumetric && !empty($items)) {
-            $volumetricWeight = $this->computeVolumetricWeight($items, $volumetricDivisor);
-            $weightKg = max($weightKg, $volumetricWeight);
-        }
-
-        if ($weightKg <= 0.0 && !empty($items)) {
-            $weightKg = max($weightKg, $this->computeWeightFromItems($items));
-        }
-
-        $rates = ShippingRate::query()
-            ->with(['method:id,name,method_type', 'zone:id,name', 'state:id,name', 'lga:id,name'])
-            ->where('shipping_method_id', $method->id)
-            ->where('is_active', true)
-            ->where(function ($query) {
-                $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
-            })
-            ->where(function ($query) {
-                $query->whereNull('ends_at')->orWhere('ends_at', '>=', now());
-            })
-            ->get()
-            ->filter(fn (ShippingRate $rate) => $this->rateMatchesScope($rate, $shippingZoneId, $stateId, $lgaId))
-            ->filter(fn (ShippingRate $rate) => $this->rateMatchesThresholds($rate, $subtotal, $weightKg))
-            ->values();
-
-        if ($rates->isEmpty()) {
-            throw new ShippingRateNotFoundException('No shipping rate is configured for the selected method and location.');
-        }
-
-        $rate = $this->selectBestRate($rates, $shippingZoneId, $stateId, $lgaId);
         $calculation = $this->calculateByRateType($rate, $weightKg);
         $surcharge = (float) $rate->surcharge;
 
@@ -100,6 +64,89 @@ class ShippingCostService
         $calculation['method_type'] = $method->method_type;
 
         return $calculation;
+    }
+
+    public function resolveRateContext(array $payload): array
+    {
+        if (!isset($payload['shipping_method_id'])) {
+            throw new \InvalidArgumentException('shipping_method_id is required');
+        }
+
+        $method = $this->resolveMethod((int) $payload['shipping_method_id']);
+        if (!$method || !$method->is_active) {
+            throw new ShippingRateNotFoundException('The selected shipping method is not available.');
+        }
+
+        $subtotal = isset($payload['subtotal']) ? (float) $payload['subtotal'] : 0.0;
+        $weightKg = isset($payload['weight_kg']) ? (float) $payload['weight_kg'] : (float) ($payload['weight'] ?? 0.0);
+        $shippingZoneId = !empty($payload['shipping_zone_id']) ? (int) $payload['shipping_zone_id'] : null;
+        $stateId = !empty($payload['state_id']) ? (int) $payload['state_id'] : null;
+        $lgaId = !empty($payload['lga_id']) ? (int) $payload['lga_id'] : null;
+        $pickupLocationId = !empty($payload['pickup_location_id']) ? (int) $payload['pickup_location_id'] : null;
+        $volumetricDivisor = (float) ($payload['volumetric_divisor'] ?? 5000.0);
+        $useVolumetric = (bool) ($payload['use_volumetric'] ?? true);
+        $items = is_array($payload['items'] ?? null) ? $payload['items'] : [];
+
+        if ($shippingZoneId === null && $stateId !== null) {
+            $shippingZoneId = $this->resolveZoneForState($stateId);
+        }
+
+        if ($this->isPickupMethod($method)) {
+            $pickupLocation = null;
+            if ($pickupLocationId) {
+                $pickupLocation = $this->resolvePickupLocation($pickupLocationId, $method->id);
+
+                if (!$pickupLocation) {
+                    throw new ShippingRateNotFoundException('The selected pickup location is not available.');
+                }
+
+                if (!$this->pickupLocationMatchesState($pickupLocation, $stateId)) {
+                    throw new ShippingRateNotFoundException('The selected pickup location is not valid for the chosen state.');
+                }
+            }
+
+            return [
+                'method' => $method,
+                'rate' => null,
+                'pickup_location' => $pickupLocation,
+                'subtotal' => $subtotal,
+                'weight_kg' => 0.0,
+                'shipping_zone_id' => $pickupLocation?->shipping_zone_id ?? $shippingZoneId,
+                'state_id' => $pickupLocation?->state_id ?? $stateId,
+                'lga_id' => $pickupLocation?->lga_id ?? $lgaId,
+                'items' => $items,
+            ];
+        }
+
+        if ($useVolumetric && !empty($items)) {
+            $volumetricWeight = $this->computeVolumetricWeight($items, $volumetricDivisor);
+            $weightKg = max($weightKg, $volumetricWeight);
+        }
+
+        if ($weightKg <= 0.0 && !empty($items)) {
+            $weightKg = max($weightKg, $this->computeWeightFromItems($items));
+        }
+
+        $rates = $this->activeRatesForMethod($method->id)
+            ->filter(fn (ShippingRate $rate) => $this->rateMatchesScope($rate, $shippingZoneId, $stateId, $lgaId))
+            ->filter(fn (ShippingRate $rate) => $this->rateMatchesThresholds($rate, $subtotal, $weightKg))
+            ->values();
+
+        if ($rates->isEmpty()) {
+            throw new ShippingRateNotFoundException('No shipping rate is configured for the selected method and location.');
+        }
+
+        return [
+            'method' => $method,
+            'rate' => $this->selectBestRate($rates, $shippingZoneId, $stateId, $lgaId),
+            'pickup_location' => null,
+            'subtotal' => $subtotal,
+            'weight_kg' => $weightKg,
+            'shipping_zone_id' => $shippingZoneId,
+            'state_id' => $stateId,
+            'lga_id' => $lgaId,
+            'items' => $items,
+        ];
     }
 
     public function listActiveMethods(): EloquentCollection
@@ -136,9 +183,13 @@ class ShippingCostService
 
     public function resolveZoneForState(int $stateId): ?int
     {
+        if (array_key_exists($stateId, $this->zoneByStateCache)) {
+            return $this->zoneByStateCache[$stateId];
+        }
+
         $state = State::query()->find($stateId);
 
-        return $state?->shippingZone()->first()?->id;
+        return $this->zoneByStateCache[$stateId] = $state?->shippingZone()->first()?->id;
     }
 
     public function resolveMethod(?int $shippingMethodId): ?ShippingMethod
@@ -147,7 +198,11 @@ class ShippingCostService
             return null;
         }
 
-        return ShippingMethod::query()->find($shippingMethodId);
+        if (!array_key_exists($shippingMethodId, $this->methodCache)) {
+            $this->methodCache[$shippingMethodId] = ShippingMethod::query()->find($shippingMethodId);
+        }
+
+        return $this->methodCache[$shippingMethodId];
     }
 
     public function isPickupMethod(ShippingMethod|int|null $method): bool
@@ -174,26 +229,33 @@ class ShippingCostService
         return $zoneId !== null && (int) $pickupLocation->shipping_zone_id === $zoneId;
     }
 
-    protected function calculatePickup(ShippingMethod $method, ?int $pickupLocationId, ?int $stateId, ?int $shippingZoneId): array
+    public function resolvePickupLocation(?int $pickupLocationId, ?int $shippingMethodId = null): ?PickupLocation
     {
-        $pickupLocation = null;
-
-        if ($pickupLocationId) {
-            $pickupLocation = PickupLocation::query()
-                ->whereKey($pickupLocationId)
-                ->where('shipping_method_id', $method->id)
-                ->where('is_active', true)
-                ->first();
-
-            if (!$pickupLocation) {
-                throw new ShippingRateNotFoundException('The selected pickup location is not available.');
-            }
-
-            if (!$this->pickupLocationMatchesState($pickupLocation, $stateId)) {
-                throw new ShippingRateNotFoundException('The selected pickup location is not valid for the chosen state.');
-            }
+        if (!$pickupLocationId) {
+            return null;
         }
 
+        if (!array_key_exists($pickupLocationId, $this->pickupLocationCache)) {
+            $this->pickupLocationCache[$pickupLocationId] = PickupLocation::query()
+                ->whereKey($pickupLocationId)
+                ->where('is_active', true)
+                ->first();
+        }
+
+        $pickupLocation = $this->pickupLocationCache[$pickupLocationId];
+        if (!$pickupLocation) {
+            return null;
+        }
+
+        if ($shippingMethodId && (int) $pickupLocation->shipping_method_id !== $shippingMethodId) {
+            return null;
+        }
+
+        return $pickupLocation;
+    }
+
+    protected function calculatePickup(ShippingMethod $method, ?PickupLocation $pickupLocation, ?int $stateId, ?int $shippingZoneId): array
+    {
         return [
             'base_rate' => 0.0,
             'per_kg' => 0.0,
@@ -214,6 +276,25 @@ class ShippingCostService
             'estimated_delivery_text' => null,
             'method_type' => $method->method_type,
         ];
+    }
+
+    protected function activeRatesForMethod(int $methodId): Collection
+    {
+        if (!array_key_exists($methodId, $this->activeRatesCache)) {
+            $this->activeRatesCache[$methodId] = ShippingRate::query()
+                ->with(['method:id,name,method_type', 'zone:id,name', 'state:id,name', 'lga:id,name'])
+                ->where('shipping_method_id', $methodId)
+                ->where('is_active', true)
+                ->where(function ($query) {
+                    $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+                })
+                ->where(function ($query) {
+                    $query->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+                })
+                ->get();
+        }
+
+        return $this->activeRatesCache[$methodId];
     }
 
     protected function computeVolumetricWeight(array $items, float $divisor = 5000.0): float

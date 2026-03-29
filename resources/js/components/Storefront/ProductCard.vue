@@ -89,6 +89,10 @@ function money(value) {
                     >
                         {{ product.stock?.is_in_stock ? 'In Stock' : 'Out of Stock' }}
                     </span>
+
+                    <p v-if="product.delivery_estimate?.storefront_message" class="text-[11px] font-medium text-slate-500">
+                        {{ product.delivery_estimate.storefront_message }}
+                    </p>
                 </div>
             </div>
         </Link>

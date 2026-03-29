@@ -40,4 +40,13 @@ return [
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
     ],
 
+    'geolocation' => [
+        'enabled' => env('GEOLOCATION_ENABLED', true),
+        'endpoint' => env('GEOLOCATION_ENDPOINT', 'https://ipapi.co/{ip}/json/'),
+        'timeout' => env('GEOLOCATION_TIMEOUT', 2),
+        'default_country_code' => env('GEOLOCATION_DEFAULT_COUNTRY_CODE', 'NG'),
+        'default_state' => env('GEOLOCATION_DEFAULT_STATE', 'Lagos State'),
+        'default_city' => env('GEOLOCATION_DEFAULT_CITY', 'Lagos'),
+    ],
+
 ];

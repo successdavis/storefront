@@ -26,8 +26,28 @@ class UpdateShippingMethodRequest extends FormRequest
                 ShippingMethod::TYPE_DELIVERY,
                 ShippingMethod::TYPE_PICKUP,
             ])],
+            'processing_days_min' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'processing_days_max' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'transit_days_min' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'transit_days_max' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'cutoff_time' => ['nullable', 'date_format:H:i'],
+            'business_days_only' => ['nullable', 'boolean'],
+            'supports_weekend_delivery' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
             'is_active' => ['nullable', 'boolean'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if ($this->filled('processing_days_min') && $this->filled('processing_days_max') && (int) $this->input('processing_days_max') < (int) $this->input('processing_days_min')) {
+                $validator->errors()->add('processing_days_max', 'Maximum processing days must be greater than or equal to minimum processing days.');
+            }
+
+            if ($this->filled('transit_days_min') && $this->filled('transit_days_max') && (int) $this->input('transit_days_max') < (int) $this->input('transit_days_min')) {
+                $validator->errors()->add('transit_days_max', 'Maximum transit days must be greater than or equal to minimum transit days.');
+            }
+        });
     }
 }
