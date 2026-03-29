@@ -3,19 +3,26 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Lga extends Model
 {
-    protected $fillable = ['name', 'state_id'];
-    public $timestamps = false;
+    protected $fillable = [
+        'name',
+        'state_id',
+        'latitude',
+        'longitude',
+        'is_active',
+    ];
 
-    public function state()
+    protected $casts = [
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
+        'is_active' => 'boolean',
+    ];
+
+    public function state(): BelongsTo
     {
         return $this->belongsTo(State::class);
-    }
-
-    public function cities()
-    {
-        return $this->hasMany(City::class);
     }
 }

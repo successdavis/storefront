@@ -547,14 +547,14 @@ onBeforeUnmount(() => {
 
                     <div v-if="!isPickupMethod">
                         <label class="text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                            City / LGA
+                            LGA / Town
                         </label>
 
                         <select
                             v-model="form.lga_id"
                             class="mt-1 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         >
-                            <option value="">Select city/LGA</option>
+                            <option value="">Select LGA / town</option>
 
                             <option
                                 v-for="lga in lgas"

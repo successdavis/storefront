@@ -6,7 +6,7 @@ class PickupLocation extends Model
 {
     protected $fillable = [
       'shipping_method_id','shipping_zone_id','name','address_line1','address_line2',
-      'state_code','postal_code','country_id','state_id','lga_id','city_id','latitude','longitude',
+      'state_code','postal_code','country_id','state_id','lga_id','latitude','longitude',
       'phone','email','timezone','opening_hours','slot_duration_minutes','capacity_per_slot','lead_time_hours','is_active'
     ];
 

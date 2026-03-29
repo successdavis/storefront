@@ -16,7 +16,6 @@ interface AddressRecord {
     country_id?: number | null;
     state_id?: number | null;
     lga_id?: number | null;
-    city_id?: number | null;
     country?: { name: string } | null;
     state?: { name: string } | null;
     lga?: { name: string } | null;
@@ -39,7 +38,6 @@ const form = useForm({
     country_id: '',
     state_id: '',
     lga_id: '',
-    city_id: '',
     postal_code: '',
     is_default: false,
 });
@@ -77,7 +75,6 @@ const startEdit = (address: AddressRecord) => {
     form.country_id = address.country_id ? String(address.country_id) : '';
     form.state_id = address.state_id ? String(address.state_id) : '';
     form.lga_id = address.lga_id ? String(address.lga_id) : '';
-    form.city_id = address.city_id ? String(address.city_id) : '';
     form.postal_code = address.postal_code ?? '';
     form.is_default = address.is_default;
 };

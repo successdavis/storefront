@@ -5,8 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Country;
 use App\Models\State;
 use App\Models\Lga;
-use App\Models\City;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class LocationController extends Controller
@@ -50,19 +48,5 @@ class LocationController extends Controller
         );
 
         return response()->json($lgas);
-    }
-
-    public function cities($lgaId)
-    {
-        $cities = Cache::remember(
-            "locations:cities:$lgaId",
-            now()->addDay(),
-            fn () => City::where('lga_id',$lgaId)
-                ->select('id','name')
-                ->orderBy('name')
-                ->get()
-        );
-
-        return response()->json($cities);
     }
 }

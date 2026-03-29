@@ -21,7 +21,6 @@ class CustomerAddress extends Model
         'country_id',
         'state_id',
         'lga_id',
-        'city_id',
         'postal_code',
         'is_default',
     ];
@@ -48,10 +47,5 @@ class CustomerAddress extends Model
     public function lga(): BelongsTo
     {
         return $this->belongsTo(Lga::class);
-    }
-
-    public function city(): BelongsTo
-    {
-        return $this->belongsTo(City::class);
     }
 }

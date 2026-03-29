@@ -136,7 +136,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/locations/countries', [LocationController::class, 'countries'])->name('locations.countries');
     Route::get('/locations/states/{country}', [LocationController::class, 'states'])->name('locations.states');
     Route::get('/locations/lgas/{state}', [LocationController::class, 'lgas'])->name('locations.lgas');
-    Route::get('/locations/cities/{lga}', [LocationController::class, 'cities'])->name('locations.cities');
 
     Route::post('/checkout/preview', [CheckoutPreviewController::class, 'preview'])->name('checkout.preview');
 });

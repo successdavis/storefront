@@ -297,7 +297,10 @@ class DeliveryEstimateServiceTest extends TestCase
     public function test_customer_location_resolver_stores_browser_location_from_coordinates(): void
     {
         [$countryId, $lagosStateId, $lagosLgaId] = $this->createLocationHierarchy('Lagos State', 'Ikeja');
-        $this->createCity($lagosStateId, $lagosLgaId, 'Ikeja', 6.6018, 3.3515);
+        DB::table('lgas')->where('id', $lagosLgaId)->update([
+            'latitude' => 6.6018,
+            'longitude' => 3.3515,
+        ]);
 
         $request = Request::create('/store', 'POST');
         $request->setLaravelSession(app('session')->driver('array'));
@@ -355,7 +358,6 @@ class DeliveryEstimateServiceTest extends TestCase
             'country_id' => $countryId,
             'state_id' => $lagosStateId,
             'lga_id' => $lagosLgaId,
-            'city_id' => null,
             'postal_code' => null,
             'is_default' => true,
             'created_at' => now(),
@@ -534,18 +536,4 @@ class DeliveryEstimateServiceTest extends TestCase
         return [$countryId, $stateId, $lgaId];
     }
 
-    protected function createCity(int $stateId, int $lgaId, string $name, float $latitude, float $longitude): int
-    {
-        return DB::table('cities')->insertGetId([
-            'state_id' => $stateId,
-            'lga_id' => $lgaId,
-            'name' => $name,
-            'latitude' => $latitude,
-            'longitude' => $longitude,
-            'is_capital' => false,
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
 }

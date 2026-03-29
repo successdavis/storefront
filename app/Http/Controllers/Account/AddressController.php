@@ -65,7 +65,6 @@ class AddressController extends Controller
             'country_id' => ['nullable', 'integer', 'exists:countries,id'],
             'state_id' => ['nullable', 'integer', 'exists:states,id'],
             'lga_id' => ['nullable', 'integer', 'exists:lgas,id'],
-            'city_id' => ['nullable', 'integer', 'exists:cities,id'],
             'postal_code' => ['nullable', 'string', 'max:30'],
             'is_default' => ['nullable', 'boolean'],
         ]);

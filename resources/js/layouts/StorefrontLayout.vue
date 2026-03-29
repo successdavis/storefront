@@ -144,7 +144,7 @@ const initialQuery = computed(() => {
                         :disabled="storefrontLocation.isResolving"
                         @click="storefrontLocation.requestBrowserLocation"
                     >
-                        {{ storefrontLocation.isResolving ? 'Checking location...' : 'Allow location access' }}
+                        {{ storefrontLocation.requestButtonLabel }}
                     </button>
                     <p
                         v-else-if="storefrontLocation.status === 'denied'"

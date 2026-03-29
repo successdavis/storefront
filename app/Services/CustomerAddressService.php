@@ -13,7 +13,7 @@ class CustomerAddressService
     {
         return CustomerAddress::query()
             ->where('user_id', $user->id)
-            ->with(['country:id,name', 'state:id,name', 'lga:id,name', 'city:id,name'])
+            ->with(['country:id,name', 'state:id,name', 'lga:id,name'])
             ->latest()
             ->paginate($perPage)
             ->withQueryString();
@@ -36,7 +36,7 @@ class CustomerAddressService
     {
         return CustomerAddress::query()
             ->where('user_id', $user->id)
-            ->with(['country:id,name', 'state:id,name', 'lga:id,name', 'city:id,name'])
+            ->with(['country:id,name', 'state:id,name', 'lga:id,name'])
             ->find($addressId);
     }
 
@@ -44,7 +44,7 @@ class CustomerAddressService
     {
         return CustomerAddress::query()
             ->where('user_id', $user->id)
-            ->with(['country:id,name', 'state:id,name', 'lga:id,name', 'city:id,name'])
+            ->with(['country:id,name', 'state:id,name', 'lga:id,name'])
             ->orderByDesc('is_default')
             ->orderByDesc('updated_at')
             ->first();
@@ -75,7 +75,7 @@ class CustomerAddressService
 
             $address->update($data);
 
-            return $address->fresh(['country:id,name', 'state:id,name', 'lga:id,name', 'city:id,name']);
+            return $address->fresh(['country:id,name', 'state:id,name', 'lga:id,name']);
         });
     }
 
@@ -116,7 +116,7 @@ class CustomerAddressService
             ->first();
 
         if ($existing) {
-            return $existing->fresh(['country:id,name', 'state:id,name', 'lga:id,name', 'city:id,name']);
+            return $existing->fresh(['country:id,name', 'state:id,name', 'lga:id,name']);
         }
 
         $existingCount = CustomerAddress::query()->where('user_id', $user->id)->count();
@@ -131,7 +131,6 @@ class CustomerAddressService
             'country_id' => $countryId,
             'state_id' => $stateId,
             'lga_id' => $lgaId,
-            'city_id' => !empty($selection['city_id']) ? (int) $selection['city_id'] : null,
             'postal_code' => $postalCode,
             'is_default' => $existingCount === 0,
         ]);
@@ -151,7 +150,6 @@ class CustomerAddressService
             'country_id' => $address->country_id ? (int) $address->country_id : null,
             'state_id' => $address->state_id ? (int) $address->state_id : null,
             'lga_id' => $address->lga_id ? (int) $address->lga_id : null,
-            'city_id' => $address->city_id ? (int) $address->city_id : null,
             'is_default' => (bool) $address->is_default,
             'country' => $address->country ? ['id' => (int) $address->country->id, 'name' => $address->country->name] : null,
             'state' => $address->state ? ['id' => (int) $address->state->id, 'name' => $address->state->name] : null,

@@ -28,7 +28,6 @@ class CustomerController extends Controller
             'country_id' => 'required|exists:countries,id',
             'state_id' => 'required|exists:states,id',
             'lga_id' => 'required|exists:lgas,id',
-            'city_id' => 'nullable|exists:cities,id',
             'address' => 'nullable|string|max:255',
         ]);
 

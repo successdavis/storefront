@@ -10,7 +10,6 @@ use App\Models\State;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -170,60 +169,69 @@ class CustomerLocationResolver
             return null;
         }
 
-        $city = DB::table('cities')
-            ->join('states', 'states.id', '=', 'cities.state_id')
-            ->leftJoin('lgas', 'lgas.id', '=', 'cities.lga_id')
-            ->leftJoin('countries', 'countries.id', '=', 'states.country_id')
-            ->where('cities.is_active', true)
-            ->where('states.is_active', true)
-            ->whereNotNull('cities.latitude')
-            ->whereNotNull('cities.longitude')
-            ->get([
-                'cities.id as city_id',
-                'cities.name as city_name',
-                'cities.state_id',
-                'cities.lga_id',
-                'cities.latitude',
-                'cities.longitude',
-                'states.name as state_name',
-                'states.country_id',
-                'countries.name as country_name',
-                'countries.iso2 as country_code',
-                'lgas.name as lga_name',
-            ])
-            ->map(function ($candidate) use ($latitude, $longitude) {
-                $candidate->distance_km = $this->distanceInKilometers(
-                    $latitude,
-                    $longitude,
-                    (float) $candidate->latitude,
-                    (float) $candidate->longitude,
-                );
-
-                return $candidate;
-            })
-            ->sortBy('distance_km')
-            ->first();
-
-        if ($city && (float) $city->distance_km <= $distanceThresholdKm) {
-            return [
-                'source' => 'browser',
-                'is_inferred' => true,
-                'country_id' => $city->country_id ? (int) $city->country_id : null,
-                'state_id' => $city->state_id ? (int) $city->state_id : null,
-                'lga_id' => $city->lga_id ? (int) $city->lga_id : null,
-                'country_name' => $city->country_name ?: null,
-                'state_name' => $this->cleanStateName($city->state_name ?: null),
-                'city_name' => $city->city_name ?: null,
-                'country_code' => $city->country_code ?: null,
-                'destination_label' => $city->city_name ?: ($city->lga_name ?: $this->cleanStateName($city->state_name ?: null)),
-                'latitude' => round($latitude, 6),
-                'longitude' => round($longitude, 6),
-                'accuracy_meters' => $accuracyMeters !== null ? round($accuracyMeters, 2) : null,
-                'captured_at' => now()->toIso8601String(),
-            ];
+        $matchedLga = $this->matchLgaByCoordinates($latitude, $longitude, $distanceThresholdKm);
+        if ($matchedLga) {
+            return $this->mapMatchedLga($matchedLga, $latitude, $longitude, $accuracyMeters);
         }
 
         return $this->reverseGeocodeCoordinates($latitude, $longitude, $accuracyMeters);
+    }
+
+    protected function matchLgaByCoordinates(float $latitude, float $longitude, float $distanceThresholdKm): ?Lga
+    {
+        $latitudeDelta = max($distanceThresholdKm / 111, 0.1);
+        $longitudeFactor = cos(deg2rad($latitude));
+        $longitudeDelta = $longitudeFactor > 0.001
+            ? max($distanceThresholdKm / (111 * $longitudeFactor), 0.1)
+            : 1.0;
+
+        return Lga::query()
+            ->with([
+                'state:id,name,country_id',
+                'state.country:id,name,iso2',
+            ])
+            ->where('is_active', true)
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->whereBetween('latitude', [$latitude - $latitudeDelta, $latitude + $latitudeDelta])
+            ->whereBetween('longitude', [$longitude - $longitudeDelta, $longitude + $longitudeDelta])
+            ->get(['id', 'state_id', 'name', 'latitude', 'longitude'])
+            ->map(function (Lga $lga) use ($latitude, $longitude) {
+                $lga->distance_km = $this->distanceInKilometers(
+                    $latitude,
+                    $longitude,
+                    (float) $lga->latitude,
+                    (float) $lga->longitude,
+                );
+
+                return $lga;
+            })
+            ->sortBy('distance_km')
+            ->first(fn (Lga $lga) => (float) ($lga->distance_km ?? INF) <= $distanceThresholdKm);
+    }
+
+    protected function mapMatchedLga(
+        Lga $lga,
+        float $latitude,
+        float $longitude,
+        ?float $accuracyMeters = null,
+    ): array {
+        return [
+            'source' => 'browser',
+            'is_inferred' => true,
+            'country_id' => $lga->state?->country_id ? (int) $lga->state->country_id : null,
+            'state_id' => $lga->state_id ? (int) $lga->state_id : null,
+            'lga_id' => $lga->id ? (int) $lga->id : null,
+            'country_name' => $lga->state?->country?->name,
+            'state_name' => $this->cleanStateName($lga->state?->name),
+            'city_name' => $lga->name,
+            'country_code' => $lga->state?->country?->iso2,
+            'destination_label' => $lga->name,
+            'latitude' => round($latitude, 6),
+            'longitude' => round($longitude, 6),
+            'accuracy_meters' => $accuracyMeters !== null ? round($accuracyMeters, 2) : null,
+            'captured_at' => now()->toIso8601String(),
+        ];
     }
 
     protected function mapCustomerAddress(?CustomerAddress $address): ?array
@@ -330,7 +338,7 @@ class CustomerLocationResolver
             ?? $address['suburb']
             ?? null
         );
-        $cityName = $this->nullableString(
+        $localityName = $this->nullableString(
             $address['city']
             ?? $address['town']
             ?? $address['village']
@@ -341,7 +349,7 @@ class CustomerLocationResolver
 
         $country = $this->resolveCountry($countryName, $countryCode);
         $state = $this->resolveState($country?->id, $stateName);
-        $lga = $this->resolveLga($state?->id, $lgaName ?: $cityName);
+        $lga = $this->resolveLga($state?->id, $lgaName ?: $localityName);
 
         if (!$state && !$lga) {
             return null;
@@ -355,9 +363,9 @@ class CustomerLocationResolver
             'lga_id' => $lga?->id ? (int) $lga->id : null,
             'country_name' => $country?->name ?? $countryName,
             'state_name' => $this->cleanStateName($state?->name ?? $stateName),
-            'city_name' => $cityName,
+            'city_name' => $lga?->name ?? $localityName,
             'country_code' => $country?->iso2 ?? ($countryCode !== '' ? $countryCode : null),
-            'destination_label' => $lga?->name ?? $cityName ?? $this->cleanStateName($state?->name ?? $stateName),
+            'destination_label' => $lga?->name ?? $localityName ?? $this->cleanStateName($state?->name ?? $stateName),
             'latitude' => round($latitude, 6),
             'longitude' => round($longitude, 6),
             'accuracy_meters' => $accuracyMeters !== null ? round($accuracyMeters, 2) : null,
@@ -401,13 +409,20 @@ class CustomerLocationResolver
         return Lga::query()
             ->where('state_id', $stateId)
             ->get(['id', 'state_id', 'name'])
-            ->first(fn (Lga $lga) => $this->normalizeName($lga->name) === $normalized);
+            ->first(function (Lga $lga) use ($normalized) {
+                $candidate = $this->normalizeName($lga->name);
+
+                return $candidate === $normalized
+                    || str_contains($candidate, $normalized)
+                    || str_contains($normalized, $candidate);
+            });
     }
 
     protected function normalizeName(string $value): string
     {
         $value = Str::lower(trim($value));
         $value = preg_replace('/\s+state$/', '', $value) ?: $value;
+        $value = preg_replace('/\s+local government area$/', '', $value) ?: $value;
 
         return preg_replace('/\s+/', ' ', $value) ?: $value;
     }
