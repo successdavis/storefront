@@ -165,9 +165,31 @@ class DeliveryEstimateService
     {
         $scope = (string) ($options['scope'] ?? 'storefront');
         $destinationLabel = $this->destinationLabel($destination);
-        $method = $this->resolveMethod($options['shipping_method_id'] ?? null, $scope);
+        $shippingMethodId = !empty($options['shipping_method_id']) ? (int) $options['shipping_method_id'] : null;
 
-        if (!$method) {
+        if ($shippingMethodId) {
+            $method = $this->resolveMethod($shippingMethodId, $scope);
+
+            if (!$method) {
+                return $this->unavailableEstimate(
+                    reason: 'missing_method',
+                    destinationLabel: $destinationLabel,
+                    scope: $scope,
+                );
+            }
+
+            return $this->estimateForVariantWithMethod(
+                $variant,
+                $destination,
+                $options,
+                $warehouse,
+                $method,
+                $scope,
+                $destinationLabel,
+            );
+        }
+
+        if ($scope === 'checkout') {
             return $this->unavailableEstimate(
                 reason: 'missing_method',
                 destinationLabel: $destinationLabel,
@@ -175,6 +197,54 @@ class DeliveryEstimateService
             );
         }
 
+        $deliveryMethods = $this->shippingCostService->listActiveMethods()
+            ->filter(fn (ShippingMethod $method) => strtolower((string) $method->method_type) === ShippingMethod::TYPE_DELIVERY)
+            ->values();
+
+        if ($deliveryMethods->isEmpty()) {
+            return $this->unavailableEstimate(
+                reason: 'missing_method',
+                destinationLabel: $destinationLabel,
+                scope: $scope,
+            );
+        }
+
+        $fallbackEstimate = null;
+
+        foreach ($deliveryMethods as $method) {
+            $estimate = $this->estimateForVariantWithMethod(
+                $variant,
+                $destination,
+                $options,
+                $warehouse,
+                $method,
+                $scope,
+                $destinationLabel,
+            );
+
+            if ($estimate['available'] ?? false) {
+                return $estimate;
+            }
+
+            $fallbackEstimate ??= $estimate;
+        }
+
+        return $fallbackEstimate ?? $this->unavailableEstimate(
+            reason: 'timing_unavailable',
+            destinationLabel: $destinationLabel,
+            scope: $scope,
+        );
+    }
+
+    protected function estimateForVariantWithMethod(
+        ProductVariant $variant,
+        array $destination,
+        array $options,
+        ?Warehouse $warehouse,
+        ShippingMethod $method,
+        string $scope,
+        ?string $destinationLabel,
+    ): array {
         if ($this->shippingCostService->isPickupMethod($method)) {
             $pickupLocationId = !empty($options['pickup_location_id']) ? (int) $options['pickup_location_id'] : null;
             if (!$pickupLocationId) {

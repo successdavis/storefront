@@ -294,6 +294,63 @@ class DeliveryEstimateServiceTest extends TestCase
         $this->assertSame('Ikeja Warehouse', data_get($estimate, 'warehouse.name'));
     }
 
+    public function test_storefront_estimates_try_later_delivery_methods_when_the_first_one_has_no_matching_rate(): void
+    {
+        Carbon::setTestNow('2026-03-30 09:00:00');
+
+        [$countryId, $crossRiverStateId, $obuduLgaId] = $this->createLocationHierarchy('Cross River State', 'Obudu');
+        $zone = $this->createZone('South South', $crossRiverStateId);
+
+        $firstMethod = ShippingMethod::query()->create([
+            'name' => 'Express Delivery',
+            'description' => 'Faster delivery for covered zones',
+            'method_type' => ShippingMethod::TYPE_DELIVERY,
+            'sort_order' => 1,
+            'business_days_only' => true,
+            'supports_weekend_delivery' => false,
+            'is_active' => true,
+        ]);
+
+        $secondMethod = ShippingMethod::query()->create([
+            'name' => 'Standard Delivery',
+            'description' => 'Reliable nationwide delivery',
+            'method_type' => ShippingMethod::TYPE_DELIVERY,
+            'sort_order' => 2,
+            'business_days_only' => true,
+            'supports_weekend_delivery' => false,
+            'is_active' => true,
+        ]);
+
+        ShippingRate::query()->create([
+            'shipping_method_id' => $secondMethod->id,
+            'shipping_zone_id' => $zone->id,
+            'rate_type' => 'flat',
+            'base_rate' => 2500,
+            'currency' => 'NGN',
+            'processing_days_min' => 1,
+            'processing_days_max' => 1,
+            'transit_days_min' => 2,
+            'transit_days_max' => 3,
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+
+        $variant = $this->createVariantWithWarehouseStock($countryId, $crossRiverStateId, $obuduLgaId, 'Obudu Warehouse');
+
+        $estimate = app(DeliveryEstimateService::class)->estimateForVariantId($variant->id, [
+            'country_id' => $countryId,
+            'state_id' => $crossRiverStateId,
+            'lga_id' => $obuduLgaId,
+            'destination_label' => 'Obudu',
+        ], [
+            'scope' => 'storefront',
+        ]);
+
+        $this->assertTrue($estimate['available']);
+        $this->assertSame($secondMethod->id, data_get($estimate, 'method.id'));
+        $this->assertSame('Standard Delivery', data_get($estimate, 'method.name'));
+    }
+
     public function test_customer_location_resolver_stores_browser_location_from_coordinates(): void
     {
         [$countryId, $lagosStateId, $lagosLgaId] = $this->createLocationHierarchy('Lagos State', 'Ikeja');

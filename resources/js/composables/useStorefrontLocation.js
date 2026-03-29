@@ -3,6 +3,7 @@ import { router, usePage } from '@inertiajs/vue3'
 import { computed, onMounted, ref, watch } from 'vue'
 
 const STATUS_KEY = 'storefront-browser-location-status'
+const ATTEMPTED_KEY = 'storefront-browser-location-attempted'
 const RELOAD_ONLY = [
     'browsingLocation',
     'product',
@@ -30,10 +31,28 @@ function writeStatus(status) {
     window.sessionStorage.setItem(STATUS_KEY, status)
 }
 
+function hasAttemptedLocationLookup() {
+    if (typeof window === 'undefined') {
+        return false
+    }
+
+    return window.sessionStorage.getItem(ATTEMPTED_KEY) === '1'
+}
+
+function markLocationLookupAttempted() {
+    if (typeof window === 'undefined') {
+        return
+    }
+
+    window.sessionStorage.setItem(ATTEMPTED_KEY, '1')
+}
+
 export function useStorefrontLocation() {
     const page = usePage()
     const isStorefrontPage = computed(() => String(page.component || '').startsWith('Storefront/'))
-    const browsingLocationSource = computed(() => String(page.props.browsingLocation?.source || ''))
+    const pageBrowsingLocationSource = computed(() => String(page.props.browsingLocation?.source || ''))
+    const resolvedLocationSource = ref(pageBrowsingLocationSource.value || '')
+    const browsingLocationSource = computed(() => resolvedLocationSource.value || pageBrowsingLocationSource.value)
     const permissionState = ref('unknown')
     const status = ref(readStatus() || 'idle')
     const isResolving = computed(() => status.value === 'resolving')
@@ -58,10 +77,6 @@ export function useStorefrontLocation() {
         }
 
         return [
-            'idle',
-            'prompt',
-            'granted',
-            'resolving',
             'denied',
             'timeout',
             'unavailable',
@@ -79,6 +94,10 @@ export function useStorefrontLocation() {
     const requestButtonLabel = computed(() => {
         if (isResolving.value) {
             return 'Checking location...'
+        }
+
+        if (['timeout', 'unavailable', 'failed', 'match_failed'].includes(status.value)) {
+            return 'Try again'
         }
 
         return permissionState.value === 'granted' ? 'Use current location' : 'Allow location access'
@@ -126,6 +145,7 @@ export function useStorefrontLocation() {
     async function clearBrowserLocation() {
         try {
             await axios.delete(route('store.location.browser.clear'))
+            resolvedLocationSource.value = ''
         } catch (error) {
             console.error('Failed clearing browser location', error)
         }
@@ -139,7 +159,13 @@ export function useStorefrontLocation() {
                 accuracy: position.coords.accuracy ?? null,
             })
 
-            status.value = data?.resolved ? 'resolved' : 'match_failed'
+            const location = data?.location ?? data ?? null
+            const resolved = typeof data?.resolved === 'boolean'
+                ? data.resolved
+                : Boolean(location?.source === 'browser' && (location?.lga_id || location?.state_id))
+
+            resolvedLocationSource.value = resolved ? 'browser' : ''
+            status.value = resolved ? 'resolved' : 'match_failed'
             writeStatus(status.value)
         } catch (error) {
             console.error('Failed storing browser location', error)
@@ -161,6 +187,7 @@ export function useStorefrontLocation() {
             permissionState.value = 'denied'
         }
 
+        resolvedLocationSource.value = ''
         writeStatus(status.value)
 
         if (browsingLocationSource.value === 'browser') {
@@ -169,7 +196,7 @@ export function useStorefrontLocation() {
         }
     }
 
-    async function requestBrowserLocation() {
+    async function requestBrowserLocation({ automatic = false } = {}) {
         if (!canRequestBrowserLocation.value || isResolving.value) {
             status.value = canRequestBrowserLocation.value ? status.value : 'unsupported'
             writeStatus(status.value)
@@ -183,12 +210,17 @@ export function useStorefrontLocation() {
             return
         }
 
+        if (automatic || !hasAttemptedLocationLookup()) {
+            markLocationLookupAttempted()
+        }
+
         status.value = 'resolving'
         writeStatus(status.value)
 
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 permissionState.value = 'granted'
+                resolvedLocationSource.value = 'browser'
                 void persistBrowserLocation(position)
             },
             (error) => {
@@ -212,6 +244,14 @@ export function useStorefrontLocation() {
         },
     )
 
+    watch(
+        () => pageBrowsingLocationSource.value,
+        (source) => {
+            resolvedLocationSource.value = source || ''
+        },
+        { immediate: true },
+    )
+
     onMounted(async () => {
         if (!isStorefrontPage.value) {
             return
@@ -230,34 +270,39 @@ export function useStorefrontLocation() {
             return
         }
 
+        let permission = null
+
         if (typeof navigator.permissions?.query === 'function') {
             try {
-                const permission = await navigator.permissions.query({ name: 'geolocation' })
+                permission = await navigator.permissions.query({ name: 'geolocation' })
                 permissionState.value = permission.state
-                status.value = permission.state === 'granted'
-                    ? 'granted'
-                    : permission.state === 'denied'
-                        ? 'denied'
-                        : 'prompt'
+                status.value = permission.state === 'denied' ? 'denied' : 'prompt'
                 writeStatus(status.value)
 
                 permission.onchange = () => {
                     permissionState.value = permission.state
-                    status.value = permission.state === 'granted'
-                        ? 'granted'
-                        : permission.state === 'denied'
-                            ? 'denied'
-                            : 'prompt'
+                    status.value = permission.state === 'denied' ? 'denied' : 'prompt'
                     writeStatus(status.value)
-                }
 
-                return
+                    if (permission.state === 'granted' && !hasReliableLocation.value && !isResolving.value) {
+                        void requestBrowserLocation()
+                    }
+                }
             } catch (error) {
                 console.error('Unable to inspect geolocation permission', error)
             }
         }
 
-        permissionState.value = 'prompt'
+        if (permission?.state === 'denied') {
+            return
+        }
+
+        if (!hasAttemptedLocationLookup() || permission?.state === 'granted') {
+            void requestBrowserLocation({ automatic: true })
+            return
+        }
+
+        permissionState.value = permissionState.value === 'unknown' ? 'prompt' : permissionState.value
         status.value = readStatus() && readStatus() !== 'idle'
             ? readStatus()
             : 'prompt'
