@@ -6,6 +6,7 @@ use App\Models\CustomerSavedItem;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\CartService;
+use App\Services\CustomerLocationResolver;
 use App\Services\CustomerSavedItemService;
 use App\Services\StorefrontService;
 use Illuminate\Http\JsonResponse;
@@ -67,6 +68,36 @@ class StorefrontController extends Controller
         return Inertia::render('Storefront/Cart', $this->storefrontService->cartData(
             $coupon !== null ? (string) $coupon : null
         ));
+    }
+
+    public function storeBrowserLocation(Request $request, CustomerLocationResolver $customerLocationResolver): JsonResponse
+    {
+        $validated = $request->validate([
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            'accuracy' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $location = $customerLocationResolver->storeBrowserLocation(
+            $request,
+            (float) $validated['latitude'],
+            (float) $validated['longitude'],
+            isset($validated['accuracy']) ? (float) $validated['accuracy'] : null,
+        );
+
+        return response()->json([
+            'resolved' => (bool) $location,
+            'location' => $location,
+        ]);
+    }
+
+    public function clearBrowserLocation(Request $request, CustomerLocationResolver $customerLocationResolver): JsonResponse
+    {
+        $customerLocationResolver->clearTemporaryLocation($request);
+
+        return response()->json([
+            'cleared' => true,
+        ]);
     }
 
     public function addToCart(Request $request): RedirectResponse

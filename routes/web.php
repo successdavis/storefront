@@ -81,6 +81,8 @@ Route::prefix('store')->name('store.')->group(function () {
     Route::get('/product/{product:slug}', [StorefrontController::class, 'product'])->name('product');
     Route::get('/category/{category}', [StorefrontController::class, 'category'])->name('category');
     Route::get('/cart', [StorefrontController::class, 'cart'])->name('cart');
+    Route::post('/location/browser', [StorefrontController::class, 'storeBrowserLocation'])->name('location.browser.store');
+    Route::delete('/location/browser', [StorefrontController::class, 'clearBrowserLocation'])->name('location.browser.clear');
 
     Route::middleware('auth')->group(function () {
         Route::post('/cart/add', [StorefrontController::class, 'addToCart'])->name('cart.add');

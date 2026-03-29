@@ -2,17 +2,21 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Shipment;
 use App\Models\ShippingMethod;
 use App\Models\ShippingRate;
 use App\Models\ShippingZone;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\CustomerLocationResolver;
 use App\Services\DeliveryEstimateService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -290,16 +294,142 @@ class DeliveryEstimateServiceTest extends TestCase
         $this->assertSame('Ikeja Warehouse', data_get($estimate, 'warehouse.name'));
     }
 
-    public function test_customer_location_resolver_uses_default_location_for_private_ips(): void
+    public function test_customer_location_resolver_stores_browser_location_from_coordinates(): void
+    {
+        [$countryId, $lagosStateId, $lagosLgaId] = $this->createLocationHierarchy('Lagos State', 'Ikeja');
+        $this->createCity($lagosStateId, $lagosLgaId, 'Ikeja', 6.6018, 3.3515);
+
+        $request = Request::create('/store', 'POST');
+        $request->setLaravelSession(app('session')->driver('array'));
+
+        $resolver = app(CustomerLocationResolver::class);
+        $location = $resolver->storeBrowserLocation($request, 6.6020, 3.3517, 120);
+
+        $this->assertNotNull($location);
+        $this->assertSame('browser', $location['source']);
+        $this->assertSame('Ikeja', $location['destination_label']);
+        $this->assertSame('browser', $resolver->resolveForRequest($request)['source']);
+    }
+
+    public function test_customer_location_resolver_can_reverse_geocode_into_existing_state_and_lga(): void
+    {
+        [, $crossRiverStateId, $obuduLgaId] = $this->createLocationHierarchy('Cross River State', 'Obudu');
+
+        Http::fake([
+            'nominatim.openstreetmap.org/*' => Http::response([
+                'address' => [
+                    'country' => 'Nigeria',
+                    'country_code' => 'ng',
+                    'state' => 'Cross River State',
+                    'county' => 'Obudu',
+                    'town' => 'Obudu',
+                ],
+            ], 200),
+        ]);
+
+        $request = Request::create('/store', 'POST');
+        $request->setLaravelSession(app('session')->driver('array'));
+
+        $location = app(CustomerLocationResolver::class)->storeBrowserLocation($request, 6.6682, 9.1645, 80);
+
+        $this->assertNotNull($location);
+        $this->assertSame('browser', $location['source']);
+        $this->assertSame($crossRiverStateId, $location['state_id']);
+        $this->assertSame($obuduLgaId, $location['lga_id']);
+        $this->assertSame('Obudu', $location['destination_label']);
+    }
+
+    public function test_customer_location_resolver_uses_saved_default_address_when_browser_location_is_missing(): void
+    {
+        [$countryId, $lagosStateId, $lagosLgaId] = $this->createLocationHierarchy('Lagos State', 'Ikeja');
+        $user = User::factory()->create();
+
+        DB::table('customer_addresses')->insert([
+            'user_id' => $user->id,
+            'label' => 'Primary Address',
+            'recipient_name' => 'Jane Doe',
+            'phone' => '08000000000',
+            'email' => 'jane@example.com',
+            'line1' => '12 Allen Avenue',
+            'line2' => null,
+            'country_id' => $countryId,
+            'state_id' => $lagosStateId,
+            'lga_id' => $lagosLgaId,
+            'city_id' => null,
+            'postal_code' => null,
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/store', 'GET');
+        $request->setLaravelSession(app('session')->driver('array'));
+        $request->setUserResolver(fn () => $user);
+
+        $location = app(CustomerLocationResolver::class)->resolveForRequest($request);
+
+        $this->assertNotNull($location);
+        $this->assertSame('saved_address', $location['source']);
+        $this->assertSame('Ikeja', $location['destination_label']);
+    }
+
+    public function test_customer_location_resolver_falls_back_to_latest_order_shipping_destination(): void
+    {
+        [$countryId, $lagosStateId, $lagosLgaId] = $this->createLocationHierarchy('Lagos State', 'Ikeja');
+        $user = User::factory()->create();
+        $order = Order::factory()->for($user)->online()->create();
+
+        $shipment = Shipment::query()->create([
+            'shipping_method_id' => null,
+            'type' => 'delivery',
+            'weight' => 0,
+            'cost' => 0,
+            'currency' => 'NGN',
+            'status' => 'pending',
+            'ready_at' => null,
+            'shipped_at' => null,
+            'delivered_at' => null,
+            'shippable_id' => $order->id,
+            'shippable_type' => Order::class,
+            'shipping_zone_id' => null,
+        ]);
+
+        DB::table('addresses')->insert([
+            'shipment_id' => $shipment->id,
+            'type' => 'shipping',
+            'name' => 'Jane Doe',
+            'phone' => '08000000000',
+            'email' => 'jane@example.com',
+            'line1' => '12 Allen Avenue',
+            'line2' => null,
+            'state_code' => null,
+            'postal_code' => null,
+            'country_id' => $countryId,
+            'state_id' => $lagosStateId,
+            'lga_id' => $lagosLgaId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request = Request::create('/store', 'GET');
+        $request->setLaravelSession(app('session')->driver('array'));
+        $request->setUserResolver(fn () => $user);
+
+        $location = app(CustomerLocationResolver::class)->resolveForRequest($request);
+
+        $this->assertNotNull($location);
+        $this->assertSame('order_history', $location['source']);
+        $this->assertSame('Ikeja', $location['destination_label']);
+    }
+
+    public function test_customer_location_resolver_returns_null_without_a_reliable_destination(): void
     {
         $request = Request::create('/store', 'GET', server: ['REMOTE_ADDR' => '127.0.0.1']);
         $request->setLaravelSession(app('session')->driver('array'));
 
         $location = app(CustomerLocationResolver::class)->resolveForRequest($request);
 
-        $this->assertNotNull($location);
-        $this->assertSame('default', $location['source']);
-        $this->assertSame('Lagos', $location['destination_label']);
+        $this->assertNull($location);
     }
 
     protected function createDeliveryMethod(): ShippingMethod
@@ -402,5 +532,20 @@ class DeliveryEstimateServiceTest extends TestCase
         ]);
 
         return [$countryId, $stateId, $lgaId];
+    }
+
+    protected function createCity(int $stateId, int $lgaId, string $name, float $latitude, float $longitude): int
+    {
+        return DB::table('cities')->insertGetId([
+            'state_id' => $stateId,
+            'lga_id' => $lgaId,
+            'name' => $name,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'is_capital' => false,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
