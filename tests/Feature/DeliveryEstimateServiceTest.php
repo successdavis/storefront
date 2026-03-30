@@ -491,6 +491,50 @@ class DeliveryEstimateServiceTest extends TestCase
         $this->assertNull($location);
     }
 
+    public function test_product_delivery_estimate_endpoint_returns_an_estimate_for_the_supplied_browsing_location(): void
+    {
+        Carbon::setTestNow('2026-03-30 09:00:00');
+
+        [$countryId, $crossRiverStateId, $obuduLgaId] = $this->createLocationHierarchy('Cross River State', 'Obudu');
+        $zone = $this->createZone('South South', $crossRiverStateId);
+        $method = $this->createDeliveryMethod();
+
+        ShippingRate::query()->create([
+            'shipping_method_id' => $method->id,
+            'shipping_zone_id' => $zone->id,
+            'rate_type' => 'flat',
+            'base_rate' => 2500,
+            'currency' => 'NGN',
+            'processing_days_min' => 1,
+            'processing_days_max' => 1,
+            'transit_days_min' => 2,
+            'transit_days_max' => 3,
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+
+        $variant = $this->createVariantWithWarehouseStock($countryId, $crossRiverStateId, $obuduLgaId, 'Obudu Warehouse');
+        $product = $variant->product()->firstOrFail();
+
+        if (!$product->slug) {
+            $product->forceFill(['slug' => 'product-'.$product->id])->save();
+        }
+
+        $response = $this->postJson(route('store.product.delivery-estimate', $product), [
+            'variant_id' => $variant->id,
+            'destination' => [
+                'country_id' => $countryId,
+                'state_id' => $crossRiverStateId,
+                'lga_id' => $obuduLgaId,
+                'destination_label' => 'Obudu',
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('delivery_estimate.available', true)
+            ->assertJsonPath('delivery_estimate.destination_label', 'Obudu');
+    }
+
     protected function createDeliveryMethod(): ShippingMethod
     {
         return ShippingMethod::query()->create([

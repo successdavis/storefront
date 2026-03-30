@@ -79,6 +79,7 @@ Route::prefix('store')->name('store.')->group(function () {
     Route::get('/search', [StorefrontController::class, 'search'])->name('search');
     Route::get('/search/suggestions', [StorefrontController::class, 'suggestions'])->name('search.suggestions');
     Route::get('/product/{product:slug}', [StorefrontController::class, 'product'])->name('product');
+    Route::post('/product/{product:slug}/delivery-estimate', [StorefrontController::class, 'productDeliveryEstimate'])->name('product.delivery-estimate');
     Route::get('/category/{category}', [StorefrontController::class, 'category'])->name('category');
     Route::get('/cart', [StorefrontController::class, 'cart'])->name('cart');
     Route::post('/location/browser', [StorefrontController::class, 'storeBrowserLocation'])->name('location.browser.store');
@@ -485,7 +486,6 @@ Route::prefix('admin')
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
-
 
 
 

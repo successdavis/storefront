@@ -61,6 +61,28 @@ class StorefrontController extends Controller
         return Inertia::render('Storefront/Product', $this->storefrontService->productData($product));
     }
 
+    public function productDeliveryEstimate(Request $request, Product $product): JsonResponse
+    {
+        $validated = $request->validate([
+            'variant_id' => ['nullable', 'integer'],
+            'destination' => ['nullable', 'array'],
+            'destination.country_id' => ['nullable', 'integer'],
+            'destination.state_id' => ['nullable', 'integer'],
+            'destination.lga_id' => ['nullable', 'integer'],
+            'destination.state_name' => ['nullable', 'string', 'max:120'],
+            'destination.city_name' => ['nullable', 'string', 'max:120'],
+            'destination.destination_label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        return response()->json([
+            'delivery_estimate' => $this->storefrontService->productDeliveryEstimate(
+                $product,
+                isset($validated['variant_id']) ? (int) $validated['variant_id'] : null,
+                $validated['destination'] ?? null,
+            ),
+        ]);
+    }
+
     public function cart(Request $request): Response
     {
         $coupon = $request->query('coupon');

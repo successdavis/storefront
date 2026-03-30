@@ -5,9 +5,11 @@ namespace App\Services;
 use App\Models\Category;
 use App\Models\CustomerSavedItem;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class StorefrontService
 {
@@ -29,7 +31,7 @@ class StorefrontService
         $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
         $browsingLocation = $this->resolveBrowsingLocation();
 
-        dd($browsingLocation);
+        Log::info($browsingLocation);
 
         $products = $this->productService->paginateStorefrontProducts(
             perPage: $perPage,
@@ -129,6 +131,25 @@ class StorefrontService
             'savedItemCounts' => $savedItemCounts,
             'browsingLocation' => $browsingLocation,
         ], $this->sharedData($browsingLocation));
+    }
+
+    public function productDeliveryEstimate(Product $product, ?int $variantId = null, ?array $destination = null): ?array
+    {
+        $resolvedDestination = $this->normalizeEstimateDestination($destination ?? $this->resolveBrowsingLocation());
+        if (!$resolvedDestination) {
+            return null;
+        }
+
+        $resolvedVariantId = $this->resolveProductVariantId($product, $variantId);
+        if (!$resolvedVariantId) {
+            return null;
+        }
+
+        $estimate = $this->deliveryEstimateService->estimateForVariantId($resolvedVariantId, $resolvedDestination, [
+            'scope' => 'storefront',
+        ]);
+
+        return ($estimate['available'] ?? false) ? $estimate : null;
     }
 
     protected function buildCategoryPreviews(int $limit, int $productsPerCategory, ?array $browsingLocation = null): array
@@ -288,6 +309,10 @@ class StorefrontService
             return null;
         }
 
+        if (empty($browsingLocation['state_id']) && empty($browsingLocation['lga_id']) && empty($browsingLocation['shipping_zone_id'])) {
+            return null;
+        }
+
         return [
             'country_id' => $browsingLocation['country_id'] ?? null,
             'state_id' => $browsingLocation['state_id'] ?? null,
@@ -296,5 +321,16 @@ class StorefrontService
             'city_name' => $browsingLocation['city_name'] ?? null,
             'destination_label' => $browsingLocation['destination_label'] ?? null,
         ];
+    }
+
+    protected function resolveProductVariantId(Product $product, ?int $variantId = null): ?int
+    {
+        $query = $product->variants()->active()->orderBy('id');
+
+        if ($variantId) {
+            return $query->whereKey($variantId)->value('id');
+        }
+
+        return $query->value('id');
     }
 }

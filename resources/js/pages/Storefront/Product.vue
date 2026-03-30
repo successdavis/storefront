@@ -1,4 +1,5 @@
 <script setup>
+import axios from 'axios'
 import { Head, router, usePage } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
@@ -22,10 +23,14 @@ const props = defineProps({
 const quantity = ref(1)
 const selectedVariantId = ref(props.product.default_variant_id || props.product.variants?.[0]?.id || null)
 const page = usePage()
+const variantDeliveryEstimates = ref(buildVariantEstimateMap(props.product))
+const lastEstimateSignature = ref(null)
 
 const selectedVariant = computed(() => {
     return (props.product.variants || []).find((variant) => variant.id === selectedVariantId.value) || props.product.variants?.[0] || null
 })
+
+const browsingLocation = computed(() => page.props.browsingLocation || null)
 
 const gallery = computed(() => {
     if (selectedVariant.value?.images?.length) {
@@ -37,7 +42,16 @@ const gallery = computed(() => {
 
 const activePrice = computed(() => selectedVariant.value?.price || props.product.price)
 const activeStock = computed(() => selectedVariant.value?.stock || props.product.stock)
-const activeDeliveryEstimate = computed(() => selectedVariant.value?.delivery_estimate || props.product.delivery_estimate || null)
+const activeDeliveryEstimate = computed(() => {
+    const selectedVariantEstimate = selectedVariant.value?.id
+        ? variantDeliveryEstimates.value[selectedVariant.value.id]
+        : null
+
+    return selectedVariantEstimate
+        ?? selectedVariant.value?.delivery_estimate
+        ?? props.product.delivery_estimate
+        ?? null
+})
 const visibleDeliveryEstimate = computed(() => {
     if (!activeDeliveryEstimate.value?.available || !activeDeliveryEstimate.value?.storefront_message) {
         return null
@@ -53,6 +67,56 @@ const formatter = new Intl.NumberFormat('en-NG', {
 
 function money(value) {
     return formatter.format(Number(value || 0))
+}
+
+function buildVariantEstimateMap(product) {
+    return Object.fromEntries(
+        (product?.variants || []).map((variant) => [variant.id, variant.delivery_estimate ?? null]),
+    )
+}
+
+async function refreshDeliveryEstimate() {
+    const variantId = selectedVariant.value?.id
+    const location = browsingLocation.value
+
+    if (!variantId || (!location?.state_id && !location?.lga_id)) {
+        lastEstimateSignature.value = null
+        return
+    }
+
+    const signature = JSON.stringify({
+        variant_id: variantId,
+        state_id: location.state_id ?? null,
+        lga_id: location.lga_id ?? null,
+        destination_label: location.destination_label ?? null,
+    })
+
+    if (lastEstimateSignature.value === signature) {
+        return
+    }
+
+    lastEstimateSignature.value = signature
+
+    try {
+        const { data } = await axios.post(route('store.product.delivery-estimate', props.product.slug), {
+            variant_id: variantId,
+            destination: {
+                country_id: location.country_id ?? null,
+                state_id: location.state_id ?? null,
+                lga_id: location.lga_id ?? null,
+                state_name: location.state_name ?? null,
+                city_name: location.city_name ?? null,
+                destination_label: location.destination_label ?? null,
+            },
+        })
+
+        variantDeliveryEstimates.value = {
+            ...variantDeliveryEstimates.value,
+            [variantId]: data?.delivery_estimate ?? null,
+        }
+    } catch (error) {
+        console.error('Failed to refresh product delivery estimate', error)
+    }
 }
 
 function addToWishlist() {
@@ -75,6 +139,27 @@ function addToWishlist() {
 watch(selectedVariantId, () => {
     quantity.value = 1
 })
+
+watch(
+    () => props.product,
+    (product) => {
+        variantDeliveryEstimates.value = buildVariantEstimateMap(product)
+    },
+    { deep: true },
+)
+
+watch(
+    [
+        () => selectedVariant.value?.id ?? null,
+        () => browsingLocation.value?.state_id ?? null,
+        () => browsingLocation.value?.lga_id ?? null,
+        () => browsingLocation.value?.destination_label ?? null,
+    ],
+    () => {
+        void refreshDeliveryEstimate()
+    },
+    { immediate: true },
+)
 </script>
 
 <template>
