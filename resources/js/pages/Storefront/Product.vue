@@ -1,7 +1,7 @@
 <script setup>
 import axios from 'axios'
 import { Head, router, usePage } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import AddToCartButton from '@/components/Storefront/AddToCartButton.vue'
 import ProductGallery from '@/components/Storefront/ProductGallery.vue'
@@ -25,6 +25,11 @@ const selectedVariantId = ref(props.product.default_variant_id || props.product.
 const page = usePage()
 const variantDeliveryEstimates = ref(buildVariantEstimateMap(props.product))
 const lastEstimateSignature = ref(null)
+const descriptionExpanded = ref(false)
+const isDesktopViewport = ref(false)
+
+let descriptionViewportQuery = null
+let removeDescriptionViewportListener = null
 
 const selectedVariant = computed(() => {
     return (props.product.variants || []).find((variant) => variant.id === selectedVariantId.value) || props.product.variants?.[0] || null
@@ -58,6 +63,20 @@ const visibleDeliveryEstimate = computed(() => {
     }
 
     return activeDeliveryEstimate.value
+})
+const descriptionText = computed(() => (props.product.description || '').trim())
+const descriptionCharacterLimit = computed(() => (isDesktopViewport.value ? 300 : 200))
+const shouldTruncateDescription = computed(() => descriptionText.value.length > descriptionCharacterLimit.value)
+const visibleDescription = computed(() => {
+    if (!descriptionText.value) {
+        return 'No description provided yet.'
+    }
+
+    if (descriptionExpanded.value || !shouldTruncateDescription.value) {
+        return descriptionText.value
+    }
+
+    return `${descriptionText.value.slice(0, descriptionCharacterLimit.value).trimEnd()}...`
 })
 
 const formatter = new Intl.NumberFormat('en-NG', {
@@ -136,6 +155,18 @@ function addToWishlist() {
     })
 }
 
+function syncDescriptionViewport() {
+    isDesktopViewport.value = descriptionViewportQuery?.matches ?? false
+}
+
+function toggleDescription() {
+    if (!shouldTruncateDescription.value) {
+        return
+    }
+
+    descriptionExpanded.value = !descriptionExpanded.value
+}
+
 watch(selectedVariantId, () => {
     quantity.value = 1
 })
@@ -144,6 +175,7 @@ watch(
     () => props.product,
     (product) => {
         variantDeliveryEstimates.value = buildVariantEstimateMap(product)
+        descriptionExpanded.value = false
     },
     { deep: true },
 )
@@ -160,6 +192,30 @@ watch(
     },
     { immediate: true },
 )
+
+onMounted(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        return
+    }
+
+    descriptionViewportQuery = window.matchMedia('(min-width: 1024px)')
+    syncDescriptionViewport()
+
+    const handler = () => syncDescriptionViewport()
+
+    if (typeof descriptionViewportQuery.addEventListener === 'function') {
+        descriptionViewportQuery.addEventListener('change', handler)
+        removeDescriptionViewportListener = () => descriptionViewportQuery?.removeEventListener('change', handler)
+        return
+    }
+
+    descriptionViewportQuery.addListener(handler)
+    removeDescriptionViewportListener = () => descriptionViewportQuery?.removeListener(handler)
+})
+
+onBeforeUnmount(() => {
+    removeDescriptionViewportListener?.()
+})
 </script>
 
 <template>
@@ -268,8 +324,16 @@ watch(
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                 <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Product Description</h2>
                 <p class="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700 dark:text-slate-300">
-                    {{ product.description || 'No description provided yet.' }}
+                    {{ visibleDescription }}
                 </p>
+                <button
+                    v-if="shouldTruncateDescription"
+                    type="button"
+                    class="mt-3 text-sm font-semibold text-slate-900 transition hover:text-slate-700 dark:text-slate-100 dark:hover:text-slate-300"
+                    @click="toggleDescription"
+                >
+                    {{ descriptionExpanded ? 'See less' : 'See more' }}
+                </button>
             </div>
 
             <div v-if="product.faqs?.length" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
