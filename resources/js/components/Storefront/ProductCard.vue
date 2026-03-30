@@ -42,7 +42,7 @@ function money(value) {
                         -{{ product.price?.discount_percentage || 0 }}%
                     </span>
                     <span
-                        v-for="badge in (product.badges || []).filter((badge) => String(badge).trim().toLowerCase() !== 'on sale')"
+                        v-for="badge in (product.badges || []).filter((badge) => !['on sale', 'featured'].includes(String(badge).trim().toLowerCase()))"
                         :key="badge"
                         class="rounded-full bg-slate-900/90 px-2.5 py-1 text-[11px] font-semibold text-white"
                     >

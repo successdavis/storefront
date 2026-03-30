@@ -18,6 +18,7 @@ const isZoomOpen = ref(false)
 const zoomPercent = ref(100)
 const touchStartX = ref(null)
 const touchStartY = ref(null)
+const slideDirection = ref('next')
 
 const sortedImages = computed(() => {
     return [...(props.images || [])].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
@@ -41,11 +42,35 @@ const activeImageIndex = computed(() => {
 })
 
 const hasMultipleImages = computed(() => sortedImages.value.length > 1)
+const transitionClasses = computed(() => {
+    if (slideDirection.value === 'previous') {
+        return {
+            enterFrom: '-translate-x-full opacity-60',
+            leaveTo: 'translate-x-full opacity-60',
+        }
+    }
 
-function selectImage(index) {
+    return {
+        enterFrom: 'translate-x-full opacity-60',
+        leaveTo: '-translate-x-full opacity-60',
+    }
+})
+
+function selectImage(index, direction = null) {
     const image = sortedImages.value[index]
     if (!image) {
         return
+    }
+
+    if (image.id === activeImageId.value) {
+        return
+    }
+
+    if (direction) {
+        slideDirection.value = direction
+    } else {
+        const currentIndex = activeImageIndex.value >= 0 ? activeImageIndex.value : 0
+        slideDirection.value = index < currentIndex ? 'previous' : 'next'
     }
 
     activeImageId.value = image.id
@@ -58,7 +83,7 @@ function showPreviousImage() {
 
     const currentIndex = activeImageIndex.value >= 0 ? activeImageIndex.value : 0
     const nextIndex = currentIndex <= 0 ? sortedImages.value.length - 1 : currentIndex - 1
-    selectImage(nextIndex)
+    selectImage(nextIndex, 'previous')
 }
 
 function showNextImage() {
@@ -68,7 +93,7 @@ function showNextImage() {
 
     const currentIndex = activeImageIndex.value >= 0 ? activeImageIndex.value : 0
     const nextIndex = currentIndex >= sortedImages.value.length - 1 ? 0 : currentIndex + 1
-    selectImage(nextIndex)
+    selectImage(nextIndex, 'next')
 }
 
 function openZoom() {
@@ -158,13 +183,24 @@ watch(
                 @touchstart.passive="handleTouchStart"
                 @touchend.passive="handleTouchEnd"
             >
-                <img
-                    v-if="activeImage?.url"
-                    :src="activeImage.url"
-                    :alt="activeImage.alt || fallbackAlt"
-                    class="h-full w-full cursor-zoom-in object-cover select-none"
-                    @click="openZoom"
-                >
+                <template v-if="activeImage?.url">
+                    <Transition
+                        :enter-active-class="'absolute inset-0 transition duration-300 ease-out'"
+                        :enter-from-class="transitionClasses.enterFrom"
+                        enter-to-class="translate-x-0 opacity-100"
+                        :leave-active-class="'absolute inset-0 transition duration-300 ease-out'"
+                        leave-from-class="translate-x-0 opacity-100"
+                        :leave-to-class="transitionClasses.leaveTo"
+                    >
+                        <img
+                            :key="activeImage.id"
+                            :src="activeImage.url"
+                            :alt="activeImage.alt || fallbackAlt"
+                            class="absolute inset-0 h-full w-full cursor-zoom-in object-cover select-none"
+                            @click="openZoom"
+                        >
+                    </Transition>
+                </template>
                 <div v-else class="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                     No image available
                 </div>
@@ -212,12 +248,12 @@ watch(
                     'overflow-hidden rounded-xl border transition',
                     image.id === activeImage?.id ? 'border-slate-900 ring-2 ring-amber-300' : 'border-slate-200 hover:border-slate-400',
                 ]"
-                @click="activeImageId = image.id"
-                >
-                    <img
-                        :src="image.url"
-                        :alt="image.alt || fallbackAlt"
-                        class="aspect-square h-full w-full object-cover"
+                @click="selectImage(sortedImages.findIndex((candidate) => candidate.id === image.id))"
+            >
+                <img
+                    :src="image.url"
+                    :alt="image.alt || fallbackAlt"
+                    class="aspect-square h-full w-full object-cover"
                     loading="lazy"
                 >
             </button>
