@@ -1,6 +1,7 @@
 <script setup>
 import axios from 'axios'
 import { Head, router, usePage } from '@inertiajs/vue3'
+import { Heart } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import AddToCartButton from '@/components/Storefront/AddToCartButton.vue'
@@ -297,12 +298,12 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div class="mt-5 grid gap-3 md:grid-cols-[120px_1fr_auto]">
+                <div class="mt-5 grid grid-cols-[84px_minmax(0,1fr)_auto] gap-2 sm:grid-cols-[120px_minmax(0,1fr)_auto] sm:gap-3">
                     <input
                         v-model.number="quantity"
                         type="number"
                         min="1"
-                        class="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        class="product-quantity-input h-11 w-full appearance-auto rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
                     >
                     <AddToCartButton
                         :variant-id="selectedVariant?.id"
@@ -313,10 +314,12 @@ onBeforeUnmount(() => {
                     />
                     <button
                         type="button"
-                        class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                        class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-300 text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
                         @click="addToWishlist"
+                        aria-label="Add to wishlist"
+                        title="Add to wishlist"
                     >
-                        Add to Wishlist
+                        <Heart class="size-4.5" />
                     </button>
                 </div>
             </div>
@@ -353,3 +356,16 @@ onBeforeUnmount(() => {
         <ProductGrid :products="relatedProducts" empty-title="No related products found" />
     </section>
 </template>
+
+<style scoped>
+.product-quantity-input {
+    appearance: auto;
+    -moz-appearance: auto;
+}
+
+.product-quantity-input::-webkit-inner-spin-button,
+.product-quantity-input::-webkit-outer-spin-button {
+    -webkit-appearance: auto;
+    margin: 0;
+}
+</style>

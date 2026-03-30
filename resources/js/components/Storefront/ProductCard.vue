@@ -35,12 +35,6 @@ function money(value) {
                 </div>
 
                 <div class="absolute left-3 top-3 flex flex-wrap gap-1">
-                <span
-                    v-if="product.price?.has_discount"
-                    class="rounded-full bg-rose-500 px-2.5 py-1 text-[11px] font-semibold text-white"
-                >
-                    -{{ product.price?.discount_percentage || 0 }}%
-                </span>
                     <span
                         v-for="badge in product.badges || []"
                         :key="badge"

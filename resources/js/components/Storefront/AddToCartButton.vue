@@ -1,6 +1,7 @@
 <script setup>
 import { router, usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
+import { ShoppingCart } from 'lucide-vue-next'
 
 const props = defineProps({
     variantId: {
@@ -65,11 +66,12 @@ function addToCart() {
         type="button"
         :disabled="isDisabled"
         :class="[
-            'rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300',
+            'inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300',
             fullWidth ? 'w-full' : '',
         ]"
         @click="addToCart"
     >
-        {{ submitting ? 'Adding...' : label }}
+        <ShoppingCart class="size-4 shrink-0" />
+        <span>{{ submitting ? 'Adding...' : label }}</span>
     </button>
 </template>
