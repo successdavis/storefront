@@ -29,6 +29,8 @@ class StorefrontService
         $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
         $browsingLocation = $this->resolveBrowsingLocation();
 
+        dd($browsingLocation);
+
         $products = $this->productService->paginateStorefrontProducts(
             perPage: $perPage,
             search: $search !== '' ? $search : null,
