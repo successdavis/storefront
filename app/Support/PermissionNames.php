@@ -8,6 +8,7 @@ final class PermissionNames
     public const VIEW_ADMIN_DASHBOARD = 'admin.dashboard.view';
     public const VIEW_ADMIN_TRANSACTIONS = 'admin.transactions.view';
     public const MANAGE_ADMIN_PAYMENT_RECOVERY = 'admin.payment_recovery.manage';
+    public const MANAGE_ADMIN_ORDERS = 'admin.orders.manage';
     public const MANAGE_ADMIN_CATALOG = 'admin.catalog.manage';
     public const MANAGE_ADMIN_INVENTORY = 'admin.inventory.manage';
     public const MANAGE_ADMIN_STAFF = 'admin.staff.manage';
@@ -36,6 +37,7 @@ final class PermissionNames
             self::VIEW_ADMIN_DASHBOARD,
             self::VIEW_ADMIN_TRANSACTIONS,
             self::MANAGE_ADMIN_PAYMENT_RECOVERY,
+            self::MANAGE_ADMIN_ORDERS,
             self::MANAGE_ADMIN_CATALOG,
             self::MANAGE_ADMIN_INVENTORY,
             self::MANAGE_ADMIN_STAFF,

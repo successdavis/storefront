@@ -27,6 +27,7 @@ class OrderService
         protected PricingQuoteService $pricingQuoteService,
         protected DiscountService $discountService,
         protected StockReservationService $stockReservationService,
+        protected OrderManagementService $orderManagementService,
     ) {}
 
     /**
@@ -65,6 +66,7 @@ class OrderService
             $this->finalizeOrderStatus($order, $channel);
             $this->commitDiscount($order, $session);
             $this->markSessionUsed($session, $order);
+            $this->orderManagementService->initializeOrderLifecycle($order, auth()->id());
             $this->logOrder($order);
 
             return $order;
@@ -496,4 +498,5 @@ class OrderService
         return 0.0;
     }
 }
+
 

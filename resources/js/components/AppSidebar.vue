@@ -108,6 +108,11 @@ const adminNavItems: MainNavItem[] = [
         href: '/admin/pos-terminals',
     },
     {
+        title: 'Orders',
+        icon: ReceiptText,
+        href: '/admin/orders',
+    },
+    {
         title: 'Payments',
         icon: BookOpen,
         subItems: [
@@ -245,3 +250,4 @@ const footerNavItems = computed<NavItem[]>(() => {
     </Sidebar>
     <slot />
 </template>
+

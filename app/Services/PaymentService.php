@@ -30,7 +30,7 @@ class PaymentService
             'transaction_reference' => 'nullable|string|max:255',
             'status' => 'nullable|in:pending,paid,failed,refunded',
             'paid_at' => 'nullable|date',
-            'employee_id' => 'nullable|exists:employees,id',
+            'employee_id' => 'nullable|exists:users,id',
             'meta' => 'nullable|array',
         ];
 
@@ -69,12 +69,9 @@ class PaymentService
 
             $this->payable->payments()->save($payment);
 
-            if (method_exists($this->payable, 'outstandingBalance')) {
-                if ($this->payable->outstandingBalance() <= 0) {
-                    $this->payable->update(['status' => 'paid']);
-                } elseif ($this->payable->totalPayments() > 0) {
-                    $this->payable->update(['status' => 'partially_paid']);
-                }
+            // Only payables with explicit payment-status logic should mutate themselves after a payment.
+            if (method_exists($this->payable, 'refreshPaymentStatus')) {
+                $this->payable->refreshPaymentStatus();
             }
 
             return $payment;
@@ -89,4 +86,3 @@ class PaymentService
         return 'PAY-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(6));
     }
 }
-

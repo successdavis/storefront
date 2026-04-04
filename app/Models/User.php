@@ -170,6 +170,7 @@ class User extends Authenticatable
             'can_manage_catalog' => $this->can(PermissionNames::MANAGE_ADMIN_CATALOG),
             'can_manage_inventory' => $this->can(PermissionNames::MANAGE_ADMIN_INVENTORY),
             'can_manage_staff' => $this->can(PermissionNames::MANAGE_ADMIN_STAFF),
+            'can_manage_orders' => $this->can(PermissionNames::MANAGE_ADMIN_ORDERS),
             'can_manage_payment_recovery' => $this->can(PermissionNames::MANAGE_ADMIN_PAYMENT_RECOVERY),
             'can_view_sales_orders' => $this->can(PermissionNames::VIEW_SALES_ORDERS),
             'can_use_pos' => $this->can(PermissionNames::USE_SALES_POS),

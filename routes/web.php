@@ -432,6 +432,12 @@ Route::prefix('admin')
 
 
         // Orders
+        Route::get('orders', [AdminOrderController::class, 'index'])->middleware('permission.any:admin.orders.manage')->name('orders.index');
+        Route::get('orders/{order}', [AdminOrderController::class, 'show'])->middleware('permission.any:admin.orders.manage')->name('orders.show');
+        Route::patch('orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->middleware('permission.any:admin.orders.manage')->name('orders.status');
+        Route::post('orders/{order}/notes', [AdminOrderController::class, 'storeNote'])->middleware('permission.any:admin.orders.manage')->name('orders.notes.store');
+        Route::post('orders/bulk', [AdminOrderController::class, 'bulkUpdate'])->middleware('permission.any:admin.orders.manage')->name('orders.bulk');
+        Route::post('orders/{order}/notifications/resend', [AdminOrderController::class, 'resendNotification'])->middleware('permission.any:admin.orders.manage')->name('orders.notifications.resend');
 //        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);
 //        Route::patch('orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
 
@@ -486,6 +492,7 @@ Route::prefix('admin')
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
+
 
 
 
