@@ -26,7 +26,6 @@ class DiscountPricingIntegrationTest extends TestCase
         $variant = ProductVariant::factory()->create([
             'product_id' => $product->id,
             'regular_price' => 100,
-            'sale_price' => null,
             'sale_starts_at' => null,
             'sale_ends_at' => null,
         ]);
@@ -109,7 +108,6 @@ class DiscountPricingIntegrationTest extends TestCase
         $variant = ProductVariant::factory()->create([
             'product_id' => $product->id,
             'regular_price' => 100,
-            'sale_price' => null,
             'sale_starts_at' => null,
             'sale_ends_at' => null,
         ]);

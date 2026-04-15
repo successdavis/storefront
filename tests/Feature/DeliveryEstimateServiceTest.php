@@ -158,7 +158,6 @@ class DeliveryEstimateServiceTest extends TestCase
 
         $variant = ProductVariant::factory()->for(Product::factory())->create([
             'regular_price' => 100000,
-            'sale_price' => null,
             'quantity' => 10,
             'reserved' => 0,
             'average_cost' => 50000,
@@ -227,7 +226,6 @@ class DeliveryEstimateServiceTest extends TestCase
         $product = Product::factory()->create();
         $variant = ProductVariant::factory()->for($product)->create([
             'regular_price' => 100000,
-            'sale_price' => null,
             'quantity' => 10,
             'reserved' => 0,
             'average_cost' => 50000,
@@ -567,7 +565,6 @@ class DeliveryEstimateServiceTest extends TestCase
         $product = Product::factory()->create();
         $variant = ProductVariant::factory()->for($product)->create([
             'regular_price' => 100000,
-            'sale_price' => null,
             'quantity' => 10,
             'reserved' => 0,
             'average_cost' => 50000,

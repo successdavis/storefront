@@ -55,20 +55,87 @@ class StorefrontService
         ], $this->sharedData($browsingLocation));
     }
 
+    public function catalogData(array $filters = []): array
+    {
+        $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
+        $browsingLocation = $this->resolveBrowsingLocation();
+        $products = $this->enrichPaginatedCards(
+            $this->productService->paginateStorefrontProducts($perPage),
+            $browsingLocation
+        );
+
+        return $this->collectionData(
+            products: $products,
+            title: 'Shop Catalog',
+            description: 'Browse the full storefront catalog in one place.',
+            browsingLocation: $browsingLocation,
+            filters: ['per_page' => $perPage],
+        );
+    }
+
+    public function featuredData(array $filters = []): array
+    {
+        $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
+        $browsingLocation = $this->resolveBrowsingLocation();
+        $products = $this->enrichPaginatedCards(
+            $this->productService->paginateFeaturedProducts($perPage),
+            $browsingLocation
+        );
+
+        return $this->collectionData(
+            products: $products,
+            title: 'Featured Products',
+            description: 'A curated list of highlighted products from the storefront.',
+            browsingLocation: $browsingLocation,
+            filters: ['per_page' => $perPage],
+        );
+    }
+
+    public function latestData(array $filters = []): array
+    {
+        $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
+        $browsingLocation = $this->resolveBrowsingLocation();
+        $products = $this->enrichPaginatedCards(
+            $this->productService->paginateLatestProducts($perPage),
+            $browsingLocation
+        );
+
+        return $this->collectionData(
+            products: $products,
+            title: 'Latest Products',
+            description: 'See the newest products added to the storefront.',
+            browsingLocation: $browsingLocation,
+            filters: ['per_page' => $perPage],
+            extra: [
+                'infiniteScroll' => true,
+            ],
+        );
+    }
+
     public function categoryData(Category $category, array $filters = []): array
     {
-        $data = $this->homeData(array_merge($filters, [
-            'category' => $category->id,
-        ]));
+        $perPage = isset($filters['per_page']) ? max(1, min((int) $filters['per_page'], 48)) : 12;
+        $browsingLocation = $this->resolveBrowsingLocation();
+        $products = $this->enrichPaginatedCards(
+            $this->productService->getProductsByCategory($category, $perPage),
+            $browsingLocation
+        );
 
-        $data['pageTitle'] = $category->name;
-        $data['activeCategory'] = [
-            'id' => (int) $category->id,
-            'name' => $category->name,
-            'slug' => $category->slug,
-        ];
-
-        return $data;
+        return $this->collectionData(
+            products: $products,
+            title: $category->name,
+            description: "Products available in the {$category->name} category.",
+            browsingLocation: $browsingLocation,
+            filters: ['per_page' => $perPage],
+            extra: [
+                'infiniteScroll' => true,
+                'activeCategory' => [
+                    'id' => (int) $category->id,
+                    'name' => $category->name,
+                    'slug' => $category->slug,
+                ],
+            ],
+        );
     }
 
     public function searchData(array $filters = []): array
@@ -185,7 +252,7 @@ class StorefrontService
                 'images:id,product_id,path,alt,is_primary,sort_order',
                 'variants' => fn ($query) => $query
                     ->where('is_active', true)
-                    ->select('id', 'product_id', 'sku', 'quantity', 'reserved', 'regular_price', 'sale_price', 'sale_starts_at', 'sale_ends_at', 'is_active'),
+                    ->select('id', 'product_id', 'sku', 'quantity', 'reserved', 'regular_price', 'sale_starts_at', 'sale_ends_at', 'is_active'),
             ])
             ->latest('id')
             ->get();
@@ -215,6 +282,23 @@ class StorefrontService
             'categories' => $this->productService->listStoreCategories(),
             'browsingLocation' => $browsingLocation,
         ];
+    }
+
+    protected function collectionData(
+        LengthAwarePaginator $products,
+        string $title,
+        string $description,
+        ?array $browsingLocation = null,
+        array $filters = [],
+        array $extra = [],
+    ): array {
+        return array_merge([
+            'pageTitle' => $title,
+            'pageDescription' => $description,
+            'products' => $products,
+            'filters' => $filters,
+            'browsingLocation' => $browsingLocation,
+        ], $this->sharedData($browsingLocation), $extra);
     }
 
     protected function resolveHomeTitle(string $search, ?int $categoryId): string

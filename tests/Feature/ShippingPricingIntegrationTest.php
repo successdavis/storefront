@@ -102,7 +102,6 @@ class ShippingPricingIntegrationTest extends TestCase
         $variant = ProductVariant::factory()->create([
             'product_id' => $product->id,
             'regular_price' => 100,
-            'sale_price' => null,
             'quantity' => 15,
             'reserved' => 0,
             'average_cost' => 50,
@@ -171,7 +170,6 @@ class ShippingPricingIntegrationTest extends TestCase
         $variant = ProductVariant::factory()->create([
             'product_id' => $product->id,
             'regular_price' => 120,
-            'sale_price' => null,
             'quantity' => 20,
             'reserved' => 0,
             'average_cost' => 60,

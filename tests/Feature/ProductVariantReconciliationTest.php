@@ -237,6 +237,85 @@ class ProductVariantReconciliationTest extends TestCase
         $this->assertDatabaseCount('product_variants', 1);
     }
 
+    public function test_archived_historical_variants_do_not_block_creating_a_new_combination(): void
+    {
+        $product = Product::factory()->create();
+        $color = VariantType::factory()->create(['name' => 'Color']);
+        $ram = VariantType::factory()->create(['name' => 'RAM']);
+        $processor = VariantType::factory()->create(['name' => 'Processor']);
+        $storage = VariantType::factory()->create(['name' => 'Storage']);
+
+        $black = VariantValue::factory()->create(['variant_type_id' => $color->id, 'value' => 'Black']);
+        $blackAsh = VariantValue::factory()->create(['variant_type_id' => $color->id, 'value' => 'Black & Ash']);
+        $ram8 = VariantValue::factory()->create(['variant_type_id' => $ram->id, 'value' => '8GB']);
+        $coreI5 = VariantValue::factory()->create(['variant_type_id' => $processor->id, 'value' => 'Intel Core i5']);
+        $storage500 = VariantValue::factory()->create(['variant_type_id' => $storage->id, 'value' => '500 HDD']);
+
+        $activeVariant = ProductVariant::factory()->for($product)->create([
+            'quantity' => 4,
+            'regular_price' => 120000,
+            'last_purchase_price' => 100000,
+            'is_active' => true,
+        ]);
+        $activeVariant->values()->sync([$black->id, $ram8->id, $coreI5->id, $storage500->id]);
+
+        $archivedColorOnly = ProductVariant::factory()->for($product)->create([
+            'quantity' => 3,
+            'regular_price' => 90000,
+            'last_purchase_price' => 70000,
+            'is_active' => false,
+        ]);
+        $archivedColorOnly->values()->sync([$black->id, $ram8->id, $coreI5->id]);
+
+        $archivedStorageOnly = ProductVariant::factory()->for($product)->create([
+            'quantity' => 2,
+            'regular_price' => 95000,
+            'last_purchase_price' => 72000,
+            'is_active' => false,
+        ]);
+        $archivedStorageOnly->values()->sync([$ram8->id, $coreI5->id, $storage500->id]);
+
+        foreach ([$activeVariant, $archivedColorOnly, $archivedStorageOnly] as $variant) {
+            StockEntry::query()->create([
+                'variant_id' => $variant->id,
+                'quantity' => max((int) $variant->quantity, 1),
+                'unit_cost' => (float) ($variant->last_purchase_price ?? 0),
+                'type' => 'stock_in',
+                'effective_at' => now(),
+                'reason' => 'Opening stock',
+            ]);
+        }
+
+        app(ProductService::class)->update($product, [
+            'name' => $product->name,
+            'variants' => [
+                $this->payloadFor($activeVariant, [
+                    'value_ids' => [$black->id, $ram8->id, $coreI5->id, $storage500->id],
+                ]),
+                $this->newPayloadFor([$blackAsh->id, $ram8->id, $coreI5->id, $storage500->id], 600000),
+            ],
+        ]);
+
+        $newVariant = ProductVariant::query()
+            ->where('product_id', $product->id)
+            ->where('is_active', true)
+            ->whereKeyNot($activeVariant->id)
+            ->first();
+
+        $this->assertNotNull($newVariant);
+        $this->assertSame(600000.0, (float) $newVariant->regular_price);
+        $this->assertSame(
+            collect([$blackAsh->id, $ram8->id, $coreI5->id, $storage500->id])->sort()->values()->all(),
+            $newVariant->values()->pluck('variant_values.id')->sort()->values()->all()
+        );
+
+        $archivedColorOnly->refresh();
+        $archivedStorageOnly->refresh();
+
+        $this->assertFalse($archivedColorOnly->is_active);
+        $this->assertFalse($archivedStorageOnly->is_active);
+    }
+
     private function payloadFor(ProductVariant $variant, array $overrides = []): array
     {
         return array_merge([
@@ -247,7 +326,6 @@ class ProductVariantReconciliationTest extends TestCase
             'barcode' => $variant->barcode,
             'last_purchase_price' => $variant->last_purchase_price,
             'regular_price' => (float) $variant->regular_price,
-            'sale_price' => $variant->sale_price,
             'sale_starts_at' => optional($variant->sale_starts_at)?->toIso8601String(),
             'sale_ends_at' => optional($variant->sale_ends_at)?->toIso8601String(),
             'weight' => $variant->weight,
@@ -268,7 +346,6 @@ class ProductVariantReconciliationTest extends TestCase
             'barcode' => '',
             'last_purchase_price' => null,
             'regular_price' => $regularPrice,
-            'sale_price' => null,
             'sale_starts_at' => null,
             'sale_ends_at' => null,
             'weight' => null,

@@ -44,6 +44,14 @@ const {
     applyDetails, onModalFileChange, previewSrcModal
 } = useVariantDetailsModal(rows, emit, errors, setErr, validateNonNegNumber, revokePreview, normalizeToUrl)
 
+function emitRows() {
+    emit('update:modelValue', rows.map(row => ({
+        ...row,
+        value_ids: Array.isArray(row.value_ids) ? [...row.value_ids] : [],
+        images: Array.isArray(row.images) ? [...row.images] : [],
+    })))
+}
+
 // remove a row
 function removeRow(idx) {
     const victim = rows[idx]
@@ -53,7 +61,7 @@ function removeRow(idx) {
 
     if (victim.id) {
         victim.archived = true
-        emit('update:modelValue', [...rows])
+        emitRows()
         return
     }
 
@@ -62,7 +70,7 @@ function removeRow(idx) {
     next.splice(idx, 1)
     rows.splice(0, rows.length, ...next)
     clearSkuState(idx)
-    emit('update:modelValue', next)
+    emitRows()
 }
 
 onBeforeUnmount(() => {
@@ -115,7 +123,7 @@ onBeforeUnmount(() => {
                     <th class="p-2 text-left">Values</th>
                     <th class="p-2">SKU</th>
                     <th class="p-2">Purchase Price</th>
-                    <th class="p-2">Sale Price</th>
+                    <th class="p-2">Price</th>
                     <th class="p-2">Quantity</th>
                     <th class="p-2">Barcode</th>
                     <th class="p-2">Actions</th>
@@ -145,7 +153,7 @@ onBeforeUnmount(() => {
                         <input
                             v-model="r.sku"
                             class="border rounded px-2 w-full py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
-                            @input="onSkuInput(i)"
+                            @input="onSkuInput(i); emitRows()"
                             @blur="validateTableRow(i)"
                             autocomplete="off"
                             :disabled="r.id || r.archived"
@@ -170,6 +178,7 @@ onBeforeUnmount(() => {
                             :disabled="r.id || r.archived"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.last_purchase_price ? 'border-red-400 bg-red-50' : ''"
+                            @input="emitRows()"
                             @blur="validateTableRow(i)"
                             :aria-errormessage="errors.table[i]?.last_purchase_price ? `err-qty-${i}` : undefined"
                         />
@@ -183,6 +192,7 @@ onBeforeUnmount(() => {
                             :disabled="r.archived"
                             class="border rounded w-full py-1 px-2"
                             :class="errors.table[i]?.regular_price ? 'border-red-400 ' : ''"
+                            @input="emitRows()"
                             @blur="validateTableRow(i)"
                             :aria-errormessage="errors.table[i]?.regular_price ? `err-regular-${i}` : undefined"
                         />
@@ -196,6 +206,7 @@ onBeforeUnmount(() => {
                             :disabled="r.id || r.archived"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.quantity ? 'border-red-400 bg-red-50' : ''"
+                            @input="emitRows()"
                             @blur="validateTableRow(i)"
                             :aria-errormessage="errors.table[i]?.quantity ? `err-qty-${i}` : undefined"
                         />
@@ -209,6 +220,7 @@ onBeforeUnmount(() => {
                             :disabled="r.archived"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.barcode ? 'border-red-400 bg-red-50' : ''"
+                            @input="emitRows()"
                             @blur="validateTableRow(i)"
                             placeholder="Optional"
                             :aria-errormessage="errors.table[i]?.barcode ? `err-barcode-${i}` : undefined"
@@ -268,34 +280,6 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-                    <label class="flex flex-col gap-1">
-                        <span class="text-xs text-gray-500">Sale starts</span>
-                        <input
-                            v-model="draft.sale_starts_at"
-                            type="datetime-local"
-                            class="border rounded px-2 py-1"
-                            :class="errors.modal[editingIndex ?? -1]?.sale_starts_at ? 'border-red-400 bg-red-50' : ''"
-                            @blur="validateModalDraft(editingIndex ?? -1)"
-                        />
-                        <span v-if="errors.modal[editingIndex ?? -1]?.sale_starts_at" class="text-xs text-red-600">
-              {{ errors.modal[editingIndex ?? -1].sale_starts_at }}
-            </span>
-                    </label>
-
-                    <label class="flex flex-col gap-1">
-                        <span class="text-xs text-gray-500">Sale ends</span>
-                        <input
-                            v-model="draft.sale_ends_at"
-                            type="datetime-local"
-                            class="border rounded px-2 py-1"
-                            :class="errors.modal[editingIndex ?? -1]?.sale_ends_at ? 'border-red-400 bg-red-50' : ''"
-                            @blur="validateModalDraft(editingIndex ?? -1)"
-                        />
-                        <span v-if="errors.modal[editingIndex ?? -1]?.sale_ends_at" class="text-xs text-red-600">
-              {{ errors.modal[editingIndex ?? -1].sale_ends_at }}
-            </span>
-                    </label>
 
                     <label class="flex flex-col gap-1">
                         <span class="text-xs text-gray-500">Weight (kg)</span>

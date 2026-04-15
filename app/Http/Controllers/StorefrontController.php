@@ -30,6 +30,27 @@ class StorefrontController extends Controller
         ));
     }
 
+    public function catalog(Request $request): Response
+    {
+        return Inertia::render('Storefront/Collection', $this->storefrontService->catalogData(
+            $request->only(['per_page'])
+        ));
+    }
+
+    public function featured(Request $request): Response
+    {
+        return Inertia::render('Storefront/Collection', $this->storefrontService->featuredData(
+            $request->only(['per_page'])
+        ));
+    }
+
+    public function latest(Request $request): Response
+    {
+        return Inertia::render('Storefront/Collection', $this->storefrontService->latestData(
+            $request->only(['per_page'])
+        ));
+    }
+
     public function search(Request $request): Response
     {
         return Inertia::render('Storefront/Search', $this->storefrontService->searchData(
@@ -50,7 +71,7 @@ class StorefrontController extends Controller
 
     public function category(Request $request, Category $category): Response
     {
-        return Inertia::render('Storefront/Home', $this->storefrontService->categoryData(
+        return Inertia::render('Storefront/Collection', $this->storefrontService->categoryData(
             category: $category,
             filters: $request->only(['q', 'per_page'])
         ));

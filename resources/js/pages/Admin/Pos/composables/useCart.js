@@ -19,7 +19,7 @@ export function useCart() {
             cartItems.value.push({
                 variant_id: variant.id,
                 name: variant.product?.name || variant.sku || 'Unnamed',
-                price: Number(variant.sale_price ?? variant.regular_price ?? 0),
+                price: Number(variant.regular_price ?? 0),
                 quantity: 1,
                 image: '/storage/' + (variant.product?.images?.[0]?.path || 'images/placeholder.png'),
                 variant_label: variant.values?.map((v) => v.value).join(', ') ?? '',

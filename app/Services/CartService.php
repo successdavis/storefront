@@ -68,7 +68,6 @@ class CartService
                 'quantity',
                 'reserved',
                 'regular_price',
-                'sale_price',
                 'sale_starts_at',
                 'sale_ends_at'
             ])
@@ -516,9 +515,9 @@ class CartService
         }
 
         $regular = round((float) ($variant?->regular_price ?? 0), 2);
-        $sale = $variant?->sale_price !== null ? round((float) $variant->sale_price, 2) : null;
-        $current = $sale !== null && $sale > 0 && $sale < $regular ? $sale : $regular;
-        $hasDiscount = $sale !== null && $sale > 0 && $sale < $regular;
+        $sale = null;
+        $current = $regular;
+        $hasDiscount = false;
         $discountAmount = $hasDiscount ? round(max($regular - $current, 0), 2) : 0.0;
         $discountPercentage = $hasDiscount && $regular > 0
             ? (int) round((($regular - $current) / $regular) * 100)

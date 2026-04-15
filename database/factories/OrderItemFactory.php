@@ -18,13 +18,7 @@ class OrderItemFactory extends Factory
             ?? ProductVariant::factory()->create();
 
         $qty = $this->faker->numberBetween(1, 10);
-        $now = now();
-
-        $effectivePrice = ($variant->sale_price
-            && (is_null($variant->sale_starts_at) || $variant->sale_starts_at <= $now)
-            && (is_null($variant->sale_ends_at)   || $variant->sale_ends_at   >= $now))
-            ? $variant->sale_price
-            : $variant->regular_price;
+        $effectivePrice = $variant->regular_price;
 
         return [
             'order_id'   => Order::factory(),
@@ -41,12 +35,7 @@ class OrderItemFactory extends Factory
 
     public function forVariant(ProductVariant $variant): self
     {
-        $now = now();
-        $effectivePrice = ($variant->sale_price
-            && (is_null($variant->sale_starts_at) || $variant->sale_starts_at <= $now)
-            && (is_null($variant->sale_ends_at)   || $variant->sale_ends_at   >= $now))
-            ? $variant->sale_price
-            : $variant->regular_price;
+        $effectivePrice = $variant->regular_price;
 
         return $this->state(fn () => [
             'variant_id' => $variant->id,      // change key name if needed

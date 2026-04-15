@@ -32,7 +32,7 @@ export function useProducts() {
     const debouncedReload = debounce(reload, 500)
     watch(() => filters.value.q, () => debouncedReload())
 
-    const price = (variant) => Number(variant.sale_price ?? variant.regular_price ?? 0).toFixed(2)
+    const price = (variant) => Number(variant.regular_price ?? 0).toFixed(2)
     const stockLabel = (variant) => {
         const avail = variant.available ?? variant.quantity ?? 0
         return avail > 0 ? `In stock: ${avail}` : 'Out of Stock'

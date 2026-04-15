@@ -35,8 +35,6 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
             barcode: '',
             last_purchase_price: null,
             regular_price: null,
-            sale_starts_at: null,
-            sale_ends_at: null,
             weight: null,
             length: null,
             width: null,

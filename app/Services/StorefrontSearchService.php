@@ -431,7 +431,6 @@ class StorefrontSearchService
                     'quantity',
                     'reserved',
                     'regular_price',
-                    'sale_price',
                     'sale_starts_at',
                     'sale_ends_at',
                     'is_active',

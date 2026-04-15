@@ -67,7 +67,6 @@ class StorefrontSearchTest extends TestCase
             $ram->id => '8GB',
         ], [
             'regular_price' => 100000,
-            'sale_price' => null,
             'sale_starts_at' => null,
             'sale_ends_at' => null,
         ]);
@@ -76,7 +75,6 @@ class StorefrontSearchTest extends TestCase
             $ram->id => '16GB',
         ], [
             'regular_price' => 120000,
-            'sale_price' => null,
             'sale_starts_at' => null,
             'sale_ends_at' => null,
         ]);
@@ -159,7 +157,6 @@ class StorefrontSearchTest extends TestCase
             'quantity' => 6,
             'reserved' => 0,
             'regular_price' => 150000,
-            'sale_price' => null,
             'sale_starts_at' => null,
             'sale_ends_at' => null,
             'is_active' => true,

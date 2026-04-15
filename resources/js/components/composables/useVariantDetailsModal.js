@@ -6,9 +6,6 @@ export function useVariantDetailsModal(
     const showModal = ref(false)
     const editingIndex = ref(null)
     const draft = reactive({
-        sale_price: null,
-        sale_starts_at: '',
-        sale_ends_at: '',
         weight: null,
         length: null,
         width: null,
@@ -19,9 +16,6 @@ export function useVariantDetailsModal(
 
     function openDetails(row, index) {
         editingIndex.value = index
-        draft.sale_price = row.sale_price ?? null
-        draft.sale_starts_at = row.sale_starts_at ?? ''
-        draft.sale_ends_at = row.sale_ends_at ?? ''
         draft.weight = row.weight ?? null
         draft.length = row.length ?? null
         draft.width = row.width ?? null
@@ -48,16 +42,6 @@ export function useVariantDetailsModal(
     }
 
     function validateModalDraft(idx) {
-        setErr('modal', idx, 'sale_price', draft.sale_price === null || draft.sale_price === '' ? '' : validateNonNegNumber(draft.sale_price, false))
-        setErr('modal', idx, 'sale_starts_at', '')
-        setErr('modal', idx, 'sale_ends_at', '')
-        if (draft.sale_starts_at && draft.sale_ends_at) {
-            const s = new Date(draft.sale_starts_at)
-            const e = new Date(draft.sale_ends_at)
-            if (isFinite(s) && isFinite(e) && e < s) {
-                setErr('modal', idx, 'sale_ends_at', 'End must be after start')
-            }
-        }
         setErr('modal', idx, 'weight', draft.weight === null || draft.weight === '' ? '' : validateNonNegNumber(draft.weight, false))
         setErr('modal', idx, 'length', draft.length === null || draft.length === '' ? '' : validateNonNegNumber(draft.length, false))
         setErr('modal', idx, 'width',  draft.width  === null || draft.width  === '' ? '' : validateNonNegNumber(draft.width,  false))
@@ -71,9 +55,6 @@ export function useVariantDetailsModal(
         if (errors.modal[idx] && Object.keys(errors.modal[idx]).length) return
 
         const target = rows[idx]; if (!target) return
-        target.sale_price = (draft.sale_price === '' ? null : draft.sale_price)
-        target.sale_starts_at = draft.sale_starts_at || null
-        target.sale_ends_at = draft.sale_ends_at || null
         target.weight = draft.weight ?? null
         target.length = draft.length ?? null
         target.width = draft.width ?? null

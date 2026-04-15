@@ -56,9 +56,9 @@ function label(value, fallback = 'Pending') {
                         Your payment was successful and we've started processing your order.
                     </p>
 
-                    <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">
-                        We'll keep you updated from your dashboard as your order moves through payment, processing, and delivery.
-                    </p>
+<!--                    <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">-->
+<!--                        We'll keep you updated from your dashboard as your order moves through payment, processing, and delivery.-->
+<!--                    </p>-->
                 </div>
             </div>
 

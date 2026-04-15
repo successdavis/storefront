@@ -63,10 +63,6 @@ class ProductUpdateRequest extends FormRequest
 //                Rule::unique('product_variants', 'sku')->ignore($id)
 //            ];
 
-            // strict sale < regular check per row
-            $rules["variants.$i.sale_price"] = [
-                'nullable','numeric','min:0','lt:variants.'.$i.'.regular_price'
-            ];
             $rules["variants.$i.sale_starts_at"] = ['nullable','date'];
             $rules["variants.$i.sale_ends_at"]   = ['nullable','date','after_or_equal:variants.'.$i.'.sale_starts_at'];
             $rules["variants.$i.barcode"] = [

@@ -23,7 +23,6 @@ class CustomerSavedItemServiceTest extends TestCase
             ->create([
                 'quantity' => 5,
                 'regular_price' => 25000,
-                'sale_price' => null,
             ]);
 
         CustomerSavedItem::query()->create([

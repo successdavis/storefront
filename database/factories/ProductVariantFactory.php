@@ -12,22 +12,8 @@ class ProductVariantFactory extends Factory
 
     public function definition(): array
     {
-        // Prices
-        $regular = $this->faker->randomFloat(2, 10000, 800000);          // NGN
+        $regular = $this->faker->randomFloat(2, 10000, 800000);
         $cost    = round($regular * $this->faker->randomFloat(2, 0.55, 0.9), 2);
-
-        $onSale  = $this->faker->boolean(30);
-        if ($onSale) {
-            $saleStart = now()->subDays($this->faker->numberBetween(0, 7));
-            $saleEnd   = (clone $saleStart)->addDays($this->faker->numberBetween(3, 14));
-            $salePrice = round($regular * $this->faker->randomFloat(2, 0.7, 0.95), 2);
-            // guard: never let sale exceed regular
-            $salePrice = min($salePrice, $regular - 1);
-        } else {
-            $saleStart = null;
-            $saleEnd   = null;
-            $salePrice = null;
-        }
 
         // Weight and dimensions (optional)
         $hasWeight = $this->faker->boolean(40);
@@ -50,9 +36,6 @@ class ProductVariantFactory extends Factory
 
             'last_purchase_price'     => $cost,
             'regular_price'  => $regular,
-            'sale_price'     => $salePrice,
-            'sale_starts_at' => $saleStart,
-            'sale_ends_at'   => $saleEnd,
 
             'weight'         => $weight,     // kg
             'length'         => $length,     // cm
@@ -63,23 +46,6 @@ class ProductVariantFactory extends Factory
     }
 
     // Convenience states
-
-    public function onSale(): self
-    {
-        return $this->state(function () {
-            $regular = $this->faker->randomFloat(2, 20000, 500000);
-            $sale    = round($regular * $this->faker->randomFloat(2, 0.7, 0.9), 2);
-            $start   = now()->subDays($this->faker->numberBetween(0, 3));
-            $end     = (clone $start)->addDays($this->faker->numberBetween(5, 10));
-
-            return [
-                'regular_price'  => $regular,
-                'sale_price'     => min($sale, $regular - 1),
-                'sale_starts_at' => $start,
-                'sale_ends_at'   => $end,
-            ];
-        });
-    }
 
     public function withWeight(): self
     {

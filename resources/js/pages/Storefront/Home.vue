@@ -102,7 +102,7 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
     <section class="mt-10 space-y-4">
         <div class="flex items-center justify-between">
             <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Featured Products</h2>
-            <Link :href="route('store.home')" class="text-sm font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-300 dark:hover:text-amber-300">Browse all</Link>
+            <Link :href="route('store.featured')" class="text-sm font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-300 dark:hover:text-amber-300">See all</Link>
         </div>
         <ProductGrid :products="featuredProducts" empty-title="No featured products yet" />
     </section>
@@ -110,31 +110,23 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
     <section class="mt-10 space-y-4">
         <div class="flex items-center justify-between">
             <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Latest Products</h2>
-            <p class="text-sm text-slate-500 dark:text-slate-300">Swipe or use the arrows to browse newly added items.</p>
+            <Link :href="route('store.latest')" class="text-sm font-medium text-slate-600 transition hover:text-slate-900 dark:text-slate-300 dark:hover:text-amber-300">See all</Link>
         </div>
         <ProductCarousel :products="latestProducts" empty-title="No recent products yet" />
+        <p class="text-sm text-slate-500 dark:text-slate-300">Swipe or use the arrows to browse newly added items.</p>
     </section>
 
     <section class="mt-10 space-y-4">
         <h2 class="text-xl font-bold text-slate-900 dark:text-slate-100">Shop Catalog</h2>
         <ProductGrid :products="products.data" empty-title="No products matched your filters" />
 
-        <div v-if="hasProducts && products.links" class="flex flex-wrap gap-2">
-            <button
-                v-for="link in products.links"
-                :key="link.label + String(link.url)"
-                type="button"
-                :disabled="!link.url"
-                v-html="link.label"
-                :class="[
-                    'rounded-lg border px-3 py-1.5 text-sm transition',
-                    link.active
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-500',
-                    !link.url ? 'cursor-not-allowed opacity-40' : '',
-                ]"
-                @click="link.url && router.visit(link.url, { preserveState: true })"
-            />
+        <div v-if="hasProducts" class="flex justify-center">
+            <Link
+                :href="route('store.catalog')"
+                class="rounded-xl border border-slate-300 bg-white px-5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+            >
+                See all
+            </Link>
         </div>
     </section>
 

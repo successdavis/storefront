@@ -49,7 +49,6 @@ class AdminCategoryPriceListReportTest extends TestCase
             'quantity' => 10,
             'reserved' => 3,
             'regular_price' => 100000,
-            'sale_price' => null,
         ]);
         $secondVariant = ProductVariant::factory()->create([
             'product_id' => $product->id,
@@ -57,7 +56,6 @@ class AdminCategoryPriceListReportTest extends TestCase
             'quantity' => 5,
             'reserved' => 0,
             'regular_price' => 120000,
-            'sale_price' => null,
         ]);
         ProductVariant::factory()->create([
             'product_id' => $otherProduct->id,

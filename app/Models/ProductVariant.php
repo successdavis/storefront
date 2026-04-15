@@ -15,7 +15,7 @@ class ProductVariant extends Model
 
     protected $fillable = [
         'product_id','sku','quantity','barcode','cost_price',
-        'regular_price','sale_price','sale_starts_at','sale_ends_at',
+        'regular_price','sale_starts_at','sale_ends_at',
         'weight','length','width','height','track_inventory','reorder_point','is_active',
     ];
 
@@ -133,11 +133,7 @@ class ProductVariant extends Model
 
     public function getIsOnSaleAttribute(): bool
     {
-        $now = now();
-        return $this->sale_price !== null
-            && $this->sale_price < $this->regular_price
-            && (!$this->sale_starts_at || $this->sale_starts_at <= $now)
-            && (!$this->sale_ends_at || $this->sale_ends_at >= $now);
+        return false;
     }
 
     /**

@@ -18,13 +18,7 @@ class SaleItemFactory extends Factory
             ?? ProductVariant::factory()->create();
 
         $qty = $this->faker->numberBetween(1, 5);
-        $now = now();
-
-        $unitPrice = ($variant->sale_price
-            && (is_null($variant->sale_starts_at) || $variant->sale_starts_at <= $now)
-            && (is_null($variant->sale_ends_at)   || $variant->sale_ends_at   >= $now))
-            ? $variant->sale_price
-            : $variant->regular_price;
+        $unitPrice = $variant->regular_price;
 
         return [
             'sale_id'    => Sale::factory(),
@@ -41,12 +35,7 @@ class SaleItemFactory extends Factory
 
     public function forVariant(ProductVariant $variant): self
     {
-        $now = now();
-        $unitPrice = ($variant->sale_price
-            && (is_null($variant->sale_starts_at) || $variant->sale_starts_at <= $now)
-            && (is_null($variant->sale_ends_at)   || $variant->sale_ends_at   >= $now))
-            ? $variant->sale_price
-            : $variant->regular_price;
+        $unitPrice = $variant->regular_price;
 
         return $this->state(fn () => [
             'variant_id' => $variant->id,   // or 'product_variant_id'

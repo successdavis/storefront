@@ -304,7 +304,6 @@ class ProductService
             'barcode',
             'sale_starts_at',
             'regular_price',
-            'sale_price',
             'sale_ends_at',
             'weight',
             'length',
@@ -448,6 +447,7 @@ class ProductService
 
             $candidates = $existingVariants
                 ->reject(fn (ProductVariant $variant) => isset($matchedExistingIds[$variant->id]))
+                ->filter(fn (ProductVariant $variant) => !$variant->trashed() && $variant->is_active)
                 ->filter(fn (ProductVariant $variant) => $this->variantSetsAreCompatible(
                     $variant->values->modelKeys(),
                     $payload['value_ids']
@@ -766,6 +766,20 @@ class ProductService
             ->all();
     }
 
+    public function paginateFeaturedProducts(int $perPage = 12, ?User $user = null): LengthAwarePaginator
+    {
+        $paginator = $this->storeListQuery()
+            ->where('featured', true)
+            ->paginate(max(1, min($perPage, 48)))
+            ->withQueryString();
+
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn (Product $product) => $this->toStorefrontCard($product, $user))
+        );
+
+        return $paginator;
+    }
+
     public function getLatestProducts(int $limit = 8, ?User $user = null): array
     {
         return Product::query()
@@ -778,6 +792,23 @@ class ProductService
             ->map(fn (Product $product) => $this->toStorefrontCard($product, $user))
             ->values()
             ->all();
+    }
+
+    public function paginateLatestProducts(int $perPage = 12, ?User $user = null): LengthAwarePaginator
+    {
+        $paginator = Product::query()
+            ->active()
+            ->whereHas('variants', fn (Builder $query) => $query->where('is_active', true))
+            ->with($this->storeCardRelations())
+            ->latest('created_at')
+            ->paginate(max(1, min($perPage, 48)))
+            ->withQueryString();
+
+        $paginator->setCollection(
+            $paginator->getCollection()->map(fn (Product $product) => $this->toStorefrontCard($product, $user))
+        );
+
+        return $paginator;
     }
 
     public function getProductsByCategory(Category|int $category, int $perPage = 12, ?User $user = null): LengthAwarePaginator
@@ -808,7 +839,6 @@ class ProductService
                     'quantity',
                     'reserved',
                     'regular_price',
-                    'sale_price',
                     'sale_starts_at',
                     'sale_ends_at',
                     'is_active',
@@ -1122,7 +1152,6 @@ class ProductService
                     'quantity',
                     'reserved',
                     'regular_price',
-                    'sale_price',
                     'sale_starts_at',
                     'sale_ends_at',
                     'is_active',
@@ -1269,22 +1298,14 @@ class ProductService
 
     protected function resolveLegacyVariantPricing(ProductVariant $variant): array
     {
-        $now = now();
-
-        $hasSaleWindow = (!$variant->sale_starts_at || $variant->sale_starts_at->lte($now))
-            && (!$variant->sale_ends_at || $variant->sale_ends_at->gte($now));
-
-        $hasDiscount = $variant->sale_price !== null
-            && (float) $variant->sale_price < (float) $variant->regular_price
-            && $hasSaleWindow;
-
         $regular = (float) $variant->regular_price;
-        $sale = $variant->sale_price !== null ? (float) $variant->sale_price : null;
-        $current = $hasDiscount ? (float) $variant->sale_price : $regular;
+        $sale = null;
+        $current = $regular;
+        $hasDiscount = false;
 
         return [
             'regular' => round($regular, 2),
-            'sale' => $sale !== null ? round($sale, 2) : null,
+            'sale' => null,
             'current' => round($current, 2),
             'has_discount' => $hasDiscount,
         ];

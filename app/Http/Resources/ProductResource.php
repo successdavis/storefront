@@ -72,7 +72,6 @@ class ProductResource extends JsonResource
                     'barcode'                   => $v->barcode,
                     'last_purchase_price'       => $v->last_purchase_price,
                     'regular_price'             => $v->regular_price,
-                    'sale_price'                => $v->sale_price,
                     'sale_starts_at'            => optional($v->sale_starts_at)?->toIso8601String(),
                     'sale_ends_at'              => optional($v->sale_ends_at)?->toIso8601String(),
                     'weight'                    => $v->weight,

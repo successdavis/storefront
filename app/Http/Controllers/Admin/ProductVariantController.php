@@ -25,7 +25,6 @@ class ProductVariantController extends Controller
                 'sku' => $v['sku'],
                 'quantity' => $v['quantity'] ?? 0,
                 'regular_price' => $v['regular_price'],
-                'sale_price' => $v['sale_price'] ?? null,
             ]);
             $variant->values()->sync($v['value_ids']);
             $created[] = $variant->load('values.type');
