@@ -44,6 +44,11 @@ class StockAuditSession extends Model
         return $this->hasMany(StockAuditItem::class, 'session_id');
     }
 
+    public function itemLocks(): HasMany
+    {
+        return $this->hasMany(StockAuditItemLock::class, 'session_id');
+    }
+
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');

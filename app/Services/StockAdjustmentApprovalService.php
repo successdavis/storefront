@@ -4,6 +4,9 @@ namespace App\Services;
 
 use App\Models\ProductVariant;
 use App\Models\StockAdjustment;
+use App\Models\StockAuditItem;
+use App\Models\StockAuditItemLock;
+use App\Models\StockAuditSession;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -20,7 +23,31 @@ class StockAdjustmentApprovalService
                 ->lockForUpdate()
                 ->findOrFail((int) $data['variant_id']);
 
-            return StockAdjustment::create([
+            $auditItem = null;
+            if (!empty($data['stock_audit_item_id'])) {
+                $auditItem = StockAuditItem::query()
+                    ->with('session:id,status,warehouse_id')
+                    ->lockForUpdate()
+                    ->findOrFail((int) $data['stock_audit_item_id']);
+
+                if ((int) $auditItem->variant_id !== (int) $variant->id) {
+                    throw ValidationException::withMessages([
+                        'variant_id' => 'The selected audit item does not belong to this variant.',
+                    ]);
+                }
+
+                if ($auditItem->conflict_reason) {
+                    throw ValidationException::withMessages([
+                        'variant_id' => $auditItem->conflict_reason,
+                    ]);
+                }
+
+                if ($auditItem->stock_adjustment_id) {
+                    return StockAdjustment::query()->findOrFail((int) $auditItem->stock_adjustment_id);
+                }
+            }
+
+            $adjustment = StockAdjustment::create([
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'variant_id' => $variant->id,
                 'previous_quantity' => (int) $variant->quantity,
@@ -32,6 +59,14 @@ class StockAdjustmentApprovalService
                 'adjusted_at' => $data['adjusted_at'] ?? now(),
                 'status' => StockAdjustment::STATUS_PENDING,
             ]);
+
+            if ($auditItem) {
+                $auditItem->update([
+                    'stock_adjustment_id' => $adjustment->id,
+                ]);
+            }
+
+            return $adjustment;
         });
     }
 
@@ -46,6 +81,32 @@ class StockAdjustmentApprovalService
                 throw ValidationException::withMessages([
                     'status' => 'Only pending adjustments can be approved.',
                 ]);
+            }
+
+            $auditItem = $this->resolveAuditItemForAdjustment($adjustment);
+            if ($auditItem) {
+                $auditItem = StockAuditItem::query()
+                    ->with('session:id,status,warehouse_id')
+                    ->lockForUpdate()
+                    ->findOrFail($auditItem->id);
+
+                if ($auditItem->conflict_reason) {
+                    throw ValidationException::withMessages([
+                        'status' => $auditItem->conflict_reason,
+                    ]);
+                }
+
+                $lock = StockAuditItemLock::query()
+                    ->where('variant_id', $adjustment->variant_id)
+                    ->where('warehouse_scope_key', $this->warehouseScopeKey($auditItem->session?->warehouse_id ?? $adjustment->warehouse_id))
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$lock || (int) $lock->session_id !== (int) $auditItem->session_id) {
+                    throw ValidationException::withMessages([
+                        'status' => 'This audit discrepancy is no longer the active count for this stock bucket.',
+                    ]);
+                }
             }
 
             $variant = ProductVariant::query()->findOrFail($adjustment->variant_id);
@@ -81,6 +142,10 @@ class StockAdjustmentApprovalService
                 'approval_note' => $approvalNote,
             ]);
 
+            if ($auditItem) {
+                $this->completeAuditSessionIfResolved((int) $auditItem->session_id);
+            }
+
             return $adjustment->fresh();
         });
     }
@@ -98,6 +163,8 @@ class StockAdjustmentApprovalService
                 ]);
             }
 
+            $auditItem = $this->resolveAuditItemForAdjustment($adjustment);
+
             $adjustment->update([
                 'status' => StockAdjustment::STATUS_REJECTED,
                 'rejected_by' => $rejectedBy,
@@ -105,7 +172,79 @@ class StockAdjustmentApprovalService
                 'approval_note' => $approvalNote,
             ]);
 
+            if ($auditItem) {
+                $this->completeAuditSessionIfResolved((int) $auditItem->session_id);
+            }
+
             return $adjustment->fresh();
         });
+    }
+
+    protected function resolveAuditItemForAdjustment(StockAdjustment $adjustment): ?StockAuditItem
+    {
+        $linkedItem = StockAuditItem::query()
+            ->where('stock_adjustment_id', $adjustment->id)
+            ->first();
+
+        if ($linkedItem) {
+            return $linkedItem;
+        }
+
+        if ($adjustment->reason !== 'count_discrepancy' || !preg_match('/^AUDIT-(\d+)-(\d+)$/', (string) $adjustment->reference, $matches)) {
+            return null;
+        }
+
+        return StockAuditItem::query()
+            ->where('session_id', (int) $matches[1])
+            ->where('variant_id', (int) $matches[2])
+            ->first();
+    }
+
+    protected function completeAuditSessionIfResolved(int $sessionId): void
+    {
+        $session = StockAuditSession::query()
+            ->lockForUpdate()
+            ->find($sessionId);
+
+        if (!$session) {
+            return;
+        }
+
+        $items = StockAuditItem::query()
+            ->with('stockAdjustment:id,status')
+            ->where('session_id', $sessionId)
+            ->get(['id', 'session_id', 'variance', 'stock_adjustment_id', 'conflict_reason']);
+
+        $hasOutstandingConflicts = $items->contains(fn (StockAuditItem $item) => filled($item->conflict_reason));
+        if ($hasOutstandingConflicts) {
+            return;
+        }
+
+        $hasPendingAdjustments = $items->contains(function (StockAuditItem $item): bool {
+            if ((int) $item->variance === 0) {
+                return false;
+            }
+
+            return !$item->stockAdjustment
+                || $item->stockAdjustment->status === StockAdjustment::STATUS_PENDING;
+        });
+
+        if ($hasPendingAdjustments) {
+            return;
+        }
+
+        $session->update([
+            'status' => StockAuditSession::STATUS_REVIEWED,
+            'last_activity_at' => now(),
+        ]);
+
+        StockAuditItemLock::query()
+            ->where('session_id', $sessionId)
+            ->delete();
+    }
+
+    protected function warehouseScopeKey(?int $warehouseId): int
+    {
+        return $warehouseId ? (int) $warehouseId : 0;
     }
 }

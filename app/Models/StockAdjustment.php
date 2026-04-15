@@ -62,4 +62,9 @@ class StockAdjustment extends Model
     {
         return $this->belongsTo(User::class, 'rejected_by');
     }
+
+    public function stockAuditItem()
+    {
+        return $this->hasOne(StockAuditItem::class, 'stock_adjustment_id');
+    }
 }

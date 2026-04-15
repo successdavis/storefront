@@ -7,9 +7,11 @@ use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Models\StockAuditItem;
+use App\Models\StockAuditItemLock;
 use App\Models\StockAuditSession;
 use App\Services\StockAdjustmentApprovalService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -107,8 +109,10 @@ class StockAuditService
             'system_quantity' => (int) $variant->quantity,
             'physical_quantity' => $sessionItem ? (int) $sessionItem->physical_quantity : null,
             'has_been_audited' => (bool) $sessionItem,
+            'conflict_reason' => $sessionItem?->conflict_reason,
             'reserved' => (int) ($variant->reserved ?? 0),
             'display_name' => $this->variantNameFormatter->format($variant),
+            ...$this->lockMetaForVariant($variant->id, $session),
         ];
     }
 
@@ -135,7 +139,7 @@ class StockAuditService
             }
         }
 
-        $expectedItems = $this->expectedItemsCount($scopeType, $categoryId);
+        $expectedItems = $this->expectedItemsCount($scopeType, $categoryId, $warehouseId);
 
         return StockAuditSession::create([
             'warehouse_id' => $warehouseId,
@@ -154,20 +158,56 @@ class StockAuditService
     public function sessionRows(StockAuditSession $session): Collection
     {
         $itemsByVariantId = $session->items()
-            ->get(['variant_id', 'physical_quantity', 'variance'])
+            ->get(['variant_id', 'physical_quantity', 'variance', 'conflict_reason', 'conflicted_with_session_id'])
             ->keyBy('variant_id');
 
         return $this->auditRows($session->scope_type, $session->category_id)
-            ->map(function (array $row) use ($itemsByVariantId): array {
+            ->map(function (array $row) use ($itemsByVariantId, $session): array {
                 $item = $itemsByVariantId->get($row['id']);
 
                 $row['has_been_audited'] = (bool) $item;
                 $row['physical_quantity'] = $item ? (int) $item->physical_quantity : null;
                 $row['variance'] = $item ? (int) $item->variance : null;
+                $row['conflict_reason'] = $item?->conflict_reason;
 
-                return $row;
+                return array_merge($row, $this->lockMetaForVariant($row['id'], $session));
             })
             ->values();
+    }
+
+    protected function lockMetaForVariant(int $variantId, ?StockAuditSession $session = null): array
+    {
+        $warehouseScopeKey = $this->warehouseScopeKey($session?->warehouse_id);
+
+        $lock = StockAuditItemLock::query()
+            ->with([
+                'session.category:id,name',
+            ])
+            ->where('variant_id', $variantId)
+            ->where('warehouse_scope_key', $warehouseScopeKey)
+            ->first();
+
+        if (!$lock || ($session && (int) $lock->session_id === (int) $session->id)) {
+            return [
+                'locked_by_other_session' => false,
+                'lock_message' => null,
+                'locked_session_id' => null,
+            ];
+        }
+
+        $scopeLabel = $lock->session?->scope_type === StockAuditSession::SCOPE_CATEGORY
+            ? sprintf('category audit (%s)', $lock->session?->category?->name ?? 'Unknown category')
+            : 'full inventory audit';
+
+        return [
+            'locked_by_other_session' => true,
+            'lock_message' => sprintf(
+                'Already counted in session #%d for the same warehouse scope via %s.',
+                (int) $lock->session_id,
+                $scopeLabel,
+            ),
+            'locked_session_id' => (int) $lock->session_id,
+        ];
     }
 
     public function sessionSummary(StockAuditSession $session): array
@@ -260,61 +300,121 @@ class StockAuditService
 
     public function upsertSessionItems(StockAuditSession $session, array $counts): array
     {
-        $normalized = collect($counts)
-            ->filter(fn ($line) => isset($line['variant_id'], $line['physical_quantity']))
-            ->map(function (array $line): array {
+        return DB::transaction(function () use ($session, $counts): array {
+            $session = StockAuditSession::query()
+                ->lockForUpdate()
+                ->findOrFail($session->id);
+
+            $normalized = collect($counts)
+                ->values()
+                ->filter(fn ($line) => isset($line['variant_id'], $line['physical_quantity']))
+                ->map(function (array $line, int $index): array {
+                    return [
+                        'variant_id' => (int) $line['variant_id'],
+                        'physical_quantity' => (int) $line['physical_quantity'],
+                        'index' => $index,
+                    ];
+                })
+                ->keyBy('variant_id');
+
+            if ($normalized->isEmpty()) {
                 return [
-                    'variant_id' => (int) $line['variant_id'],
-                    'physical_quantity' => (int) $line['physical_quantity'],
+                    'processed' => 0,
+                    'scanned_items' => (int) $session->total_scanned_items,
+                    'coverage_percentage' => (float) $session->coverage_percentage,
                 ];
-            })
-            ->keyBy('variant_id');
+            }
 
-        if ($normalized->isEmpty()) {
-            return [
-                'processed' => 0,
-                'scanned_items' => (int) $session->total_scanned_items,
-                'coverage_percentage' => (float) $session->coverage_percentage,
-            ];
-        }
+            $allowedVariantIds = $this->scopedVariantQuery($session->scope_type, $session->category_id)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
-        $allowedVariantIds = $this->scopedVariantQuery($session->scope_type, $session->category_id)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+            $variants = ProductVariant::query()
+                ->whereIn('id', $normalized->keys()->all())
+                ->whereIn('id', $allowedVariantIds)
+                ->lockForUpdate()
+                ->get(['id', 'quantity'])
+                ->keyBy('id');
 
-        $variants = ProductVariant::query()
-            ->whereIn('id', $normalized->keys()->all())
-            ->whereIn('id', $allowedVariantIds)
-            ->lockForUpdate()
-            ->get(['id', 'quantity'])
-            ->keyBy('id');
+            if ($variants->count() !== $normalized->count()) {
+                throw ValidationException::withMessages([
+                    'counts' => 'One or more audit lines are outside the active audit scope.',
+                ]);
+            }
 
-        if ($variants->count() !== $normalized->count()) {
-            throw ValidationException::withMessages([
-                'counts' => 'One or more audit lines are outside the active audit scope.',
-            ]);
-        }
+            $warehouseScopeKey = $this->warehouseScopeKey($session->warehouse_id);
+            $existingLocks = StockAuditItemLock::query()
+                ->whereIn('variant_id', $normalized->keys()->all())
+                ->where('warehouse_scope_key', $warehouseScopeKey)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('variant_id');
 
-        foreach ($variants as $variant) {
-            $physical = (int) $normalized->get((int) $variant->id)['physical_quantity'];
-            $system = (int) $variant->quantity;
-            $variance = $physical - $system;
+            $conflicts = [];
 
-            StockAuditItem::updateOrCreate(
-                [
-                    'session_id' => $session->id,
-                    'variant_id' => $variant->id,
-                ],
-                [
-                    'system_quantity' => $system,
-                    'physical_quantity' => $physical,
-                    'variance' => $variance,
-                ],
-            );
-        }
+            foreach ($variants as $variant) {
+                $line = $normalized->get((int) $variant->id);
+                $existingLock = $existingLocks->get((int) $variant->id);
 
-        return $this->refreshSessionCoverage($session);
+                if ($existingLock && (int) $existingLock->session_id !== (int) $session->id) {
+                    $conflictingSession = StockAuditSession::query()
+                        ->with('category:id,name')
+                        ->find($existingLock->session_id);
+
+                    $scopeLabel = $conflictingSession?->scope_type === StockAuditSession::SCOPE_CATEGORY
+                        ? sprintf('category audit (%s)', $conflictingSession?->category?->name ?? 'Unknown category')
+                        : 'full inventory audit';
+
+                    $conflicts["counts.{$line['index']}.variant_id"] = sprintf(
+                        'This item is already counted in session #%d for the same warehouse scope via %s.',
+                        (int) $existingLock->session_id,
+                        $scopeLabel,
+                    );
+                    continue;
+                }
+
+                if (!$existingLock) {
+                    try {
+                        $lock = StockAuditItemLock::create([
+                            'session_id' => $session->id,
+                            'variant_id' => $variant->id,
+                            'warehouse_id' => $session->warehouse_id,
+                            'warehouse_scope_key' => $warehouseScopeKey,
+                        ]);
+                    } catch (QueryException) {
+                        $conflicts["counts.{$line['index']}.variant_id"] = 'This item has just been counted in another audit session. Refresh and try again.';
+                        continue;
+                    }
+
+                    $existingLocks->put((int) $variant->id, $lock);
+                }
+
+                $physical = (int) $line['physical_quantity'];
+                $system = (int) $variant->quantity;
+                $variance = $physical - $system;
+
+                StockAuditItem::updateOrCreate(
+                    [
+                        'session_id' => $session->id,
+                        'variant_id' => $variant->id,
+                    ],
+                    [
+                        'system_quantity' => $system,
+                        'physical_quantity' => $physical,
+                        'variance' => $variance,
+                        'conflict_reason' => null,
+                        'conflicted_with_session_id' => null,
+                    ],
+                );
+            }
+
+            if (!empty($conflicts)) {
+                throw ValidationException::withMessages($conflicts);
+            }
+
+            return $this->refreshSessionCoverage($session);
+        });
     }
 
     public function storeAudit(
@@ -360,6 +460,12 @@ class StockAuditService
                 ]);
             }
 
+            if ($session->items()->exists() && (int) ($session->warehouse_id ?? 0) !== (int) ($warehouseId ?? 0)) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'Warehouse scope cannot be changed after counting has started for this audit session.',
+                ]);
+            }
+
             if ($warehouseId && $session->warehouse_id !== $warehouseId) {
                 $session->update(['warehouse_id' => $warehouseId]);
             }
@@ -400,9 +506,7 @@ class StockAuditService
             ->lockForUpdate()
             ->findOrFail($session->id);
 
-        $expectedVariantIds = $this->scopedVariantQuery($session->scope_type, $session->category_id)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id);
+        $expectedVariantIds = $this->sessionScopedVariantIds($session);
 
         $sessionItems = StockAuditItem::query()
             ->where('session_id', $session->id)
@@ -411,6 +515,7 @@ class StockAuditService
                 'variant.product:id,name',
                 'variant.values:id,variant_type_id,value',
                 'variant.values.type:id,name',
+                'stockAdjustment:id,status',
             ])
             ->get();
 
@@ -448,6 +553,20 @@ class StockAuditService
                 continue;
             }
 
+            if ($item->conflict_reason) {
+                $discrepancies[] = [
+                    'variant_id' => (int) $variant->id,
+                    'adjustment_id' => null,
+                    'system_quantity' => $systemQuantity,
+                    'physical_quantity' => $physicalQuantity,
+                    'variance' => $variance,
+                    'alert_type' => 'conflict',
+                    'severity' => 'high',
+                    'message' => $item->conflict_reason,
+                ];
+                continue;
+            }
+
             $adjustment = $this->stockAdjustmentApprovalService->submit([
                 'warehouse_id' => $warehouseId ?? $session->warehouse_id,
                 'variant_id' => $variant->id,
@@ -456,7 +575,12 @@ class StockAuditService
                 'reference' => sprintf('AUDIT-%d-%d', $session->id, $variant->id),
                 'note' => $note,
                 'adjusted_at' => now(),
+                'stock_audit_item_id' => $item->id,
             ], $submittedBy);
+
+            $item->update([
+                'stock_adjustment_id' => $adjustment->id,
+            ]);
 
             $displayName = $this->variantNameFormatter->format($variant);
             $isNegative = $systemQuantity < 0 || $physicalQuantity < 0;
@@ -553,7 +677,7 @@ class StockAuditService
 
         $session->update([
             'warehouse_id' => $warehouseId ?? $session->warehouse_id,
-            'status' => StockAuditSession::STATUS_SUBMITTED,
+            'status' => empty($discrepancies) ? StockAuditSession::STATUS_REVIEWED : StockAuditSession::STATUS_SUBMITTED,
             'total_expected_items' => $totalExpected,
             'total_scanned_items' => $totalScanned,
             'coverage_percentage' => $coverage,
@@ -562,6 +686,10 @@ class StockAuditService
             'submitted_at' => now(),
             'last_activity_at' => now(),
         ]);
+
+        if (empty($discrepancies)) {
+            $this->releaseSessionLocks($session->id);
+        }
 
         return [
             'processed' => $totalScanned,
@@ -583,10 +711,12 @@ class StockAuditService
             ->where('session_id', $session->id)
             ->count();
 
-        $expectedItems = (int) $session->total_expected_items;
-        if ($expectedItems <= 0) {
-            $expectedItems = $this->expectedItemsCount($session->scope_type, $session->category_id);
-        }
+        $expectedItems = $this->expectedItemsCount(
+            $session->scope_type,
+            $session->category_id,
+            $session->warehouse_id,
+            $session->id,
+        );
 
         $coverage = $expectedItems > 0
             ? round(($scannedItems / $expectedItems) * 100, 2)
@@ -613,10 +743,21 @@ class StockAuditService
     public function expectedItemsCount(
         string $scopeType = StockAuditSession::SCOPE_FULL,
         ?int $categoryId = null,
+        ?int $warehouseId = null,
+        ?int $currentSessionId = null,
     ): int {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
 
-        return (int) $this->scopedVariantQuery($scopeType, $categoryId)->count('id');
+        return (int) $this->scopedVariantQuery($scopeType, $categoryId)
+            ->when(
+                true,
+                fn (Builder $query) => $this->excludeVariantsLockedByOtherSessions(
+                    $query,
+                    $warehouseId,
+                    $currentSessionId,
+                )
+            )
+            ->count('id');
     }
 
     protected function scopedVariantQuery(
@@ -647,5 +788,48 @@ class StockAuditService
         }
 
         return [$scopeType, $categoryId];
+    }
+
+    protected function warehouseScopeKey(?int $warehouseId): int
+    {
+        return $warehouseId ? (int) $warehouseId : 0;
+    }
+
+    protected function releaseSessionLocks(int $sessionId): void
+    {
+        StockAuditItemLock::query()
+            ->where('session_id', $sessionId)
+            ->delete();
+    }
+
+    protected function sessionScopedVariantIds(StockAuditSession $session): Collection
+    {
+        return $this->excludeVariantsLockedByOtherSessions(
+            $this->scopedVariantQuery($session->scope_type, $session->category_id),
+            $session->warehouse_id,
+            $session->id,
+        )
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+    }
+
+    protected function excludeVariantsLockedByOtherSessions(
+        Builder $query,
+        ?int $warehouseId = null,
+        ?int $currentSessionId = null,
+    ): Builder {
+        $warehouseScopeKey = $this->warehouseScopeKey($warehouseId);
+
+        return $query->whereNotExists(function ($subQuery) use ($warehouseScopeKey, $currentSessionId): void {
+            $subQuery->select(DB::raw(1))
+                ->from('stock_audit_item_locks')
+                ->whereColumn('stock_audit_item_locks.variant_id', 'product_variants.id')
+                ->where('stock_audit_item_locks.warehouse_scope_key', $warehouseScopeKey);
+
+            if ($currentSessionId) {
+                $subQuery->where('stock_audit_item_locks.session_id', '!=', $currentSessionId);
+            }
+        });
     }
 }

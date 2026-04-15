@@ -13,6 +13,9 @@ class StockAuditItem extends Model
         'system_quantity',
         'physical_quantity',
         'variance',
+        'stock_adjustment_id',
+        'conflict_reason',
+        'conflicted_with_session_id',
     ];
 
     public function session(): BelongsTo
@@ -23,5 +26,15 @@ class StockAuditItem extends Model
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+
+    public function stockAdjustment(): BelongsTo
+    {
+        return $this->belongsTo(StockAdjustment::class, 'stock_adjustment_id');
+    }
+
+    public function conflictedWithSession(): BelongsTo
+    {
+        return $this->belongsTo(StockAuditSession::class, 'conflicted_with_session_id');
     }
 }

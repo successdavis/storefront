@@ -108,9 +108,17 @@ const visibleVariants = computed(() => {
 
 const discrepancyCount = computed(() => {
     return props.variants.filter((variant) => {
+        if (variant.locked_by_other_session) {
+            return false
+        }
+
         const physical = Number(physicalByVariant.value[variant.id] ?? 0)
         return physical !== Number(variant.system_quantity)
     }).length
+})
+
+const countableVariantCount = computed(() => {
+    return props.variants.filter((variant) => !variant.locked_by_other_session).length
 })
 
 function getVariance(variant) {
@@ -124,10 +132,12 @@ function submitAudit() {
     form.category_id = scopeType.value === 'category' ? Number(selectedCategoryId.value || 0) || null : null
     form.source = 'manual'
     form.submit_anyway = false
-    form.counts = props.variants.map((variant) => ({
-        variant_id: variant.id,
-        physical_quantity: Number(physicalByVariant.value[variant.id] ?? 0),
-    }))
+    form.counts = props.variants
+        .filter((variant) => !variant.locked_by_other_session)
+        .map((variant) => ({
+            variant_id: variant.id,
+            physical_quantity: Number(physicalByVariant.value[variant.id] ?? 0),
+        }))
 
     form.post(props.routes.store, {
         preserveScroll: true,
@@ -343,7 +353,7 @@ function resumeSession(sessionId, mode = 'manual') {
             <button
                 type="button"
                 class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="form.processing"
+                :disabled="form.processing || countableVariantCount === 0"
                 @click="submitAudit"
             >
                 {{ form.processing ? 'Submitting...' : 'Submit Audit' }}
@@ -368,7 +378,15 @@ function resumeSession(sessionId, mode = 'manual') {
                         class="hover:bg-gray-50 dark:hover:bg-gray-800/70"
                     >
                         <td class="px-4 py-3">
-                            {{ variant.display_name }}
+                            <div>
+                                <p>{{ variant.display_name }}</p>
+                                <p v-if="variant.locked_by_other_session" class="mt-1 text-xs text-amber-600">
+                                    {{ variant.lock_message }}
+                                </p>
+                                <p v-else-if="variant.conflict_reason" class="mt-1 text-xs text-red-600">
+                                    {{ variant.conflict_reason }}
+                                </p>
+                            </div>
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">{{ variant.sku }}</td>
                         <td class="px-4 py-3">{{ variant.system_quantity }}</td>
@@ -378,6 +396,7 @@ function resumeSession(sessionId, mode = 'manual') {
                                 type="number"
                                 min="0"
                                 class="w-28 rounded border border-gray-300 px-2 py-1 dark:border-gray-700 dark:bg-gray-900"
+                                :disabled="variant.locked_by_other_session"
                                 @change="persistVariant(variant.id)"
                             />
                         </td>

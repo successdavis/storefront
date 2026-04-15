@@ -173,6 +173,18 @@ async function lookupBarcode(rawBarcode) {
             },
         })
 
+        if (data.locked_by_other_session) {
+            currentVariant.value = null
+            scannerError.value = data.lock_message || 'This item is already counted in another unresolved audit session.'
+            return
+        }
+
+        if (data.conflict_reason) {
+            currentVariant.value = null
+            scannerError.value = data.conflict_reason
+            return
+        }
+
         currentVariant.value = data
         physicalInput.value = Number(
             data.physical_quantity ?? data.system_quantity ?? 0,
@@ -191,6 +203,11 @@ async function closeVariantDialog() {
 
 async function addToBatch() {
     if (!currentVariant.value) {
+        return
+    }
+
+    if (currentVariant.value.locked_by_other_session) {
+        scannerError.value = currentVariant.value.lock_message || 'This item is already counted in another unresolved audit session.'
         return
     }
 
