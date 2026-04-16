@@ -13,10 +13,29 @@ use Inertia\Inertia;
 
 class AdminProductController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request, ProductService $productService)
     {
         $q = Product::query()
-            ->with(['categories:id,name', 'brand:id,name'])
+            ->with([
+                'categories:id,name',
+                'brand:id,name',
+                'images:id,product_id,path,alt,is_primary,sort_order',
+                'variants' => fn ($query) => $query
+                    ->active()
+                    ->select([
+                        'id',
+                        'product_id',
+                        'sku',
+                        'quantity',
+                        'reserved',
+                        'regular_price',
+                        'sale_starts_at',
+                        'sale_ends_at',
+                        'is_active',
+                    ])
+                    ->orderBy('regular_price')
+                    ->orderBy('id'),
+            ])
             ->withSum(['variants as total_stock' => fn ($query) => $query->where('is_active', true)], 'quantity')
             ->when($request->get('search'), function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -30,22 +49,37 @@ class AdminProductController extends Controller
 
         return Inertia::render('Admin/Products/Index', [
             'filters'  => $request->only('search'),
-            'products' => $products->through(function ($p) {
+            'products' => $products->through(function ($p) use ($productService) {
+                $card = $productService->toStorefrontCard($p, null, false);
+                $onSale = $p->variants->contains(
+                    fn ($variant) => (bool) data_get(
+                        $productService->resolveVariantPricing($variant, null, $p, false),
+                        'has_discount',
+                        false
+                    )
+                );
+
                 return [
                     'id'          => $p->id,
                     'name'        => $p->name,
                     'slug'        => $p->slug,
-                    'thumb'       => optional($p->images->first())->path, // optional thumbnail
-                    'category'    => optional($p->category)->name,
+                    'thumb'       => $card['image'],
+                    'category'    => $p->categories->pluck('name')->filter()->implode(', '),
                     'brand'       => optional($p->brand)->name,
                     'total_stock' => (int) ($p->total_stock ?? 0),
                     'published'   => (bool) $p->is_active,
                     'featured'    => (bool) $p->featured,
+                    'on_sale'     => $onSale,
                     'updated_at'  => $p->updated_at->toDateTimeString(),
                 ];
             }),
-            // base storefront URL used by the View button. Adjust to your route.
-            'storefront_base' => url('/products'),
+        ]);
+    }
+
+    public function show(Product $product, ProductService $productService)
+    {
+        return Inertia::render('Admin/Products/Show', [
+            'product' => $productService->adminDetailPayload($product),
         ]);
     }
 
@@ -191,7 +225,7 @@ class AdminProductController extends Controller
     public function duplicate(Product $product, \App\Services\ProductService $svc)
     {
         $copy = $svc->duplicate($product);
-        return redirect()->route('products.edit', $copy)->with('success', 'Product duplicated.');
+        return redirect()->route('admin.products.edit', $copy)->with('success', 'Product duplicated.');
     }
 
     protected function validateIds(Request $request): array

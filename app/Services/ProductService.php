@@ -5,18 +5,28 @@ namespace App\Services;
 use App\Models\{Admin\ProductImage,
     Admin\VariantImage,
     Discount,
+    ItemReceiptItem,
     OpeningBalance,
     OpeningBalanceItem,
+    OrderItem,
     Product,
     ProductFaq,
+    ProductNote,
     ProductVariant,
-    User};
+    PurchaseOrderItem,
+    SaleItem,
+    StockAdjustment,
+    StockAuditItem,
+    StockEntry,
+    User,
+    VendorBillItem};
 use App\Models\Category;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Services\SkuGenerator;
@@ -685,6 +695,7 @@ class ProductService
             }
             $new->slug = $slug;
             $new->save();
+            $new->categories()->sync($source->categories()->pluck('categories.id')->all());
 
             // images
             $source->images()->get()->each(function ($img) use ($new) {
@@ -696,15 +707,33 @@ class ProductService
             $oldToNewVariant = [];
 
             $source->variants()->active()->with(['values', 'images'])->get()->each(function ($variant) use ($new, &$oldToNewVariant, &$valuePivot, $source) {
-                $v = $variant->replicate(['product_id','sku','created_at','updated_at']);
+                $v = new ProductVariant();
 
                 // Build a readable stem and generate a unique SKU for the duplicated variant
                 $attrLabels = $variant->values->pluck('value')->all(); // assumes column name 'value'
                 $brandCode  = data_get($source, 'brand.code', data_get($source, 'brand.name', ''));
                 $stem       = $this->skuGen->makeStem((string) $brandCode, (string) $new->name, $attrLabels);
-                $v->sku     = $this->skuGen->uniqueFromStem($new->store_id ?? null, $stem);
-
-                $v->product_id = $new->id;
+                $v->forceFill([
+                    'product_id' => $new->id,
+                    'sku' => $this->skuGen->uniqueFromStem($new->store_id ?? null, $stem),
+                    'barcode' => null,
+                    'quantity' => 0,
+                    'reserved' => 0,
+                    'total_cost_on_hand' => 0,
+                    'average_cost' => 0,
+                    'last_purchase_price' => $variant->last_purchase_price,
+                    'regular_price' => $variant->regular_price,
+                    'sale_starts_at' => $variant->sale_starts_at,
+                    'sale_ends_at' => $variant->sale_ends_at,
+                    'weight' => $variant->weight,
+                    'length' => $variant->length,
+                    'width' => $variant->width,
+                    'height' => $variant->height,
+                    'track_inventory' => $variant->track_inventory,
+                    'reorder_point' => $variant->reorder_point,
+                    'is_active' => $variant->is_active,
+                    'deleted_at' => null,
+                ]);
                 $v->save();
 
                 $oldToNewVariant[$variant->id] = $v->id;
@@ -740,6 +769,508 @@ class ProductService
 
             return $new->fresh();
         });
+    }
+
+    public function adminDetailPayload(Product $product): array
+    {
+        $product->load([
+            'brand:id,name',
+            'categories:id,name,slug',
+            'images:id,product_id,path,alt,is_primary,sort_order',
+            'variants' => fn ($query) => $query
+                ->where('is_active', true)
+                ->with([
+                    'values.type:id,name',
+                    'images:id,product_variant_id,path,alt,is_primary,sort_order',
+                ])
+                ->orderBy('id'),
+        ]);
+
+        $card = $this->toStorefrontCard($product, null, true);
+        $variants = $product->variants->values();
+        $transactionVariants = $product->variants()
+            ->withTrashed()
+            ->with(['values.type:id,name'])
+            ->get()
+            ->values();
+
+        return [
+            'id' => (int) $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'meta_title' => $product->meta_title,
+            'meta_description' => $product->meta_description,
+            'published' => (bool) $product->is_active,
+            'featured' => (bool) $product->featured,
+            'on_sale' => $variants->contains(
+                fn (ProductVariant $variant) => (bool) data_get(
+                    $this->resolveVariantPricing($variant, null, $product, false),
+                    'has_discount',
+                    false
+                )
+            ),
+            'total_stock' => (int) data_get($card, 'stock.on_hand', 0),
+            'available_stock' => (int) data_get($card, 'stock.available', 0),
+            'image' => $card['image'],
+            'brand' => $product->brand?->name,
+            'categories' => $product->categories->map(fn ($category) => [
+                'id' => (int) $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+            ])->values()->all(),
+            'pricing_summary' => [
+                'cost' => $this->summarizeNumericMetric($variants->pluck('last_purchase_price')),
+                'sale_price' => $this->summarizeNumericMetric(
+                    $variants->map(fn (ProductVariant $variant) => data_get(
+                        $this->resolveVariantPricing($variant, null, $product, false),
+                        'current'
+                    ))
+                ),
+                'average_cost' => $this->summarizeNumericMetric($variants->pluck('average_cost')),
+            ],
+            'created_at' => optional($product->created_at)->toDateTimeString(),
+            'updated_at' => optional($product->updated_at)->toDateTimeString(),
+            'transaction_filters' => $this->adminTransactionFilters(),
+            'transactions' => $this->adminTransactionFeed($product, $transactionVariants),
+            'notes_enabled' => $this->tableExists('product_notes'),
+            'notes' => $this->adminNotesPayload($product),
+            'variants' => $variants->map(function (ProductVariant $variant) use ($product) {
+                $price = $this->resolveVariantPricing($variant, null, $product, false);
+                $stock = $this->resolveVariantStock($variant);
+
+                return [
+                    'id' => (int) $variant->id,
+                    'label' => $this->describeVariant($variant),
+                    'sku' => $variant->sku,
+                    'barcode' => $variant->barcode,
+                    'last_purchase_price' => $variant->last_purchase_price !== null ? (float) $variant->last_purchase_price : null,
+                    'average_cost' => $variant->average_cost !== null ? (float) $variant->average_cost : null,
+                    'price' => $price,
+                    'stock' => $stock,
+                    'image' => $this->makeImageUrl(
+                        optional($variant->images->firstWhere('is_primary', true) ?? $variant->images->first())->path
+                    ) ?: $this->resolveProductImage($product, $variant),
+                ];
+            })->values()->all(),
+        ];
+    }
+
+    public function storeAdminNote(Product $product, User $actor, string $note): ?ProductNote
+    {
+        if (!$this->tableExists('product_notes')) {
+            return null;
+        }
+
+        return $product->notes()->create([
+            'user_id' => $actor->id,
+            'note' => trim($note),
+        ]);
+    }
+
+    public function updateAdminNote(ProductNote $note, string $value): ?ProductNote
+    {
+        if (!$this->tableExists('product_notes')) {
+            return null;
+        }
+
+        $note->update([
+            'note' => trim($value),
+        ]);
+
+        return $note->fresh('user:id,name');
+    }
+
+    public function deleteAdminNote(ProductNote $note): bool
+    {
+        if (!$this->tableExists('product_notes')) {
+            return false;
+        }
+
+        $note->delete();
+
+        return true;
+    }
+
+    protected function adminNotesPayload(Product $product): array
+    {
+        if (!$this->tableExists('product_notes')) {
+            return [];
+        }
+
+        return $product->notes()
+            ->with('user:id,name')
+            ->latest()
+            ->get()
+            ->map(fn (ProductNote $note) => [
+                'id' => (int) $note->id,
+                'note' => $note->note,
+                'author' => $note->user?->name ?? 'Unknown',
+                'created_at' => optional($note->created_at)->toDateTimeString(),
+                'updated_at' => optional($note->updated_at)->toDateTimeString(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    protected function adminTransactionFilters(): array
+    {
+        return [
+            ['value' => 'all', 'label' => 'All'],
+            ['value' => 'sales_orders', 'label' => 'Sales Orders'],
+            ['value' => 'pos_sales', 'label' => 'POS Sales'],
+            ['value' => 'purchase_orders', 'label' => 'Purchase Orders'],
+            ['value' => 'item_receipts', 'label' => 'Item Receipts'],
+            ['value' => 'vendor_bills', 'label' => 'Vendor Bills'],
+            ['value' => 'stock_entries', 'label' => 'Stock Entries'],
+            ['value' => 'stock_adjustments', 'label' => 'Stock Adjustments'],
+            ['value' => 'stock_audits', 'label' => 'Stock Audits'],
+        ];
+    }
+
+    protected function adminTransactionFeed(Product $product, ?Collection $variants = null): array
+    {
+        $variants ??= $product->variants()
+            ->with(['values.type:id,name'])
+            ->get();
+
+        $variantIds = $product->variants()->withTrashed()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if (empty($variantIds)) {
+            return [];
+        }
+
+        $variantLabels = $variants
+            ->keyBy('id')
+            ->map(fn (ProductVariant $variant) => $this->describeVariant($variant));
+
+        $entries = collect()
+            ->merge($this->orderTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->posSaleTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->purchaseOrderTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->itemReceiptTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->vendorBillTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->stockEntryTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->stockAdjustmentTransactionEntries($variantIds, $variantLabels))
+            ->merge($this->stockAuditTransactionEntries($variantIds, $variantLabels));
+
+        return $entries
+            ->sortByDesc(fn (array $entry) => $entry['occurred_at'] ?? '')
+            ->values()
+            ->all();
+    }
+
+    protected function orderTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('order_items') || !$this->tableExists('orders')) {
+            return [];
+        }
+
+        return OrderItem::query()
+            ->with('order:id,order_number,status,created_at')
+            ->whereIn('variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get(['id', 'order_id', 'variant_id', 'quantity', 'price', 'created_at'])
+            ->map(fn (OrderItem $item) => [
+                'id' => 'order-'.$item->id,
+                'type' => 'sales_orders',
+                'type_label' => 'Sales Order',
+                'reference' => $item->order?->order_number ?? ('Order #'.$item->order_id),
+                'status' => $item->order?->status,
+                'variant_label' => $variantLabels->get($item->variant_id, 'Variant #'.$item->variant_id),
+                'quantity' => (int) $item->quantity,
+                'amount' => round((float) $item->price * (int) $item->quantity, 2),
+                'occurred_at' => optional($item->order?->created_at ?? $item->created_at)->toDateTimeString(),
+                'href' => $item->order_id ? route('admin.orders.show', $item->order_id) : null,
+                'meta' => 'Unit price: '.number_format((float) $item->price, 2),
+            ])
+            ->all();
+    }
+
+    protected function posSaleTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('sale_items') || !$this->tableExists('sales')) {
+            return [];
+        }
+
+        return SaleItem::query()
+            ->with('sale:id,total_amount,created_at')
+            ->whereIn('variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get(['id', 'sale_id', 'variant_id', 'quantity', 'price', 'created_at'])
+            ->map(fn (SaleItem $item) => [
+                'id' => 'sale-'.$item->id,
+                'type' => 'pos_sales',
+                'type_label' => 'POS Sale',
+                'reference' => 'Sale #'.$item->sale_id,
+                'status' => 'paid',
+                'variant_label' => $variantLabels->get($item->variant_id, 'Variant #'.$item->variant_id),
+                'quantity' => (int) $item->quantity,
+                'amount' => round((float) $item->price * (int) $item->quantity, 2),
+                'occurred_at' => optional($item->sale?->created_at ?? $item->created_at)->toDateTimeString(),
+                'href' => $item->sale_id ? route('admin.sales.show', $item->sale_id) : null,
+                'meta' => 'Unit price: '.number_format((float) $item->price, 2),
+            ])
+            ->all();
+    }
+
+    protected function purchaseOrderTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('purchase_order_items') || !$this->tableExists('purchase_orders')) {
+            return [];
+        }
+
+        return PurchaseOrderItem::query()
+            ->with('purchaseOrder:id,po_number,status,order_date,created_at')
+            ->whereIn('product_variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get([
+                'id',
+                'purchase_order_id',
+                'product_variant_id',
+                'quantity_ordered',
+                'quantity_received',
+                'unit_cost',
+                'created_at',
+            ])
+            ->map(fn (PurchaseOrderItem $item) => [
+                'id' => 'purchase-order-'.$item->id,
+                'type' => 'purchase_orders',
+                'type_label' => 'Purchase Order',
+                'reference' => $item->purchaseOrder?->po_number ?? ('PO #'.$item->purchase_order_id),
+                'status' => $item->purchaseOrder?->status,
+                'variant_label' => $variantLabels->get($item->product_variant_id, 'Variant #'.$item->product_variant_id),
+                'quantity' => (int) $item->quantity_ordered,
+                'amount' => round((float) $item->unit_cost * (int) $item->quantity_ordered, 2),
+                'occurred_at' => optional($item->purchaseOrder?->order_date ?? $item->created_at)->toDateTimeString(),
+                'href' => $item->purchase_order_id ? route('admin.purchase-orders.show', $item->purchase_order_id) : null,
+                'meta' => 'Received: '.(int) $item->quantity_received,
+            ])
+            ->all();
+    }
+
+    protected function itemReceiptTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('item_receipt_items') || !$this->tableExists('item_receipts')) {
+            return [];
+        }
+
+        return ItemReceiptItem::query()
+            ->with('itemReceipt:id,receipt_number,received_date,status,created_at')
+            ->whereIn('product_variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get([
+                'id',
+                'item_receipt_id',
+                'product_variant_id',
+                'quantity_received',
+                'unit_cost',
+                'line_total',
+                'created_at',
+            ])
+            ->map(fn (ItemReceiptItem $item) => [
+                'id' => 'item-receipt-'.$item->id,
+                'type' => 'item_receipts',
+                'type_label' => 'Item Receipt',
+                'reference' => $item->itemReceipt?->receipt_number ?? ('Receipt #'.$item->item_receipt_id),
+                'status' => $item->itemReceipt?->status,
+                'variant_label' => $variantLabels->get($item->product_variant_id, 'Variant #'.$item->product_variant_id),
+                'quantity' => (int) $item->quantity_received,
+                'amount' => round((float) $item->line_total, 2),
+                'occurred_at' => optional($item->itemReceipt?->received_date ?? $item->created_at)->toDateTimeString(),
+                'href' => null,
+                'meta' => 'Unit cost: '.number_format((float) $item->unit_cost, 2),
+            ])
+            ->all();
+    }
+
+    protected function vendorBillTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('vendor_bill_items') || !$this->tableExists('vendor_bills')) {
+            return [];
+        }
+
+        return VendorBillItem::query()
+            ->with('vendorBill:id,bill_number,status,bill_date,created_at')
+            ->whereIn('product_variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get([
+                'id',
+                'vendor_bill_id',
+                'product_variant_id',
+                'quantity',
+                'unit_cost',
+                'discount_amount',
+                'created_at',
+            ])
+            ->map(fn (VendorBillItem $item) => [
+                'id' => 'vendor-bill-'.$item->id,
+                'type' => 'vendor_bills',
+                'type_label' => 'Vendor Bill',
+                'reference' => $item->vendorBill?->bill_number ?? ('Bill #'.$item->vendor_bill_id),
+                'status' => $item->vendorBill?->status,
+                'variant_label' => $variantLabels->get($item->product_variant_id, 'Variant #'.$item->product_variant_id),
+                'quantity' => (float) $item->quantity,
+                'amount' => round((float) $item->line_total, 2),
+                'occurred_at' => optional($item->vendorBill?->bill_date ?? $item->created_at)->toDateTimeString(),
+                'href' => $item->vendor_bill_id ? route('admin.vendor-bills.show', $item->vendor_bill_id) : null,
+                'meta' => 'Unit cost: '.number_format((float) $item->unit_cost, 2),
+            ])
+            ->all();
+    }
+
+    protected function stockEntryTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('stock_entries')) {
+            return [];
+        }
+
+        return StockEntry::query()
+            ->with('warehouse:id,name')
+            ->whereIn('variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get([
+                'id',
+                'warehouse_id',
+                'variant_id',
+                'quantity',
+                'unit_cost',
+                'type',
+                'reason',
+                'effective_at',
+                'created_at',
+            ])
+            ->map(fn (StockEntry $entry) => [
+                'id' => 'stock-entry-'.$entry->id,
+                'type' => 'stock_entries',
+                'type_label' => 'Stock Entry',
+                'reference' => 'Entry #'.$entry->id,
+                'status' => $entry->type,
+                'variant_label' => $variantLabels->get($entry->variant_id, 'Variant #'.$entry->variant_id),
+                'quantity' => (int) $entry->quantity,
+                'amount' => round((float) $entry->total_cost, 2),
+                'occurred_at' => optional($entry->effective_at ?? $entry->created_at)->toDateTimeString(),
+                'href' => route('admin.stock-entries.show', $entry->id),
+                'meta' => trim(($entry->warehouse?->name ? $entry->warehouse->name.' • ' : '').($entry->reason ?? '')),
+            ])
+            ->all();
+    }
+
+    protected function stockAdjustmentTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('stock_adjustments')) {
+            return [];
+        }
+
+        return StockAdjustment::query()
+            ->whereIn('variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get([
+                'id',
+                'variant_id',
+                'adjusted_quantity',
+                'reason',
+                'status',
+                'adjusted_at',
+                'created_at',
+            ])
+            ->map(fn (StockAdjustment $adjustment) => [
+                'id' => 'stock-adjustment-'.$adjustment->id,
+                'type' => 'stock_adjustments',
+                'type_label' => 'Stock Adjustment',
+                'reference' => 'Adjustment #'.$adjustment->id,
+                'status' => $adjustment->status,
+                'variant_label' => $variantLabels->get($adjustment->variant_id, 'Variant #'.$adjustment->variant_id),
+                'quantity' => (int) $adjustment->adjusted_quantity,
+                'amount' => null,
+                'occurred_at' => optional($adjustment->adjusted_at ?? $adjustment->created_at)->toDateTimeString(),
+                'href' => route('admin.stock-adjustments.show', $adjustment->id),
+                'meta' => $adjustment->reason,
+            ])
+            ->all();
+    }
+
+    protected function stockAuditTransactionEntries(array $variantIds, Collection $variantLabels): array
+    {
+        if (!$this->tableExists('stock_audit_items') || !$this->tableExists('stock_audit_sessions')) {
+            return [];
+        }
+
+        $columns = [
+            'id',
+            'session_id',
+            'variant_id',
+            'physical_quantity',
+            'variance',
+            'created_at',
+        ];
+
+        if ($this->columnExists('stock_audit_items', 'conflict_reason')) {
+            $columns[] = 'conflict_reason';
+        }
+
+        return StockAuditItem::query()
+            ->with('session:id,status,scope_type,submitted_at,created_at')
+            ->whereIn('variant_id', $variantIds)
+            ->latest('id')
+            ->limit(50)
+            ->get($columns)
+            ->map(fn (StockAuditItem $item) => [
+                'id' => 'stock-audit-'.$item->id,
+                'type' => 'stock_audits',
+                'type_label' => 'Stock Audit',
+                'reference' => 'Audit #'.$item->session_id,
+                'status' => $item->session?->status,
+                'variant_label' => $variantLabels->get($item->variant_id, 'Variant #'.$item->variant_id),
+                'quantity' => (int) $item->variance,
+                'amount' => null,
+                'occurred_at' => optional($item->session?->submitted_at ?? $item->created_at)->toDateTimeString(),
+                'href' => route('admin.inventory.discrepancies'),
+                'meta' => $item->conflict_reason ?: 'Counted: '.(int) $item->physical_quantity,
+            ])
+            ->all();
+    }
+
+    protected function summarizeNumericMetric(Collection $values): ?array
+    {
+        $normalized = $values
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->map(fn ($value) => round((float) $value, 2))
+            ->values();
+
+        if ($normalized->isEmpty()) {
+            return null;
+        }
+
+        $min = (float) $normalized->min();
+        $max = (float) $normalized->max();
+
+        return [
+            'min' => $min,
+            'max' => $max,
+            'from' => round($min, 2) !== round($max, 2),
+        ];
+    }
+
+    protected function tableExists(string $table): bool
+    {
+        static $exists = [];
+
+        return $exists[$table] ??= Schema::hasTable($table);
+    }
+
+    protected function columnExists(string $table, string $column): bool
+    {
+        static $exists = [];
+
+        $key = $table.'.'.$column;
+
+        return $exists[$key] ??= Schema::hasColumn($table, $column);
     }
 
     public function paginateStorefrontProducts(int $perPage = 12, ?string $search = null, ?int $categoryId = null, ?User $user = null): LengthAwarePaginator

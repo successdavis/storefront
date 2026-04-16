@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Admin\DiscountController as AdminDiscountController;
 use App\Http\Controllers\Admin\AdminOrderController;
 use App\Http\Controllers\Admin\AdminProductController;
+use App\Http\Controllers\Admin\ProductNoteController;
 use App\Http\Controllers\Admin\AdminProductVariantController;
 use App\Http\Controllers\Admin\AdminSkuController;
 use App\Http\Controllers\Admin\ProductImageController;
@@ -358,6 +359,7 @@ Route::prefix('admin')
 
         Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');
+        Route::get('/products/{product}', [AdminProductController::class, 'show'])->name('products.show');
         Route::get('/products/{product}/edit', [AdminProductController::class, 'edit'])->name('products.edit');
         Route::post('/products', [AdminProductController::class, 'store'])->name('products.store');
         Route::put('/products/{product}', [AdminProductController::class, 'update'])->name('products.update');
@@ -374,6 +376,15 @@ Route::prefix('admin')
             ->name('products.toggle-featured');
         Route::post('/products/{product}/duplicate', [AdminProductController::class, 'duplicate'])
             ->name('products.duplicate');
+        Route::post('/products/{product}/notes', [ProductNoteController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('products.notes.store');
+        Route::put('/products/{product}/notes/{note}', [ProductNoteController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('products.notes.update');
+        Route::delete('/products/{product}/notes/{note}', [ProductNoteController::class, 'destroy'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('products.notes.destroy');
 
         Route::resource('variant-types', VariantTypeController::class)
             ->parameters(['variant-types' => 'variantType']);

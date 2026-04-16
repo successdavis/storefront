@@ -1,7 +1,7 @@
 <!-- resources/js/Pages/Products/Index.vue -->
 <script setup>
 import { router } from '@inertiajs/vue3'
-import { ref, watch, computed, onMounted, nextTick } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import {
     EyeIcon,
     PencilSquareIcon,
@@ -12,7 +12,6 @@ import {
 const props = defineProps({
     products: Object,
     filters: Object,
-    storefront_base: String,
 })
 
 const search = ref(props.filters?.search ?? '')
@@ -139,6 +138,7 @@ function applyBulk() {
                         <th scope="col" class="px-6 py-3">Published</th>
                         <th scope="col" class="px-6 py-3">Featured</th>
                         <th scope="col" class="px-6 py-3">Available</th>
+                        <th scope="col" class="px-6 py-3">On Sale</th>
                         <th scope="col" class="px-6 py-3">Action</th>
                     </tr>
                     </thead>
@@ -167,7 +167,7 @@ function applyBulk() {
                                 <img v-if="p.thumb" :src="p.thumb" alt="" class="h-10 w-10 object-cover rounded" />
                                 <div>
                                     <div class="font-medium">{{ p.name }}</div>
-                                    <div class="text-xs text-gray-500">{{ p.category || '—' }} • {{ p.brand || '—' }}</div>
+                                    <div class="text-xs text-gray-500">{{ p.category || '-' }} - {{ p.brand || '-' }}</div>
                                 </div>
                             </div>
                         </th>
@@ -196,8 +196,17 @@ function applyBulk() {
                             {{ p.total_stock > 0 ? 'Yes' : 'No' }}
                         </td>
 
+                        <td class="px-6 py-4">
+                            <span
+                                :class="p.on_sale ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'"
+                                class="inline-flex rounded-full px-2.5 py-1 text-xs font-medium"
+                            >
+                                {{ p.on_sale ? 'Yes' : 'No' }}
+                            </span>
+                        </td>
+
                         <td class="flex items-center gap-2 px-6 py-4">
-                            <a :href="`${props.storefront_base}/${p.slug}`" target="_blank" class="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100">
+                            <a :href="route('admin.products.show', p.id)" class="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100">
                                 <EyeIcon class="h-5 w-5 text-emerald-700" />
                             </a>
                             <a :href="route('admin.products.edit', p.id)" class="p-2 rounded-full bg-blue-50 hover:bg-blue-100">

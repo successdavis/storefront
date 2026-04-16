@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
 
 class ProductVariant extends Model
 {
@@ -169,17 +170,26 @@ class ProductVariant extends Model
             return true;
         }
 
-        return $this->openingBalanceItems()->exists()
-            || $this->stockEntries()->exists()
-            || $this->orderItems()->exists()
-            || $this->saleItems()->exists()
-            || $this->stockReservations()->exists()
-            || $this->purchaseOrderItems()->exists()
-            || $this->itemReceiptItems()->exists()
-            || $this->vendorBillItems()->exists()
-            || $this->inventoryCostAdjustments()->exists()
-            || $this->stockAdjustments()->exists()
-            || $this->stockAuditItems()->exists()
-            || $this->inventoryAlerts()->exists();
+        return $this->relatedTableExists('openingBalanceItems') && $this->openingBalanceItems()->exists()
+            || $this->relatedTableExists('stockEntries') && $this->stockEntries()->exists()
+            || $this->relatedTableExists('orderItems') && $this->orderItems()->exists()
+            || $this->relatedTableExists('saleItems') && $this->saleItems()->exists()
+            || $this->relatedTableExists('stockReservations') && $this->stockReservations()->exists()
+            || $this->relatedTableExists('purchaseOrderItems') && $this->purchaseOrderItems()->exists()
+            || $this->relatedTableExists('itemReceiptItems') && $this->itemReceiptItems()->exists()
+            || $this->relatedTableExists('vendorBillItems') && $this->vendorBillItems()->exists()
+            || $this->relatedTableExists('inventoryCostAdjustments') && $this->inventoryCostAdjustments()->exists()
+            || $this->relatedTableExists('stockAdjustments') && $this->stockAdjustments()->exists()
+            || $this->relatedTableExists('stockAuditItems') && $this->stockAuditItems()->exists()
+            || $this->relatedTableExists('inventoryAlerts') && $this->inventoryAlerts()->exists();
+    }
+
+    protected function relatedTableExists(string $relation): bool
+    {
+        static $tableExists = [];
+
+        $table = $this->{$relation}()->getRelated()->getTable();
+
+        return $tableExists[$table] ??= Schema::hasTable($table);
     }
 }

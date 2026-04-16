@@ -71,6 +71,11 @@ class Product extends Model
         return $this->hasMany(ProductFaq::class)->orderBy('position');
     }
 
+    public function notes(): HasMany
+    {
+        return $this->hasMany(ProductNote::class)->latest();
+    }
+
 
     public function slugHistories()
     {
