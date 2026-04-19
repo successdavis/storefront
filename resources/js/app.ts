@@ -7,6 +7,7 @@ import type { DefineComponent } from 'vue'
 import { createApp, h } from 'vue'
 import { initializeTheme } from './composables/useAppearance'
 import { bootStorefrontAnalytics } from './composables/useStorefrontAnalytics'
+import './lib/echarts'
 
 import { ZiggyVue } from 'ziggy-js'  // ✅ plugin
 import { Ziggy } from './ziggy'      // ✅ dynamic routes from @routes

@@ -230,7 +230,9 @@ function formatLabel(value: string) {
                     </a>
                 </div>
 
-                <v-chart class="h-[360px] w-full" :option="trendOptions" autoresize />
+                <div class="h-[360px] overflow-hidden">
+                    <v-chart class="h-full w-full" :option="trendOptions" autoresize />
+                </div>
             </section>
 
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -249,7 +251,9 @@ function formatLabel(value: string) {
                     </a>
                 </div>
 
-                <v-chart class="h-[280px] w-full" :option="deviceOptions" autoresize />
+                <div class="h-[280px] overflow-hidden">
+                    <v-chart class="h-full w-full" :option="deviceOptions" autoresize />
+                </div>
             </section>
         </div>
 

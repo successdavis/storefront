@@ -1,11 +1,11 @@
 <template>
-    <v-chart class="chart" :option="chartOptions" />
+    <v-chart class="chart" :option="chartOptions" autoresize />
 </template>
 
 <script>
 import { defineComponent, watch, ref } from 'vue';
 import VChart from 'vue-echarts';
-import 'echarts';
+import '@/lib/echarts';
 
 export default defineComponent({
     components: { VChart },
