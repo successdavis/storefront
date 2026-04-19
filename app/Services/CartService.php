@@ -319,7 +319,13 @@ class CartService
             }
 
             $variant = $variants->get($vid);
-            $item = $this->buildDetailedCartItemPayload($variant, $vid, $quantity, $user);
+            $item = $this->buildDetailedCartItemPayload(
+                variant: $variant,
+                variantId: $vid,
+                quantity: $quantity,
+                user: $user,
+                updatedAt: $entry['updated_at'] ?? null,
+            );
             $items[] = $item;
 
             if (!($item['availability']['is_available'] ?? false)) {
@@ -418,7 +424,7 @@ class CartService
         ];
     }
 
-    protected function buildDetailedCartItemPayload(?ProductVariant $variant, int $variantId, int $quantity, ?User $user = null): array
+    protected function buildDetailedCartItemPayload(?ProductVariant $variant, int $variantId, int $quantity, ?User $user = null, ?string $updatedAt = null): array
     {
         $availability = $this->resolveCartItemAvailability($variant, $quantity);
         $pricing = $this->resolveCartItemPricing($variant, $user);
@@ -431,6 +437,7 @@ class CartService
             'id' => null,
             'variant_id' => $variantId,
             'quantity' => $quantity,
+            'updated_at' => $updatedAt,
             'subtotal' => $lineTotal,
             'category_ids' => $product?->categories?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [],
             'product' => [

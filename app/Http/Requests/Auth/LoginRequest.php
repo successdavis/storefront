@@ -52,6 +52,18 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        $status = $user->status ?? User::STATUS_ACTIVE;
+
+        if (in_array($status, [User::STATUS_INACTIVE, User::STATUS_SUSPENDED], true)) {
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => $status === User::STATUS_SUSPENDED
+                    ? 'This account has been suspended. Please contact support.'
+                    : 'This account is not currently active. Please contact support.',
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
 
         return $user;

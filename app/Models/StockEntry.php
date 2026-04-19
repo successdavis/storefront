@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class StockEntry extends Model
 {
@@ -38,12 +41,12 @@ class StockEntry extends Model
         return $this->belongsTo(ProductVariant::class);
     }
 
-    public function warehouse(): \Illuminate\Database\Eloquent\Relatiwons\BelongsTo
+    public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
     }
 
-    public function employee(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function employee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'employee_id');
     }
@@ -53,7 +56,7 @@ class StockEntry extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function source(): \Illuminate\Database\Eloquent\Relations\MorphTo
+    public function source(): MorphTo
     {
         return $this->morphTo();
     }

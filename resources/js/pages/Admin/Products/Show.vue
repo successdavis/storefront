@@ -184,77 +184,6 @@ function deleteNote(noteId) {
 
                 <div class="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                     <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-                        <div class="flex flex-wrap items-center justify-between gap-4">
-                            <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Transaction activity</h2>
-                            <select
-                                v-model="selectedTransactionType"
-                                class="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                            >
-                                <option
-                                    v-for="filter in product.transaction_filters"
-                                    :key="filter.value"
-                                    :value="filter.value"
-                                >
-                                    {{ filter.label }}
-                                </option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-                            <thead class="bg-slate-50 dark:bg-slate-950">
-                                <tr class="text-left text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                                    <th class="px-6 py-3">Activity</th>
-                                    <th class="px-6 py-3">Reference</th>
-                                    <th class="px-6 py-3">Variant</th>
-                                    <th class="px-6 py-3">Quantity</th>
-                                    <th class="px-6 py-3">Amount</th>
-                                    <th class="px-6 py-3">When</th>
-                                </tr>
-                            </thead>
-                            <tbody v-if="filteredTransactions.length" class="divide-y divide-slate-200 dark:divide-slate-800">
-                                <tr v-for="transaction in filteredTransactions" :key="transaction.id">
-                                    <td class="px-6 py-4">
-                                        <div class="flex flex-col gap-2">
-                                            <span :class="['inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold', transactionBadgeClass(transaction.type)]">
-                                                {{ transaction.type_label }}
-                                            </span>
-                                            <span v-if="transaction.status" class="text-xs text-slate-500 dark:text-slate-400">
-                                                Status: {{ transaction.status }}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <a
-                                            v-if="transaction.href"
-                                            :href="transaction.href"
-                                            class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
-                                        >
-                                            {{ transaction.reference }}
-                                        </a>
-                                        <span v-else class="font-medium text-slate-900 dark:text-slate-100">{{ transaction.reference }}</span>
-                                        <p v-if="transaction.meta" class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ transaction.meta }}</p>
-                                    </td>
-                                    <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ transaction.variant_label }}</td>
-                                    <td class="px-6 py-4 text-slate-900 dark:text-slate-100">{{ transaction.quantity ?? '-' }}</td>
-                                    <td class="px-6 py-4 text-slate-900 dark:text-slate-100">{{ transaction.amount !== null ? money(transaction.amount) : '-' }}</td>
-                                    <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ transaction.occurred_at || '-' }}</td>
-                                </tr>
-                            </tbody>
-                            <tbody v-else>
-                                <tr>
-                                    <td colspan="6" class="px-6 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                                        No transaction activity found for the selected filter.
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
                         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Variants</h2>
                     </div>
 
@@ -387,6 +316,79 @@ function deleteNote(noteId) {
                             <dd class="text-right text-slate-900 dark:text-slate-100">{{ product.updated_at || '-' }}</dd>
                         </div>
                     </dl>
+                </div>
+            </div>
+        </section>
+
+        <section class="space-y-6">
+            <div class="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Transaction activity</h2>
+                        <select
+                            v-model="selectedTransactionType"
+                            class="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                        >
+                            <option
+                                v-for="filter in product.transaction_filters"
+                                :key="filter.value"
+                                :value="filter.value"
+                            >
+                                {{ filter.label }}
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                        <thead class="bg-slate-50 dark:bg-slate-950">
+                            <tr class="text-left text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                                <th class="px-6 py-3">Activity</th>
+                                <th class="px-6 py-3">Reference</th>
+                                <th class="px-6 py-3">Variant</th>
+                                <th class="px-6 py-3">Quantity</th>
+                                <th class="px-6 py-3">Amount</th>
+                                <th class="px-6 py-3">When</th>
+                            </tr>
+                        </thead>
+                        <tbody v-if="filteredTransactions.length" class="divide-y divide-slate-200 dark:divide-slate-800">
+                            <tr v-for="transaction in filteredTransactions" :key="transaction.id">
+                                <td class="px-6 py-4">
+                                    <div class="flex flex-col gap-2">
+                                        <span :class="['inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold', transactionBadgeClass(transaction.type)]">
+                                            {{ transaction.type_label }}
+                                        </span>
+                                        <span v-if="transaction.status" class="text-xs text-slate-500 dark:text-slate-400">
+                                            Status: {{ transaction.status }}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <a
+                                        v-if="transaction.href"
+                                        :href="transaction.href"
+                                        class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
+                                    >
+                                        {{ transaction.reference }}
+                                    </a>
+                                    <span v-else class="font-medium text-slate-900 dark:text-slate-100">{{ transaction.reference }}</span>
+                                    <p v-if="transaction.meta" class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ transaction.meta }}</p>
+                                </td>
+                                <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ transaction.variant_label }}</td>
+                                <td class="px-6 py-4 text-slate-900 dark:text-slate-100">{{ transaction.quantity ?? '-' }}</td>
+                                <td class="px-6 py-4 text-slate-900 dark:text-slate-100">{{ transaction.amount !== null ? money(transaction.amount) : '-' }}</td>
+                                <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ transaction.occurred_at || '-' }}</td>
+                            </tr>
+                        </tbody>
+                        <tbody v-else>
+                            <tr>
+                                <td colspan="6" class="px-6 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                                    No transaction activity found for the selected filter.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </section>

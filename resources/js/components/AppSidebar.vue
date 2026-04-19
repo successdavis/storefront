@@ -34,12 +34,25 @@ import {
 import { computed } from 'vue';
 import AppLogo from './AppLogo.vue';
 
+type SidebarSubItem = {
+    title: string;
+    href: string;
+    icon?: MainNavItem['icon'];
+    isActive?: boolean;
+    condition?: string;
+};
+
+type SidebarNavItem = Omit<MainNavItem, 'subItems'> & {
+    condition?: string;
+    subItems?: SidebarSubItem[];
+};
+
 const page = usePage();
 
 const primaryRole = computed(() => page.props.auth?.primary_role ?? page.props.auth?.user?.primary_role ?? 'customer');
 const capabilities = computed<Record<string, boolean>>(() => page.props.auth?.capabilities ?? page.props.auth?.user?.capabilities ?? {});
 
-const adminNavItems: MainNavItem[] = [
+const adminNavItems: SidebarNavItem[] = [
     {
         title: 'Dashboard',
         href: '/admin',
@@ -49,6 +62,19 @@ const adminNavItems: MainNavItem[] = [
         title: 'Sales Workspace',
         href: '/sales',
         icon: ShoppingBag,
+    },
+    {
+        title: 'Analytics',
+        icon: BookOpen,
+        subItems: [
+            { title: 'Overview', href: '/admin/analytics' },
+            {
+                title: 'Settings',
+                href: '/admin/analytics/settings',
+                condition: 'can_manage_analytics',
+            },
+        ],
+        condition: 'can_view_analytics',
     },
     {
         title: 'POS',
@@ -111,6 +137,11 @@ const adminNavItems: MainNavItem[] = [
         title: 'Orders',
         icon: ReceiptText,
         href: '/admin/orders',
+    },
+    {
+        title: 'Customers',
+        icon: Users,
+        href: '/admin/customers',
     },
     {
         title: 'Payments',
@@ -190,7 +221,14 @@ const customerNavItems: MainNavItem[] = [
 
 const mainNavItems = computed<MainNavItem[]>(() => {
     if (capabilities.value.can_access_admin) {
-        return adminNavItems;
+        return adminNavItems
+            .filter((item) => !item.condition || capabilities.value[item.condition] !== false)
+            .map(({ condition, subItems, ...item }) => ({
+                ...item,
+                subItems: subItems
+                    ?.filter((subItem) => !subItem.condition || capabilities.value[subItem.condition] !== false)
+                    .map(({ condition: subCondition, ...subItem }) => subItem),
+            }));
     }
 
     if (capabilities.value.can_access_sales && primaryRole.value === 'sales_representative') {

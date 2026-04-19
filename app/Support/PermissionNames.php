@@ -12,6 +12,16 @@ final class PermissionNames
     public const MANAGE_ADMIN_CATALOG = 'admin.catalog.manage';
     public const MANAGE_ADMIN_INVENTORY = 'admin.inventory.manage';
     public const MANAGE_ADMIN_STAFF = 'admin.staff.manage';
+    public const VIEW_ADMIN_ANALYTICS = 'admin.analytics.view';
+    public const MANAGE_ADMIN_ANALYTICS = 'admin.analytics.manage';
+    public const VIEW_ADMIN_CUSTOMERS = 'admin.customers.view';
+    public const VIEW_ADMIN_CUSTOMER_DETAILS = 'admin.customers.view_details';
+    public const UPDATE_ADMIN_CUSTOMERS = 'admin.customers.update';
+    public const CHANGE_ADMIN_CUSTOMER_STATUS = 'admin.customers.suspend';
+    public const EMAIL_ADMIN_CUSTOMERS = 'admin.customers.email';
+    public const EXPORT_ADMIN_CUSTOMERS = 'admin.customers.export';
+    public const MANAGE_ADMIN_CUSTOMER_NOTES = 'admin.customers.notes.manage';
+    public const BULK_ADMIN_CUSTOMER_ACTIONS = 'admin.customers.bulk_actions';
 
     public const ACCESS_SALES = 'sales.access';
     public const VIEW_SALES_DASHBOARD = 'sales.dashboard.view';
@@ -41,6 +51,16 @@ final class PermissionNames
             self::MANAGE_ADMIN_CATALOG,
             self::MANAGE_ADMIN_INVENTORY,
             self::MANAGE_ADMIN_STAFF,
+            self::VIEW_ADMIN_ANALYTICS,
+            self::MANAGE_ADMIN_ANALYTICS,
+            self::VIEW_ADMIN_CUSTOMERS,
+            self::VIEW_ADMIN_CUSTOMER_DETAILS,
+            self::UPDATE_ADMIN_CUSTOMERS,
+            self::CHANGE_ADMIN_CUSTOMER_STATUS,
+            self::EMAIL_ADMIN_CUSTOMERS,
+            self::EXPORT_ADMIN_CUSTOMERS,
+            self::MANAGE_ADMIN_CUSTOMER_NOTES,
+            self::BULK_ADMIN_CUSTOMER_ACTIONS,
         ];
     }
 

@@ -12,6 +12,9 @@ use Illuminate\Validation\ValidationException;
 
 class StockAdjustmentApprovalService
 {
+    public const ACTION_APPROVE = 'approve';
+    public const ACTION_REJECT = 'reject';
+
     public function __construct(
         protected InventoryService $inventoryService,
     ) {}
@@ -178,6 +181,46 @@ class StockAdjustmentApprovalService
 
             return $adjustment->fresh();
         });
+    }
+
+    public function bulkReview(array $adjustmentIds, string $action, int $actorId, ?string $approvalNote = null): array
+    {
+        if (!in_array($action, [self::ACTION_APPROVE, self::ACTION_REJECT], true)) {
+            throw ValidationException::withMessages([
+                'action' => 'This bulk action is not supported.',
+            ]);
+        }
+
+        $success = 0;
+        $failed = [];
+
+        StockAdjustment::query()
+            ->whereIn('id', $adjustmentIds)
+            ->orderBy('id')
+            ->get()
+            ->each(function (StockAdjustment $adjustment) use ($action, $actorId, $approvalNote, &$success, &$failed): void {
+                try {
+                    if ($action === self::ACTION_APPROVE) {
+                        $this->approve($adjustment, $actorId, $approvalNote);
+                    } else {
+                        $this->reject($adjustment, $actorId, $approvalNote);
+                    }
+
+                    $success++;
+                } catch (\Throwable $exception) {
+                    $failed[] = [
+                        'adjustment_id' => (int) $adjustment->id,
+                        'message' => $exception instanceof ValidationException
+                            ? collect($exception->errors())->flatten()->first()
+                            : $exception->getMessage(),
+                    ];
+                }
+            });
+
+        return [
+            'success_count' => $success,
+            'failed' => $failed,
+        ];
     }
 
     protected function resolveAuditItemForAdjustment(StockAdjustment $adjustment): ?StockAuditItem

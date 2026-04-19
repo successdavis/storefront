@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -17,6 +19,10 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, TwoFactorAuthenticatable, HasRoles;
 
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_INACTIVE = 'inactive';
+    public const STATUS_SUSPENDED = 'suspended';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -24,8 +30,10 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'customer_slug',
         'email',
         'email_verified_at',
+        'status',
         'password',
         'phone',
         'address',
@@ -34,6 +42,11 @@ class User extends Authenticatable
         'lga_id',
         'gender',
         'passport_path',
+        'last_login_at',
+        'last_login_ip',
+        'login_count',
+        'is_vip',
+        'is_risky',
     ];
 
     /**
@@ -48,6 +61,26 @@ class User extends Authenticatable
 
     protected static function booted(): void
     {
+        static::creating(function (self $user) {
+            if (blank($user->customer_slug)) {
+                $slug = static::generateUniqueCustomerSlug($user->name, $user->email);
+
+                if (filled($slug)) {
+                    $user->customer_slug = $slug;
+                }
+            }
+        });
+
+        static::updating(function (self $user) {
+            if (blank($user->customer_slug)) {
+                $slug = static::generateUniqueCustomerSlug($user->name, $user->email, $user->id);
+
+                if (filled($slug)) {
+                    $user->customer_slug = $slug;
+                }
+            }
+        });
+
         static::created(function (self $user) {
             if (!$user->hasAnyRole(RoleNames::all())) {
                 $user->assignRole(RoleNames::CUSTOMER);
@@ -72,6 +105,9 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'last_login_at' => 'datetime',
+            'is_vip' => 'boolean',
+            'is_risky' => 'boolean',
         ];
     }
 
@@ -141,6 +177,26 @@ class User extends Authenticatable
         return $this->hasMany(CustomerAddress::class);
     }
 
+    public function customerNotes(): HasMany
+    {
+        return $this->hasMany(CustomerNote::class)->latest();
+    }
+
+    public function authoredCustomerNotes(): HasMany
+    {
+        return $this->hasMany(CustomerNote::class, 'author_id')->latest();
+    }
+
+    public function customerActivityLogs(): HasMany
+    {
+        return $this->hasMany(CustomerActivityLog::class)->latest();
+    }
+
+    public function authoredCustomerActivityLogs(): HasMany
+    {
+        return $this->hasMany(CustomerActivityLog::class, 'actor_id')->latest();
+    }
+
     public function socialAccounts(): HasMany
     {
         return $this->hasMany(SocialAccount::class);
@@ -161,6 +217,30 @@ class User extends Authenticatable
         return RoleNames::CUSTOMER;
     }
 
+    public function isCustomer(): bool
+    {
+        return $this->hasRole(RoleNames::CUSTOMER);
+    }
+
+    public function isActive(): bool
+    {
+        return ($this->status ?? self::STATUS_ACTIVE) === self::STATUS_ACTIVE;
+    }
+
+    public function hasRealEmail(): bool
+    {
+        $email = strtolower((string) $this->email);
+
+        return $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) !== false && !str_ends_with($email, '@example.invalid');
+    }
+
+    public function customerRouteKey(): string
+    {
+        return filled($this->customer_slug)
+            ? (string) $this->customer_slug
+            : (string) $this->getKey();
+    }
+
     public function capabilityFlags(): array
     {
         return [
@@ -170,6 +250,8 @@ class User extends Authenticatable
             'can_manage_catalog' => $this->can(PermissionNames::MANAGE_ADMIN_CATALOG),
             'can_manage_inventory' => $this->can(PermissionNames::MANAGE_ADMIN_INVENTORY),
             'can_manage_staff' => $this->can(PermissionNames::MANAGE_ADMIN_STAFF),
+            'can_view_analytics' => $this->can(PermissionNames::VIEW_ADMIN_ANALYTICS),
+            'can_manage_analytics' => $this->can(PermissionNames::MANAGE_ADMIN_ANALYTICS),
             'can_manage_orders' => $this->can(PermissionNames::MANAGE_ADMIN_ORDERS),
             'can_manage_payment_recovery' => $this->can(PermissionNames::MANAGE_ADMIN_PAYMENT_RECOVERY),
             'can_view_sales_orders' => $this->can(PermissionNames::VIEW_SALES_ORDERS),
@@ -194,12 +276,51 @@ class User extends Authenticatable
             'email' => $this->email,
             'phone' => $this->phone,
             'email_verified_at' => optional($this->email_verified_at)?->toIso8601String(),
+            'status' => $this->status ?? self::STATUS_ACTIVE,
+            'is_vip' => (bool) ($this->is_vip ?? false),
+            'is_risky' => (bool) ($this->is_risky ?? false),
+            'last_login_at' => optional($this->last_login_at)?->toIso8601String(),
             'roles' => $this->roles->pluck('name')->values()->all(),
             'primary_role' => $this->primaryRole(),
             'capabilities' => $this->capabilityFlags(),
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
         ];
+    }
+
+    protected static function generateUniqueCustomerSlug(?string $name, ?string $email = null, ?int $ignoreId = null): ?string
+    {
+        if (!Schema::hasColumn('users', 'customer_slug')) {
+            return null;
+        }
+
+        $base = Str::slug((string) $name);
+
+        if ($base === '') {
+            $base = Str::slug(Str::before((string) $email, '@'));
+        }
+
+        if ($base === '') {
+            $base = 'customer';
+        }
+
+        $candidate = Str::limit($base, 150, '');
+        $suffix = 2;
+
+        while (static::customerSlugExists($candidate, $ignoreId)) {
+            $candidate = Str::limit($base, 150 - strlen('-'.$suffix), '').'-'.$suffix;
+            $suffix++;
+        }
+
+        return $candidate;
+    }
+
+    protected static function customerSlugExists(string $candidate, ?int $ignoreId = null): bool
+    {
+        return static::query()
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->where('customer_slug', $candidate)
+            ->exists();
     }
 }
 

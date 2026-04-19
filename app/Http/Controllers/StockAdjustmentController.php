@@ -18,8 +18,15 @@ class StockAdjustmentController extends Controller
         protected VariantNameFormatter $variantNameFormatter,
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
+        $status = $request->string('status')->toString();
+        $allowedStatuses = [
+            StockAdjustment::STATUS_PENDING,
+            StockAdjustment::STATUS_APPROVED,
+            StockAdjustment::STATUS_REJECTED,
+        ];
+
         $adjustments = StockAdjustment::with([
             'variant:id,product_id,sku',
             'variant.product:id,name',
@@ -30,8 +37,13 @@ class StockAdjustmentController extends Controller
             'approver:id,name',
             'rejector:id,name',
         ])
+            ->when(
+                in_array($status, $allowedStatuses, true),
+                fn ($query) => $query->where('status', $status)
+            )
             ->latest('adjusted_at')
             ->paginate(15)
+            ->withQueryString()
             ->through(fn ($item) => [
                 'id' => $item->id,
                 'variant_label' => $item->variant ? $this->variantNameFormatter->format($item->variant) : 'N/A',
@@ -48,10 +60,24 @@ class StockAdjustmentController extends Controller
                 'approved_at' => optional($item->approved_at)?->toDateTimeString(),
                 'rejected_by' => $item->rejector?->name,
                 'rejected_at' => optional($item->rejected_at)?->toDateTimeString(),
+                'can_review' => ($item->status ?? StockAdjustment::STATUS_PENDING) === StockAdjustment::STATUS_PENDING,
             ]);
 
         return Inertia::render('StockAdjustments/Index', [
             'adjustments' => $adjustments,
+            'filters' => [
+                'status' => in_array($status, $allowedStatuses, true) ? $status : '',
+            ],
+            'status_options' => [
+                ['value' => '', 'label' => 'All statuses'],
+                ['value' => StockAdjustment::STATUS_PENDING, 'label' => 'Pending'],
+                ['value' => StockAdjustment::STATUS_APPROVED, 'label' => 'Approved'],
+                ['value' => StockAdjustment::STATUS_REJECTED, 'label' => 'Rejected'],
+            ],
+            'bulk_actions' => [
+                ['value' => StockAdjustmentApprovalService::ACTION_APPROVE, 'label' => 'Approve selected'],
+                ['value' => StockAdjustmentApprovalService::ACTION_REJECT, 'label' => 'Reject selected'],
+            ],
         ]);
     }
 
@@ -185,6 +211,42 @@ class StockAdjustmentController extends Controller
         } catch (Throwable $e) {
             report($e);
             return back()->with('error', 'An error occurred while rejecting the adjustment.');
+        }
+    }
+
+    public function bulkReview(Request $request)
+    {
+        $validated = $request->validate([
+            'adjustment_ids' => ['required', 'array', 'min:1'],
+            'adjustment_ids.*' => ['integer', 'exists:stock_adjustments,id'],
+            'action' => ['required', 'in:' . implode(',', [
+                StockAdjustmentApprovalService::ACTION_APPROVE,
+                StockAdjustmentApprovalService::ACTION_REJECT,
+            ])],
+            'approval_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $result = $this->approvalService->bulkReview(
+                adjustmentIds: $validated['adjustment_ids'],
+                action: (string) $validated['action'],
+                actorId: (int) auth()->id(),
+                approvalNote: $validated['approval_note'] ?? null,
+            );
+
+            $failedCount = count($result['failed']);
+            $message = $result['success_count'] . ' stock adjustment(s) processed.';
+            if ($failedCount > 0) {
+                $message .= ' ' . $failedCount . ' adjustment(s) could not be processed.';
+            }
+
+            return back()->with($failedCount > 0 ? 'warning' : 'success', $message);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?? 'Unable to process the selected adjustments.');
+        } catch (Throwable $e) {
+            report($e);
+
+            return back()->with('error', 'An error occurred while processing the selected adjustments.');
         }
     }
 

@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Admin\AdminBrandController;
 use App\Http\Controllers\Admin\AdminCategoryController;
+use App\Http\Controllers\Admin\AdminCustomerController;
+use App\Http\Controllers\Admin\AdminCustomerNoteController;
+use App\Http\Controllers\Admin\StorefrontAnalyticsController as AdminStorefrontAnalyticsController;
 use App\Http\Controllers\Admin\CategoryPriceListReportController;
 use App\Http\Controllers\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Admin\DiscountController as AdminDiscountController;
@@ -52,6 +55,7 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StockAuditController;
 use App\Http\Controllers\StorefrontController;
+use App\Http\Controllers\StorefrontAnalyticsController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\PaystackWebhookController;
 use App\Http\Controllers\Sales\CustomerController as SalesCustomerController;
@@ -102,6 +106,10 @@ Route::prefix('store')->name('store.')->group(function () {
         Route::post('/wishlist', [StorefrontController::class, 'addToWishlist'])->name('wishlist.store');
     });
 });
+
+Route::post('/analytics/storefront/page-views', [StorefrontAnalyticsController::class, 'store'])
+    ->middleware('throttle:storefront-analytics')
+    ->name('analytics.storefront.page-views');
 
 
 
@@ -257,6 +265,18 @@ Route::prefix('admin')
         Route::get('/transactions', [TransactionController::class, 'index'])
             ->middleware('permission.any:admin.transactions.view')
             ->name('transactions.index');
+        Route::get('/analytics', [AdminStorefrontAnalyticsController::class, 'index'])
+            ->middleware('permission.any:admin.analytics.view')
+            ->name('analytics.index');
+        Route::get('/analytics/export', [AdminStorefrontAnalyticsController::class, 'export'])
+            ->middleware('permission.any:admin.analytics.view')
+            ->name('analytics.export');
+        Route::get('/analytics/settings', [AdminStorefrontAnalyticsController::class, 'settings'])
+            ->middleware('permission.any:admin.analytics.manage')
+            ->name('analytics.settings');
+        Route::patch('/analytics/settings', [AdminStorefrontAnalyticsController::class, 'updateSettings'])
+            ->middleware('permission.any:admin.analytics.manage')
+            ->name('analytics.settings.update');
 
         Route::get('/payment-recovery', [PaymentRecoveryController::class, 'index'])
             ->middleware('permission.any:admin.payment_recovery.manage')
@@ -399,6 +419,8 @@ Route::prefix('admin')
         // Inventory
         Route::resource('stock-entries', StockEntryController::class)->only(['index', 'create', 'store', 'show']);
         Route::resource('stock-adjustments', StockAdjustmentController::class);
+        Route::post('stock-adjustments/bulk-review', [StockAdjustmentController::class, 'bulkReview'])
+            ->name('stock-adjustments.bulk-review');
         Route::post('stock-adjustments/{stockAdjustment}/approve', [StockAdjustmentController::class, 'approve'])
             ->name('stock-adjustments.approve');
         Route::post('stock-adjustments/{stockAdjustment}/reject', [StockAdjustmentController::class, 'reject'])
@@ -452,6 +474,46 @@ Route::prefix('admin')
         Route::post('orders/{order}/notes', [AdminOrderController::class, 'storeNote'])->middleware('permission.any:admin.orders.manage')->name('orders.notes.store');
         Route::post('orders/bulk', [AdminOrderController::class, 'bulkUpdate'])->middleware('permission.any:admin.orders.manage')->name('orders.bulk');
         Route::post('orders/{order}/notifications/resend', [AdminOrderController::class, 'resendNotification'])->middleware('permission.any:admin.orders.manage')->name('orders.notifications.resend');
+
+        Route::get('customers', [AdminCustomerController::class, 'index'])
+            ->middleware('permission.any:admin.customers.view')
+            ->name('customers.index');
+        Route::get('customers/export', [AdminCustomerController::class, 'export'])
+            ->middleware('permission.any:admin.customers.export')
+            ->name('customers.export');
+        Route::post('customers/bulk', [AdminCustomerController::class, 'bulk'])
+            ->middleware('permission.any:admin.customers.bulk_actions')
+            ->name('customers.bulk');
+        Route::get('customers/{customer}', [AdminCustomerController::class, 'show'])
+            ->middleware('permission.any:admin.customers.view_details')
+            ->name('customers.show');
+        Route::put('customers/{customer}', [AdminCustomerController::class, 'update'])
+            ->middleware('permission.any:admin.customers.update')
+            ->name('customers.update');
+        Route::patch('customers/{customer}/status', [AdminCustomerController::class, 'updateStatus'])
+            ->middleware('permission.any:admin.customers.suspend')
+            ->name('customers.status');
+        Route::post('customers/{customer}/mark-verified', [AdminCustomerController::class, 'markVerified'])
+            ->middleware('permission.any:admin.customers.update')
+            ->name('customers.mark-verified');
+        Route::post('customers/{customer}/verification/resend', [AdminCustomerController::class, 'resendVerification'])
+            ->middleware('permission.any:admin.customers.email')
+            ->name('customers.verification.resend');
+        Route::post('customers/{customer}/password-reset', [AdminCustomerController::class, 'sendPasswordReset'])
+            ->middleware('permission.any:admin.customers.email')
+            ->name('customers.password-reset');
+        Route::post('customers/{customer}/email', [AdminCustomerController::class, 'sendEmail'])
+            ->middleware('permission.any:admin.customers.email')
+            ->name('customers.email');
+        Route::post('customers/{customer}/notes', [AdminCustomerNoteController::class, 'store'])
+            ->middleware('permission.any:admin.customers.notes.manage')
+            ->name('customers.notes.store');
+        Route::put('customers/{customer}/notes/{note}', [AdminCustomerNoteController::class, 'update'])
+            ->middleware('permission.any:admin.customers.notes.manage')
+            ->name('customers.notes.update');
+        Route::delete('customers/{customer}/notes/{note}', [AdminCustomerNoteController::class, 'destroy'])
+            ->middleware('permission.any:admin.customers.notes.manage')
+            ->name('customers.notes.destroy');
 //        Route::resource('orders', AdminOrderController::class)->only(['index', 'show', 'update']);
 //        Route::patch('orders/{order}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
 

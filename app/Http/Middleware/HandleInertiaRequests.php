@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Analytics\StorefrontAnalyticsSettings;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -38,6 +39,7 @@ class HandleInertiaRequests extends Middleware
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
         $user = $request->user();
+        $analyticsSettings = app(StorefrontAnalyticsSettings::class);
 
         return [
             ...parent::share($request),
@@ -55,6 +57,9 @@ class HandleInertiaRequests extends Middleware
                 'error'   => fn () => $request->session()->get('error'),
                 'warning' => fn () => $request->session()->get('warning'),
                 'info'    => fn () => $request->session()->get('info'),
+            ],
+            'analytics' => [
+                'storefront' => $analyticsSettings->frontendConfig(),
             ],
         ];
     }
