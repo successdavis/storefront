@@ -57,47 +57,47 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
 <template>
     <Head title="Storefront" />
 
-    <section class="relative overflow-hidden rounded-3xl bg-slate-900 px-6 py-10 text-white shadow-2xl sm:px-10">
-        <div class="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-400/40 blur-2xl" />
-        <div class="absolute -bottom-16 -left-8 h-48 w-48 rounded-full bg-teal-300/20 blur-2xl" />
+<!--    <section class="relative overflow-hidden rounded-3xl bg-slate-900 px-6 py-10 text-white shadow-2xl sm:px-10">-->
+<!--        <div class="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-400/40 blur-2xl" />-->
+<!--        <div class="absolute -bottom-16 -left-8 h-48 w-48 rounded-full bg-teal-300/20 blur-2xl" />-->
 
-        <div class="relative grid gap-8 lg:grid-cols-2 lg:items-center">
-            <div class="space-y-4">
-                <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">
-                    Shop with Confidence!
-                </h1>
-                <p class="max-w-xl text-sm text-slate-200 sm:text-base">
-                    S-Tech-Max store isn’t just another option — it’s the better way to shop.
-                </p>
-            </div>
+<!--        <div class="relative grid gap-8 lg:grid-cols-2 lg:items-center">-->
+<!--            <div class="space-y-4">-->
+<!--                <h1 class="text-3xl font-extrabold tracking-tight sm:text-4xl">-->
+<!--                    Shop with Confidence!-->
+<!--                </h1>-->
+<!--                <p class="max-w-xl text-sm text-slate-200 sm:text-base">-->
+<!--                    S-Tech-Max store isn’t just another option — it’s the better way to shop.-->
+<!--                </p>-->
+<!--            </div>-->
 
-            <form class="rounded-2xl  bg-white p-4 text-slate-900 shadow-xl" @submit.prevent="applyFilters">
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <input
-                        v-model="search"
-                        type="search"
-                        placeholder="Search products"
-                        class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-amber-300 transition focus:ring-2"
-                    >
-                    <select
-                        v-model="selectedCategory"
-                        class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-amber-300 transition focus:ring-2"
-                    >
-                        <option value="">All Categories</option>
-                        <option v-for="category in categoryOptions" :key="category.id" :value="category.id">
-                            {{ category.name }}
-                        </option>
-                    </select>
-                    <button
-                        type="submit"
-                        class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-                    >
-                        Apply Filters
-                    </button>
-                </div>
-            </form>
-        </div>
-    </section>
+<!--            <form class="rounded-2xl  bg-white p-4 text-slate-900 shadow-xl" @submit.prevent="applyFilters">-->
+<!--                <div class="grid gap-3 sm:grid-cols-3">-->
+<!--                    <input-->
+<!--                        v-model="search"-->
+<!--                        type="search"-->
+<!--                        placeholder="Search products"-->
+<!--                        class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-amber-300 transition focus:ring-2"-->
+<!--                    >-->
+<!--                    <select-->
+<!--                        v-model="selectedCategory"-->
+<!--                        class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-amber-300 transition focus:ring-2"-->
+<!--                    >-->
+<!--                        <option value="">All Categories</option>-->
+<!--                        <option v-for="category in categoryOptions" :key="category.id" :value="category.id">-->
+<!--                            {{ category.name }}-->
+<!--                        </option>-->
+<!--                    </select>-->
+<!--                    <button-->
+<!--                        type="submit"-->
+<!--                        class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"-->
+<!--                    >-->
+<!--                        Apply Filters-->
+<!--                    </button>-->
+<!--                </div>-->
+<!--            </form>-->
+<!--        </div>-->
+<!--    </section>-->
 
     <section class="mt-10 space-y-4">
         <div class="flex items-center justify-between">
