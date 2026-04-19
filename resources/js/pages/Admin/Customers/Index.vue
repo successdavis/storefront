@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Pagination from '@/components/Pagination.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 const props = defineProps<{
     filters: Record<string, string | number | boolean | null>;
@@ -21,7 +21,7 @@ const props = defineProps<{
     };
 }>();
 
-const filters = ref({
+const filters = reactive({
     search: props.filters.search || '',
     status: props.filters.status || '',
     email_verified: props.filters.email_verified || '',
@@ -45,15 +45,35 @@ const bulkForm = useForm({
 let filterTimeout: number | undefined;
 
 watch(
-    filters,
-    () => {
+    () => ({ ...filters }),
+    (value) => {
         window.clearTimeout(filterTimeout);
         filterTimeout = window.setTimeout(() => {
-            router.get(route('admin.customers.index'), filters.value, {
+            router.get(route('admin.customers.index'), buildFilterPayload(value), {
                 preserveState: true,
+                preserveScroll: true,
                 replace: true,
             });
         }, 350);
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.filters,
+    (incoming) => {
+        filters.search = (incoming.search as string) || '';
+        filters.status = (incoming.status as string) || '';
+        filters.email_verified = (incoming.email_verified as string) || '';
+        filters.has_orders = (incoming.has_orders as string) || '';
+        filters.registered_from = (incoming.registered_from as string) || '';
+        filters.registered_to = (incoming.registered_to as string) || '';
+        filters.last_login_from = (incoming.last_login_from as string) || '';
+        filters.last_login_to = (incoming.last_login_to as string) || '';
+        filters.dormant_days = (incoming.dormant_days as string) || '';
+        filters.high_value = Boolean(incoming.high_value || false);
+        filters.sort = (incoming.sort as string) || 'newest';
+        filters.per_page = Number(incoming.per_page || 15);
     },
     { deep: true },
 );
@@ -110,7 +130,7 @@ function runBulkAction() {
 
 function exportFiltered(selectedOnly = false) {
     const payload: Record<string, any> = {
-        ...filters.value,
+        ...buildFilterPayload(filters),
     };
 
     if (selectedOnly && selectedIds.value.length) {
@@ -118,6 +138,23 @@ function exportFiltered(selectedOnly = false) {
     }
 
     window.location.href = route('admin.customers.export', payload);
+}
+
+function buildFilterPayload(source: typeof filters) {
+    return {
+        search: source.search || undefined,
+        status: source.status || undefined,
+        email_verified: source.email_verified || undefined,
+        has_orders: source.has_orders || undefined,
+        registered_from: source.registered_from || undefined,
+        registered_to: source.registered_to || undefined,
+        last_login_from: source.last_login_from || undefined,
+        last_login_to: source.last_login_to || undefined,
+        dormant_days: source.dormant_days || undefined,
+        high_value: source.high_value ? 1 : undefined,
+        sort: source.sort || 'newest',
+        per_page: source.per_page || 15,
+    };
 }
 </script>
 
