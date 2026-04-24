@@ -2,11 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Accounting\AccountingService;
 use App\Models\VendorBill;
 use Illuminate\Http\Request;
 
 class VendorPaymentController extends Controller
 {
+    public function __construct(
+        protected AccountingService $accountingService,
+    ) {}
+
     public function store(Request $request, $billId)
     {
         $validated = $request->validate([
@@ -32,6 +37,8 @@ class VendorPaymentController extends Controller
             'status' => 'paid',
             'note'   => $validated['note'] ?? null,
         ]);
+
+        $this->accountingService->postVendorBillPayment($payment, auth()->id());
 
         return redirect()->back();
     }

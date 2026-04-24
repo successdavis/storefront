@@ -201,6 +201,7 @@ function iconButtonClass(tone = 'neutral') {
                             <th class="px-5 py-4 text-right">Adjusted</th>
                             <th class="px-5 py-4 text-right">New Qty</th>
                             <th class="px-5 py-4">Reason</th>
+                            <th class="px-5 py-4">Type</th>
                             <th class="px-5 py-4">Status</th>
                             <th class="px-5 py-4">Adjusted At</th>
                             <th class="px-5 py-4 text-right">Actions</th>
@@ -234,6 +235,7 @@ function iconButtonClass(tone = 'neutral') {
                                 {{ item.new_quantity }}
                             </td>
                             <td class="px-5 py-4 text-slate-700 dark:text-slate-300">{{ item.reason }}</td>
+                            <td class="px-5 py-4 text-slate-700 dark:text-slate-300">{{ item.adjustment_type_label }}</td>
                             <td class="px-5 py-4">
                                 <span
                                     class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -288,7 +290,7 @@ function iconButtonClass(tone = 'neutral') {
                         </tr>
 
                         <tr v-if="!adjustments.data.length">
-                            <td colspan="9" class="px-5 py-14 text-center text-sm text-slate-500 dark:text-slate-400">
+                            <td colspan="10" class="px-5 py-14 text-center text-sm text-slate-500 dark:text-slate-400">
                                 No stock adjustments recorded yet.
                             </td>
                         </tr>

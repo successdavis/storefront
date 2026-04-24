@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Enums\StockAdjustmentType;
 use App\Models\ProductVariant;
 use App\Models\StockAdjustment;
 use App\Models\StockAuditItem;
 use App\Models\StockAuditItemLock;
 use App\Models\StockAuditSession;
+use App\Services\Accounting\AccountingService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -17,6 +19,7 @@ class StockAdjustmentApprovalService
 
     public function __construct(
         protected InventoryService $inventoryService,
+        protected AccountingService $accountingService,
     ) {}
 
     public function submit(array $data, int $submittedBy): StockAdjustment
@@ -55,6 +58,10 @@ class StockAdjustmentApprovalService
                 'variant_id' => $variant->id,
                 'previous_quantity' => (int) $variant->quantity,
                 'adjusted_quantity' => (int) $data['adjusted_quantity'],
+                'adjustment_type' => $this->normalizeAdjustmentType(
+                    $data['adjustment_type'] ?? StockAdjustmentType::CORRECTION->value,
+                    (int) $data['adjusted_quantity'],
+                )->value,
                 'reason' => $data['reason'],
                 'employee_id' => $submittedBy,
                 'reference' => $data['reference'] ?? null,
@@ -85,6 +92,30 @@ class StockAdjustmentApprovalService
                     'status' => 'Only pending adjustments can be approved.',
                 ]);
             }
+
+            $effectiveType = $adjustment->adjustment_type instanceof StockAdjustmentType
+                ? $adjustment->adjustment_type
+                : StockAdjustmentType::tryFrom((string) $adjustment->adjustment_type)
+                    ?? StockAdjustmentType::CORRECTION;
+
+            if (array_key_exists('adjustment_type', $stockAdjustment->getAttributes())) {
+                $adjustmentType = $stockAdjustment->adjustment_type instanceof StockAdjustmentType
+                    ? $stockAdjustment->adjustment_type
+                    : StockAdjustmentType::tryFrom((string) $stockAdjustment->adjustment_type);
+
+                if ($adjustmentType && $effectiveType->value !== $adjustmentType->value) {
+                    $adjustment->update([
+                        'adjustment_type' => $this->normalizeAdjustmentType(
+                            $adjustmentType->value,
+                            (int) $adjustment->adjusted_quantity,
+                        )->value,
+                    ]);
+                    $adjustment->refresh();
+                    $effectiveType = $adjustment->adjustment_type;
+                }
+            }
+
+            $this->normalizeAdjustmentType($effectiveType->value, (int) $adjustment->adjusted_quantity);
 
             $auditItem = $this->resolveAuditItemForAdjustment($adjustment);
             if ($auditItem) {
@@ -144,6 +175,8 @@ class StockAdjustmentApprovalService
                 'approved_at' => now(),
                 'approval_note' => $approvalNote,
             ]);
+
+            $this->accountingService->postStockAdjustment($adjustment->fresh(), $approverId);
 
             if ($auditItem) {
                 $this->completeAuditSessionIfResolved((int) $auditItem->session_id);
@@ -289,5 +322,28 @@ class StockAdjustmentApprovalService
     protected function warehouseScopeKey(?int $warehouseId): int
     {
         return $warehouseId ? (int) $warehouseId : 0;
+    }
+
+    protected function normalizeAdjustmentType(string $adjustmentType, int $adjustedQuantity): StockAdjustmentType
+    {
+        $type = StockAdjustmentType::tryFrom($adjustmentType);
+
+        if (!$type) {
+            throw ValidationException::withMessages([
+                'adjustment_type' => 'The selected adjustment type is invalid.',
+            ]);
+        }
+
+        if (!$type->allowsQuantityDelta($adjustedQuantity)) {
+            throw ValidationException::withMessages([
+                'adjustment_type' => match ($type) {
+                    StockAdjustmentType::LOSS => 'Loss adjustments must reduce stock.',
+                    StockAdjustmentType::GAIN => 'Gain adjustments must increase stock.',
+                    StockAdjustmentType::CORRECTION => 'Correction adjustments require a non-zero quantity change.',
+                },
+            ]);
+        }
+
+        return $type;
     }
 }

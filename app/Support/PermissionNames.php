@@ -14,6 +14,11 @@ final class PermissionNames
     public const MANAGE_ADMIN_STAFF = 'admin.staff.manage';
     public const VIEW_ADMIN_ANALYTICS = 'admin.analytics.view';
     public const MANAGE_ADMIN_ANALYTICS = 'admin.analytics.manage';
+    public const VIEW_ADMIN_ACCOUNTING = 'admin.accounting.view';
+    public const MANAGE_ADMIN_ACCOUNTING = 'admin.accounting.manage';
+    public const POST_ADMIN_ACCOUNTING_JOURNALS = 'admin.accounting.journals.post';
+    public const VIEW_ADMIN_ACCOUNTING_REPORTS = 'admin.accounting.reports.view';
+    public const MANAGE_ADMIN_ACCOUNTING_EXPENSES = 'admin.accounting.expenses.manage';
     public const VIEW_ADMIN_CUSTOMERS = 'admin.customers.view';
     public const VIEW_ADMIN_CUSTOMER_DETAILS = 'admin.customers.view_details';
     public const UPDATE_ADMIN_CUSTOMERS = 'admin.customers.update';
@@ -53,6 +58,11 @@ final class PermissionNames
             self::MANAGE_ADMIN_STAFF,
             self::VIEW_ADMIN_ANALYTICS,
             self::MANAGE_ADMIN_ANALYTICS,
+            self::VIEW_ADMIN_ACCOUNTING,
+            self::MANAGE_ADMIN_ACCOUNTING,
+            self::POST_ADMIN_ACCOUNTING_JOURNALS,
+            self::VIEW_ADMIN_ACCOUNTING_REPORTS,
+            self::MANAGE_ADMIN_ACCOUNTING_EXPENSES,
             self::VIEW_ADMIN_CUSTOMERS,
             self::VIEW_ADMIN_CUSTOMER_DETAILS,
             self::UPDATE_ADMIN_CUSTOMERS,

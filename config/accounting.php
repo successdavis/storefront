@@ -1,0 +1,48 @@
+<?php
+
+return [
+    'currency' => env('ACCOUNTING_CURRENCY', config('app.currency', 'NGN')),
+
+    'system_accounts' => [
+        'cash_on_hand' => '1110',
+        'main_bank_account' => '1120',
+        'payment_gateway_clearing' => '1130',
+        'accounts_receivable' => '1210',
+        'inventory_asset' => '1310',
+        'goods_received_not_invoiced' => '1320',
+        'accounts_payable' => '2110',
+        'customer_wallet_liability' => '2120',
+        'refunds_payable' => '2130',
+        'tax_payable' => '2150',
+        'owner_capital' => '3110',
+        'opening_balance_equity' => '3130',
+        'inventory_correction_reserve' => '3120',
+        'retained_earnings' => '3210',
+        'product_sales_revenue' => '4110',
+        'shipping_revenue' => '4120',
+        'service_fee_income' => '4130',
+        'other_income' => '4140',
+        'sales_discount_contra' => '4150',
+        'inventory_adjustment_gain' => '4160',
+        'cost_of_goods_sold' => '5110',
+        'shipping_expense' => '5120',
+        'payment_gateway_charges' => '5130',
+        'operating_expense' => '5410',
+        'staff_admin_expense' => '5411',
+        'utilities_expense' => '5412',
+        'logistics_expense' => '5413',
+        'repairs_expense' => '5414',
+        'miscellaneous_expense' => '5419',
+        'inventory_adjustment_loss' => '5510',
+    ],
+
+    'payment_method_accounts' => [
+        'cash' => 'cash_on_hand',
+        'card' => 'main_bank_account',
+        'transfer' => 'main_bank_account',
+        'stripe' => 'main_bank_account',
+        'paypal' => 'main_bank_account',
+        'cheque' => 'main_bank_account',
+        'wallet' => 'customer_wallet_liability',
+    ],
+];

@@ -4,6 +4,11 @@ use App\Http\Controllers\Admin\AdminBrandController;
 use App\Http\Controllers\Admin\AdminCategoryController;
 use App\Http\Controllers\Admin\AdminCustomerController;
 use App\Http\Controllers\Admin\AdminCustomerNoteController;
+use App\Http\Controllers\Admin\Accounting\AccountController as AdminAccountingAccountController;
+use App\Http\Controllers\Admin\Accounting\ExpenseController as AdminAccountingExpenseController;
+use App\Http\Controllers\Admin\Accounting\JournalEntryController as AdminAccountingJournalEntryController;
+use App\Http\Controllers\Admin\Accounting\PaymentGatewaySettlementController as AdminAccountingPaymentGatewaySettlementController;
+use App\Http\Controllers\Admin\Accounting\ReportController as AdminAccountingReportController;
 use App\Http\Controllers\Admin\StorefrontAnalyticsController as AdminStorefrontAnalyticsController;
 use App\Http\Controllers\Admin\CategoryPriceListReportController;
 use App\Http\Controllers\Admin\CouponController as AdminCouponController;
@@ -277,6 +282,58 @@ Route::prefix('admin')
         Route::patch('/analytics/settings', [AdminStorefrontAnalyticsController::class, 'updateSettings'])
             ->middleware('permission.any:admin.analytics.manage')
             ->name('analytics.settings.update');
+
+        Route::get('/accounting', [AdminAccountingReportController::class, 'overview'])
+            ->middleware('permission.any:admin.accounting.view')
+            ->name('accounting.index');
+        Route::post('/accounting/sync-history', [AdminAccountingReportController::class, 'syncHistory'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.sync-history');
+        Route::get('/accounting/accounts', [AdminAccountingAccountController::class, 'index'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.accounts.index');
+        Route::post('/accounting/accounts', [AdminAccountingAccountController::class, 'store'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.accounts.store');
+        Route::put('/accounting/accounts/{account}', [AdminAccountingAccountController::class, 'update'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.accounts.update');
+        Route::patch('/accounting/accounts/{account}/toggle', [AdminAccountingAccountController::class, 'toggle'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.accounts.toggle');
+        Route::get('/accounting/journal-entries', [AdminAccountingJournalEntryController::class, 'index'])
+            ->middleware('permission.any:admin.accounting.view')
+            ->name('accounting.journal-entries.index');
+        Route::get('/accounting/journal-entries/{journalEntry}', [AdminAccountingJournalEntryController::class, 'show'])
+            ->middleware('permission.any:admin.accounting.view')
+            ->name('accounting.journal-entries.show');
+        Route::post('/accounting/journal-entries', [AdminAccountingJournalEntryController::class, 'store'])
+            ->middleware('permission.any:admin.accounting.journals.post')
+            ->name('accounting.journal-entries.store');
+        Route::get('/accounting/gateway-settlements', [AdminAccountingPaymentGatewaySettlementController::class, 'index'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.gateway-settlements.index');
+        Route::post('/accounting/gateway-settlements', [AdminAccountingPaymentGatewaySettlementController::class, 'store'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.gateway-settlements.store');
+        Route::get('/accounting/expenses', [AdminAccountingExpenseController::class, 'index'])
+            ->middleware('permission.any:admin.accounting.expenses.manage')
+            ->name('accounting.expenses.index');
+        Route::post('/accounting/expenses', [AdminAccountingExpenseController::class, 'store'])
+            ->middleware('permission.any:admin.accounting.expenses.manage')
+            ->name('accounting.expenses.store');
+        Route::get('/accounting/reports/ledger', [AdminAccountingReportController::class, 'ledger'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.ledger');
+        Route::get('/accounting/reports/trial-balance', [AdminAccountingReportController::class, 'trialBalance'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.trial-balance');
+        Route::get('/accounting/reports/profit-loss', [AdminAccountingReportController::class, 'profitAndLoss'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.profit-loss');
+        Route::get('/accounting/reports/balance-sheet', [AdminAccountingReportController::class, 'balanceSheet'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.balance-sheet');
 
         Route::get('/payment-recovery', [PaymentRecoveryController::class, 'index'])
             ->middleware('permission.any:admin.payment_recovery.manage')

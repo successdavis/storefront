@@ -69,6 +69,11 @@
                 </div>
 
                 <div>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Adjustment Type</p>
+                    <p class="text-lg text-gray-900 dark:text-gray-100">{{ adjustment.adjustment_type_label }}</p>
+                </div>
+
+                <div>
                     <p class="text-sm text-gray-500 dark:text-gray-400">Submitted By</p>
                     <p class="text-lg text-gray-900 dark:text-gray-100">{{ adjustment.employee }}</p>
                 </div>
@@ -100,6 +105,27 @@
             </div>
 
             <div v-if="adjustment.can_approve" class="border-t border-gray-200 dark:border-gray-700 pt-5 space-y-3">
+                <div class="space-y-2">
+                    <label class="block text-sm text-gray-700 dark:text-gray-300">
+                        Adjustment Type
+                    </label>
+                    <select
+                        v-model="reviewAdjustmentType"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
+                    >
+                        <option
+                            v-for="option in adjustment_type_options"
+                            :key="option.value"
+                            :value="option.value"
+                        >
+                            {{ option.label }}
+                        </option>
+                    </select>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ selectedAdjustmentTypeDescription }}
+                    </p>
+                </div>
+
                 <label class="block text-sm text-gray-700 dark:text-gray-300">
                     Approval Note (optional)
                 </label>
@@ -134,21 +160,30 @@
 
 <script setup>
 import { Link, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
     adjustment: Object,
+    adjustment_type_options: Array,
 })
 
 const approvalNote = ref(props.adjustment.approval_note || '')
+const reviewAdjustmentType = ref(props.adjustment.adjustment_type || 'correction')
 const processing = ref(false)
+const selectedAdjustmentTypeDescription = computed(() => (
+    props.adjustment_type_options.find(option => option.value === reviewAdjustmentType.value)?.description
+    || ''
+))
 
 function approve() {
     if (processing.value) return
     processing.value = true
     router.post(
         `/admin/stock-adjustments/${props.adjustment.id}/approve`,
-        { approval_note: approvalNote.value || null },
+        {
+            approval_note: approvalNote.value || null,
+            adjustment_type: reviewAdjustmentType.value,
+        },
         {
             preserveScroll: true,
             onFinish: () => (processing.value = false),

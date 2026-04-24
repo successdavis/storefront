@@ -77,6 +77,22 @@ const adminNavItems: SidebarNavItem[] = [
         condition: 'can_view_analytics',
     },
     {
+        title: 'Accounting',
+        icon: ReceiptText,
+        subItems: [
+            { title: 'Overview', href: '/admin/accounting', condition: 'can_view_accounting' },
+            { title: 'Chart of Accounts', href: '/admin/accounting/accounts', condition: 'can_manage_accounting' },
+            { title: 'Journal Entries', href: '/admin/accounting/journal-entries', condition: 'can_view_accounting' },
+            { title: 'Gateway Settlements', href: '/admin/accounting/gateway-settlements', condition: 'can_manage_accounting' },
+            { title: 'Expenses', href: '/admin/accounting/expenses', condition: 'can_manage_accounting_expenses' },
+            { title: 'General Ledger', href: '/admin/accounting/reports/ledger', condition: 'can_view_accounting_reports' },
+            { title: 'Trial Balance', href: '/admin/accounting/reports/trial-balance', condition: 'can_view_accounting_reports' },
+            { title: 'Profit & Loss', href: '/admin/accounting/reports/profit-loss', condition: 'can_view_accounting_reports' },
+            { title: 'Balance Sheet', href: '/admin/accounting/reports/balance-sheet', condition: 'can_view_accounting_reports' },
+        ],
+        condition: 'can_view_accounting',
+    },
+    {
         title: 'POS',
         href: '/admin/pos',
         icon: ShoppingCart,
@@ -277,7 +293,7 @@ const footerNavItems = computed<NavItem[]>(() => {
             </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent>
+        <SidebarContent class="admin-sidebar-scroll">
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 

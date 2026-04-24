@@ -4,8 +4,10 @@ namespace App\Domain\Inventory\Audit;
 
 use App\Domain\Inventory\Alerts\InventoryAlertEngine;
 use App\Domain\Inventory\Support\VariantNameFormatter;
+use App\Enums\StockAdjustmentType;
 use App\Models\ProductVariant;
 use App\Models\Setting;
+use App\Models\StockAdjustment;
 use App\Models\StockAuditItem;
 use App\Models\StockAuditItemLock;
 use App\Models\StockAuditSession;
@@ -18,6 +20,8 @@ use Illuminate\Validation\ValidationException;
 
 class StockAuditService
 {
+    protected const DEFAULT_SESSION_TIMEOUT_HOURS = 24;
+
     public function __construct(
         protected InventoryAlertEngine $alertEngine,
         protected VariantNameFormatter $variantNameFormatter,
@@ -123,6 +127,7 @@ class StockAuditService
         ?int $warehouseId = null,
     ): StockAuditSession {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
+        $this->pruneInactiveLocks();
 
         if ($startedBy) {
             $existing = StockAuditSession::query()
@@ -131,11 +136,31 @@ class StockAuditService
                 ->where('scope_type', $scopeType)
                 ->where('category_id', $categoryId)
                 ->where('warehouse_id', $warehouseId)
+                ->where(function (Builder $query): void {
+                    $query->where('last_activity_at', '>=', $this->activeSessionCutoff())
+                        ->orWhereNull('last_activity_at');
+                })
                 ->latest('id')
                 ->first();
 
             if ($existing) {
                 return $this->touchSessionActivity($existing);
+            }
+
+            $recyclable = StockAuditSession::query()
+                ->where('status', StockAuditSession::STATUS_IN_PROGRESS)
+                ->where('started_by', $startedBy)
+                ->whereDoesntHave('items')
+                ->latest('id')
+                ->first();
+
+            if ($recyclable) {
+                return $this->retargetInProgressSession(
+                    $recyclable,
+                    $scopeType,
+                    $categoryId,
+                    $warehouseId,
+                );
             }
         }
 
@@ -177,6 +202,7 @@ class StockAuditService
 
     protected function lockMetaForVariant(int $variantId, ?StockAuditSession $session = null): array
     {
+        $this->pruneInactiveLocks();
         $warehouseScopeKey = $this->warehouseScopeKey($session?->warehouse_id);
 
         $lock = StockAuditItemLock::query()
@@ -230,9 +256,19 @@ class StockAuditService
 
     public function getSession(int $sessionId): ?StockAuditSession
     {
-        return StockAuditSession::query()
+        $this->pruneInactiveLocks();
+
+        $session = StockAuditSession::query()
             ->with(['items', 'category:id,name', 'warehouse:id,name', 'starter:id,name'])
             ->find($sessionId);
+
+        if ($session && $this->sessionHasExpired($session)) {
+            $this->releaseSessionLocks($session->id);
+
+            return null;
+        }
+
+        return $session;
     }
 
     public function touchSessionActivity(StockAuditSession $session): StockAuditSession
@@ -248,6 +284,8 @@ class StockAuditService
         ?int $startedBy = null,
         ?int $excludeSessionId = null,
     ): Collection {
+        $this->pruneInactiveLocks();
+
         return StockAuditSession::query()
             ->with([
                 'category:id,name',
@@ -255,8 +293,16 @@ class StockAuditService
                 'starter:id,name',
             ])
             ->where('status', StockAuditSession::STATUS_IN_PROGRESS)
+            ->where(function (Builder $query): void {
+                $query->where('last_activity_at', '>=', $this->activeSessionCutoff())
+                    ->orWhereNull('last_activity_at');
+            })
             ->when($startedBy, fn (Builder $query) => $query->where('started_by', $startedBy))
             ->when($excludeSessionId, fn (Builder $query) => $query->where('id', '!=', $excludeSessionId))
+            ->where(function (Builder $query): void {
+                $query->where('total_scanned_items', '>', 0)
+                    ->orWhereHas('items');
+            })
             ->orderByDesc('last_activity_at')
             ->orderByDesc('id')
             ->get()
@@ -301,6 +347,8 @@ class StockAuditService
     public function upsertSessionItems(StockAuditSession $session, array $counts): array
     {
         return DB::transaction(function () use ($session, $counts): array {
+            $this->pruneInactiveLocks();
+
             $session = StockAuditSession::query()
                 ->lockForUpdate()
                 ->findOrFail($session->id);
@@ -383,6 +431,35 @@ class StockAuditService
                             'warehouse_scope_key' => $warehouseScopeKey,
                         ]);
                     } catch (QueryException) {
+                        $replacementLock = StockAuditItemLock::query()
+                            ->with('session:id,status,last_activity_at')
+                            ->where('variant_id', $variant->id)
+                            ->where('warehouse_scope_key', $warehouseScopeKey)
+                            ->first();
+
+                        if ($replacementLock && (int) $replacementLock->session_id === (int) $session->id) {
+                            $existingLocks->put((int) $variant->id, $replacementLock);
+                            continue;
+                        }
+
+                        if ($replacementLock && !$this->lockSessionIsActive($replacementLock->session)) {
+                            $replacementLock->delete();
+
+                            try {
+                                $lock = StockAuditItemLock::create([
+                                    'session_id' => $session->id,
+                                    'variant_id' => $variant->id,
+                                    'warehouse_id' => $session->warehouse_id,
+                                    'warehouse_scope_key' => $warehouseScopeKey,
+                                ]);
+
+                                $existingLocks->put((int) $variant->id, $lock);
+                                continue;
+                            } catch (QueryException) {
+                                // Fall through to the standard conflict message below.
+                            }
+                        }
+
                         $conflicts["counts.{$line['index']}.variant_id"] = 'This item has just been counted in another audit session. Refresh and try again.';
                         continue;
                     }
@@ -571,6 +648,11 @@ class StockAuditService
                 'warehouse_id' => $warehouseId ?? $session->warehouse_id,
                 'variant_id' => $variant->id,
                 'adjusted_quantity' => $variance,
+                // Audit discrepancies should map to real inventory movement direction.
+                // Shrinkage is treated as loss; overages are treated as gain.
+                'adjustment_type' => $variance < 0
+                    ? StockAdjustmentType::LOSS->value
+                    : StockAdjustmentType::GAIN->value,
                 'reason' => 'count_discrepancy',
                 'reference' => sprintf('AUDIT-%d-%d', $session->id, $variant->id),
                 'note' => $note,
@@ -795,6 +877,29 @@ class StockAuditService
         return $warehouseId ? (int) $warehouseId : 0;
     }
 
+    protected function retargetInProgressSession(
+        StockAuditSession $session,
+        string $scopeType,
+        ?int $categoryId,
+        ?int $warehouseId,
+    ): StockAuditSession {
+        [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
+
+        $expectedItems = $this->expectedItemsCount($scopeType, $categoryId, $warehouseId, $session->id);
+
+        $session->update([
+            'warehouse_id' => $warehouseId,
+            'scope_type' => $scopeType,
+            'category_id' => $categoryId,
+            'total_expected_items' => $expectedItems,
+            'total_scanned_items' => 0,
+            'coverage_percentage' => 0,
+            'last_activity_at' => now(),
+        ]);
+
+        return $session->fresh();
+    }
+
     protected function releaseSessionLocks(int $sessionId): void
     {
         StockAuditItemLock::query()
@@ -819,6 +924,7 @@ class StockAuditService
         ?int $warehouseId = null,
         ?int $currentSessionId = null,
     ): Builder {
+        $this->pruneInactiveLocks();
         $warehouseScopeKey = $this->warehouseScopeKey($warehouseId);
 
         return $query->whereNotExists(function ($subQuery) use ($warehouseScopeKey, $currentSessionId): void {
@@ -831,5 +937,78 @@ class StockAuditService
                 $subQuery->where('stock_audit_item_locks.session_id', '!=', $currentSessionId);
             }
         });
+    }
+
+    protected function activeSessionCutoff()
+    {
+        $hours = (int) Setting::get('inventory.audit_session_timeout_hours', self::DEFAULT_SESSION_TIMEOUT_HOURS);
+        $hours = $hours > 0 ? $hours : self::DEFAULT_SESSION_TIMEOUT_HOURS;
+
+        return now()->subHours($hours);
+    }
+
+    protected function sessionHasExpired(StockAuditSession $session): bool
+    {
+        if ($session->status !== StockAuditSession::STATUS_IN_PROGRESS) {
+            return false;
+        }
+
+        $lastActivity = $session->last_activity_at ?? $session->updated_at ?? $session->created_at;
+
+        return $lastActivity && $lastActivity->lt($this->activeSessionCutoff());
+    }
+
+    protected function lockSessionIsActive(?StockAuditSession $session): bool
+    {
+        if (!$session) {
+            return false;
+        }
+
+        return $session->status === StockAuditSession::STATUS_IN_PROGRESS
+            && !$this->sessionHasExpired($session);
+    }
+
+    protected function pruneInactiveLocks(): void
+    {
+        $cutoff = $this->activeSessionCutoff();
+        $lockIdsToDelete = StockAuditItemLock::query()
+            ->select('stock_audit_item_locks.id')
+            ->join('stock_audit_sessions as audit_sessions', 'audit_sessions.id', '=', 'stock_audit_item_locks.session_id')
+            ->leftJoin('stock_audit_items as audit_items', function ($join): void {
+                $join->on('audit_items.session_id', '=', 'stock_audit_item_locks.session_id')
+                    ->on('audit_items.variant_id', '=', 'stock_audit_item_locks.variant_id');
+            })
+            ->leftJoin('stock_adjustments as adjustments', 'adjustments.id', '=', 'audit_items.stock_adjustment_id')
+            ->where(function (Builder $query) use ($cutoff): void {
+                $query->where('audit_sessions.status', StockAuditSession::STATUS_REVIEWED)
+                    ->orWhere(function (Builder $builder) use ($cutoff): void {
+                        $builder->where('audit_sessions.status', StockAuditSession::STATUS_IN_PROGRESS)
+                            ->where('audit_sessions.last_activity_at', '<', $cutoff);
+                    })
+                    ->orWhere(function (Builder $builder): void {
+                        $builder->where('audit_sessions.status', StockAuditSession::STATUS_SUBMITTED)
+                            ->where(function (Builder $resolved): void {
+                                $resolved->whereNull('audit_items.id')
+                                    ->orWhere(function (Builder $line): void {
+                                        $line->whereNull('audit_items.conflict_reason')
+                                            ->where(function (Builder $movement): void {
+                                                $movement->where('audit_items.variance', 0)
+                                                    ->orWhere(function (Builder $posted): void {
+                                                        $posted->where('audit_items.variance', '!=', 0)
+                                                            ->whereNotNull('audit_items.stock_adjustment_id')
+                                                            ->where('adjustments.status', '!=', StockAdjustment::STATUS_PENDING);
+                                                    });
+                                            });
+                                    });
+                            });
+                    });
+            })
+            ->pluck('stock_audit_item_locks.id');
+
+        if ($lockIdsToDelete->isNotEmpty()) {
+            StockAuditItemLock::query()
+                ->whereIn('id', $lockIdsToDelete)
+                ->delete();
+        }
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Accounting\AccountingService;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\VendorBill;
@@ -13,6 +14,10 @@ use Illuminate\Validation\ValidationException;
 
 class VendorBillService
 {
+    public function __construct(
+        protected AccountingService $accountingService,
+    ) {}
+
     public function create(array $data): VendorBill
     {
         $purchaseOrderId = $data['purchase_order_id'] ?? null;
@@ -37,6 +42,7 @@ class VendorBillService
             $total += $this->createBillExpenses($bill, $data['expenses'] ?? []);
 
             $bill->update(['total_amount' => $total]);
+            $this->accountingService->postVendorBill($bill, auth()->id());
 
             return $bill;
         });

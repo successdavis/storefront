@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\StockAdjustmentType;
 use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\ProductVariant;
 use App\Models\StockAdjustment;
@@ -44,24 +45,36 @@ class StockAdjustmentController extends Controller
             ->latest('adjusted_at')
             ->paginate(15)
             ->withQueryString()
-            ->through(fn ($item) => [
-                'id' => $item->id,
-                'variant_label' => $item->variant ? $this->variantNameFormatter->format($item->variant) : 'N/A',
-                'variant_sku' => $item->variant?->sku,
-                'warehouse' => $item->warehouse?->name,
-                'employee' => $item->employee?->name,
-                'previous_quantity' => $item->previous_quantity,
-                'adjusted_quantity' => $item->adjusted_quantity,
-                'new_quantity' => $item->new_quantity,
-                'reason' => ucfirst(str_replace('_', ' ', $item->reason)),
-                'adjusted_at' => optional($item->adjusted_at)?->toDateTimeString(),
-                'status' => $item->status ?? StockAdjustment::STATUS_PENDING,
-                'approved_by' => $item->approver?->name,
-                'approved_at' => optional($item->approved_at)?->toDateTimeString(),
-                'rejected_by' => $item->rejector?->name,
-                'rejected_at' => optional($item->rejected_at)?->toDateTimeString(),
-                'can_review' => ($item->status ?? StockAdjustment::STATUS_PENDING) === StockAdjustment::STATUS_PENDING,
-            ]);
+            ->through(function ($item) {
+                $adjustmentType = $item->adjustment_type instanceof StockAdjustmentType
+                    ? $item->adjustment_type
+                    : StockAdjustmentType::tryFrom((string) $item->adjustment_type);
+                $adjustmentTypeValue = $adjustmentType?->value
+                    ?? ((string) $item->adjustment_type !== '' ? (string) $item->adjustment_type : StockAdjustmentType::CORRECTION->value);
+                $adjustmentTypeLabel = $adjustmentType?->label()
+                    ?? ucfirst((string) ($item->adjustment_type ?: StockAdjustmentType::CORRECTION->value));
+
+                return [
+                    'id' => $item->id,
+                    'variant_label' => $item->variant ? $this->variantNameFormatter->format($item->variant) : 'N/A',
+                    'variant_sku' => $item->variant?->sku,
+                    'warehouse' => $item->warehouse?->name,
+                    'employee' => $item->employee?->name,
+                    'previous_quantity' => $item->previous_quantity,
+                    'adjusted_quantity' => $item->adjusted_quantity,
+                    'new_quantity' => $item->new_quantity,
+                    'reason' => ucfirst(str_replace('_', ' ', $item->reason)),
+                    'adjustment_type' => $adjustmentTypeValue,
+                    'adjustment_type_label' => $adjustmentTypeLabel,
+                    'adjusted_at' => optional($item->adjusted_at)?->toDateTimeString(),
+                    'status' => $item->status ?? StockAdjustment::STATUS_PENDING,
+                    'approved_by' => $item->approver?->name,
+                    'approved_at' => optional($item->approved_at)?->toDateTimeString(),
+                    'rejected_by' => $item->rejector?->name,
+                    'rejected_at' => optional($item->rejected_at)?->toDateTimeString(),
+                    'can_review' => ($item->status ?? StockAdjustment::STATUS_PENDING) === StockAdjustment::STATUS_PENDING,
+                ];
+            });
 
         return Inertia::render('StockAdjustments/Index', [
             'adjustments' => $adjustments,
@@ -101,6 +114,7 @@ class StockAdjustmentController extends Controller
 
         return Inertia::render('StockAdjustments/Create', [
             'variants' => $variants,
+            'adjustment_type_options' => StockAdjustmentType::options(),
         ]);
     }
 
@@ -110,6 +124,7 @@ class StockAdjustmentController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'variant_id' => 'required|exists:product_variants,id',
             'adjusted_quantity' => 'required|integer|not_in:0',
+            'adjustment_type' => 'required|in:' . implode(',', array_column(StockAdjustmentType::options(), 'value')),
             'reason' => 'required|in:damage,loss,count_discrepancy,manual_correction,other',
             'reference' => 'nullable|string|max:100',
             'note' => 'nullable|string',
@@ -155,6 +170,14 @@ class StockAdjustmentController extends Controller
                 'adjusted_quantity' => $stockAdjustment->adjusted_quantity,
                 'new_quantity' => $stockAdjustment->new_quantity,
                 'reason' => $stockAdjustment->reason,
+                'adjustment_type' => ($stockAdjustment->adjustment_type instanceof StockAdjustmentType
+                    ? $stockAdjustment->adjustment_type->value
+                    : StockAdjustmentType::tryFrom((string) $stockAdjustment->adjustment_type)?->value)
+                    ?? ($stockAdjustment->adjustment_type ?: StockAdjustmentType::CORRECTION->value),
+                'adjustment_type_label' => ($stockAdjustment->adjustment_type instanceof StockAdjustmentType
+                    ? $stockAdjustment->adjustment_type->label()
+                    : StockAdjustmentType::tryFrom((string) $stockAdjustment->adjustment_type)?->label())
+                    ?? ucfirst((string) ($stockAdjustment->adjustment_type ?: StockAdjustmentType::CORRECTION->value)),
                 'note' => $stockAdjustment->note,
                 'warehouse' => $stockAdjustment->warehouse?->name ?? 'N/A',
                 'employee' => $stockAdjustment->employee?->name ?? 'N/A',
@@ -167,6 +190,7 @@ class StockAdjustmentController extends Controller
                 'approval_note' => $stockAdjustment->approval_note,
                 'can_approve' => ($stockAdjustment->status ?? StockAdjustment::STATUS_PENDING) === StockAdjustment::STATUS_PENDING,
             ],
+            'adjustment_type_options' => StockAdjustmentType::options(),
         ]);
     }
 
@@ -174,9 +198,14 @@ class StockAdjustmentController extends Controller
     {
         $validated = $request->validate([
             'approval_note' => 'nullable|string|max:1000',
+            'adjustment_type' => 'nullable|in:' . implode(',', array_column(StockAdjustmentType::options(), 'value')),
         ]);
 
         try {
+            if (!empty($validated['adjustment_type'])) {
+                $stockAdjustment->adjustment_type = $validated['adjustment_type'];
+            }
+
             $this->approvalService->approve(
                 stockAdjustment: $stockAdjustment,
                 approverId: (int) auth()->id(),

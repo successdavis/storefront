@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Domain\Inventory\Audit\StockAuditService;
+use App\Enums\StockAdjustmentType;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
@@ -86,6 +87,11 @@ class StockAuditDuplicateProtectionTest extends TestCase
         );
 
         $this->assertDatabaseCount('stock_adjustments', 1);
+        $this->assertDatabaseHas('stock_adjustments', [
+            'variant_id' => $variant->id,
+            'reason' => 'count_discrepancy',
+            'adjustment_type' => StockAdjustmentType::LOSS->value,
+        ]);
 
         $sessionB = $service->findOrCreateInProgressSession(
             startedBy: $user->id,
@@ -107,10 +113,175 @@ class StockAuditDuplicateProtectionTest extends TestCase
 
             $this->fail('Expected overlapping audit submission to be rejected.');
         } catch (ValidationException $exception) {
-            $this->assertStringContainsString('already counted in session', collect($exception->errors())->flatten()->first());
+            $this->assertStringContainsString('counted', collect($exception->errors())->flatten()->first());
         }
 
         $this->assertDatabaseCount('stock_adjustments', 1);
+    }
+
+    public function test_submitted_session_locks_do_not_block_new_audits(): void
+    {
+        $variant = $this->createVariantInCategories();
+        $service = app(StockAuditService::class);
+        $user = User::factory()->create();
+
+        $submittedSession = StockAuditSession::query()->create([
+            'scope_type' => StockAuditSession::SCOPE_CATEGORY,
+            'category_id' => $variant->product->categories[0]->id,
+            'status' => StockAuditSession::STATUS_SUBMITTED,
+            'total_expected_items' => 1,
+            'total_scanned_items' => 1,
+            'coverage_percentage' => 100,
+            'started_by' => $user->id,
+            'started_at' => now(),
+            'submitted_at' => now(),
+            'last_activity_at' => now(),
+        ]);
+
+        StockAuditItemLock::query()->create([
+            'session_id' => $submittedSession->id,
+            'variant_id' => $variant->id,
+            'warehouse_id' => null,
+            'warehouse_scope_key' => 0,
+        ]);
+
+        $newSession = $service->findOrCreateInProgressSession(
+            startedBy: $user->id,
+            scopeType: StockAuditSession::SCOPE_CATEGORY,
+            categoryId: $variant->product->categories[1]->id,
+            warehouseId: null,
+        );
+
+        $rows = $service->sessionRows($newSession);
+        $row = $rows->firstWhere('id', $variant->id);
+
+        $this->assertNotNull($row);
+        $this->assertFalse((bool) $row['locked_by_other_session']);
+        $this->assertNull($row['lock_message']);
+    }
+
+    public function test_stale_in_progress_session_locks_do_not_block_new_audits(): void
+    {
+        $variant = $this->createVariantInCategories();
+        $service = app(StockAuditService::class);
+        $user = User::factory()->create();
+
+        $staleSession = StockAuditSession::query()->create([
+            'warehouse_id' => null,
+            'scope_type' => StockAuditSession::SCOPE_CATEGORY,
+            'category_id' => $variant->product->categories[0]->id,
+            'status' => StockAuditSession::STATUS_IN_PROGRESS,
+            'total_expected_items' => 1,
+            'total_scanned_items' => 1,
+            'coverage_percentage' => 100,
+            'started_by' => $user->id,
+            'started_at' => now()->subDays(5),
+            'last_activity_at' => now()->subDays(5),
+        ]);
+
+        StockAuditItem::query()->create([
+            'session_id' => $staleSession->id,
+            'variant_id' => $variant->id,
+            'system_quantity' => 2,
+            'physical_quantity' => 0,
+            'variance' => -2,
+        ]);
+
+        StockAuditItemLock::query()->create([
+            'session_id' => $staleSession->id,
+            'variant_id' => $variant->id,
+            'warehouse_id' => null,
+            'warehouse_scope_key' => 0,
+        ]);
+
+        $newSession = $service->findOrCreateInProgressSession(
+            startedBy: $user->id,
+            scopeType: StockAuditSession::SCOPE_CATEGORY,
+            categoryId: $variant->product->categories[1]->id,
+            warehouseId: null,
+        );
+
+        $rows = $service->sessionRows($newSession);
+        $row = $rows->firstWhere('id', $variant->id);
+
+        $this->assertNotNull($row);
+        $this->assertFalse((bool) $row['locked_by_other_session']);
+        $this->assertDatabaseMissing('stock_audit_item_locks', [
+            'session_id' => $staleSession->id,
+            'variant_id' => $variant->id,
+        ]);
+    }
+
+    public function test_empty_in_progress_session_is_reused_when_scope_changes_before_counting(): void
+    {
+        $variant = $this->createVariantInCategories();
+        $service = app(StockAuditService::class);
+        $user = User::factory()->create();
+
+        $initialSession = $service->findOrCreateInProgressSession(
+            startedBy: $user->id,
+            scopeType: StockAuditSession::SCOPE_FULL,
+            categoryId: null,
+            warehouseId: null,
+        );
+
+        $retargetedSession = $service->findOrCreateInProgressSession(
+            startedBy: $user->id,
+            scopeType: StockAuditSession::SCOPE_CATEGORY,
+            categoryId: $variant->product->categories[0]->id,
+            warehouseId: null,
+        );
+
+        $this->assertSame($initialSession->id, $retargetedSession->id);
+        $this->assertSame(StockAuditSession::SCOPE_CATEGORY, $retargetedSession->scope_type);
+        $this->assertSame($variant->product->categories[0]->id, (int) $retargetedSession->category_id);
+        $this->assertNull($retargetedSession->warehouse_id);
+
+        $this->assertSame(1, StockAuditSession::query()
+            ->where('started_by', $user->id)
+            ->where('status', StockAuditSession::STATUS_IN_PROGRESS)
+            ->count());
+    }
+
+    public function test_resumable_sessions_exclude_empty_shell_sessions(): void
+    {
+        $variant = $this->createVariantInCategories();
+        $service = app(StockAuditService::class);
+        $user = User::factory()->create();
+
+        $emptySession = StockAuditSession::query()->create([
+            'scope_type' => StockAuditSession::SCOPE_FULL,
+            'status' => StockAuditSession::STATUS_IN_PROGRESS,
+            'total_expected_items' => 10,
+            'total_scanned_items' => 0,
+            'coverage_percentage' => 0,
+            'started_by' => $user->id,
+            'started_at' => now(),
+            'last_activity_at' => now(),
+        ]);
+
+        $countedSession = StockAuditSession::query()->create([
+            'warehouse_id' => null,
+            'scope_type' => StockAuditSession::SCOPE_CATEGORY,
+            'category_id' => $variant->product->categories[0]->id,
+            'status' => StockAuditSession::STATUS_IN_PROGRESS,
+            'total_expected_items' => 1,
+            'total_scanned_items' => 0,
+            'coverage_percentage' => 0,
+            'started_by' => $user->id,
+            'started_at' => now(),
+            'last_activity_at' => now(),
+        ]);
+
+        $service->upsertSessionItems($countedSession, [[
+            'variant_id' => $variant->id,
+            'physical_quantity' => 9,
+        ]]);
+
+        $sessions = $service->resumableSessions($user->id);
+
+        $this->assertFalse($sessions->contains(fn (array $session) => (int) $session['id'] === (int) $emptySession->id));
+        $this->assertTrue($sessions->contains(fn (array $session) => (int) $session['id'] === (int) $countedSession->id));
     }
 
     public function test_legacy_duplicate_pending_adjustment_cannot_be_approved_twice(): void

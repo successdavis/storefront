@@ -12,6 +12,7 @@ use App\Models\Sale;
 use App\Models\Shipment;
 use App\Models\ShippingMethod;
 use App\Models\User;
+use App\Services\Accounting\AccountingService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -28,6 +29,7 @@ class OrderService
         protected DiscountService $discountService,
         protected StockReservationService $stockReservationService,
         protected OrderManagementService $orderManagementService,
+        protected AccountingService $accountingService,
     ) {}
 
     /**
@@ -67,6 +69,11 @@ class OrderService
             $this->commitDiscount($order, $session);
             $this->markSessionUsed($session, $order);
             $this->orderManagementService->initializeOrderLifecycle($order, auth()->id());
+            $this->accountingService->postOrder(
+                $order,
+                $payload['payment_method'] ?? null,
+                auth()->id(),
+            );
             $this->logOrder($order);
 
             return $order;

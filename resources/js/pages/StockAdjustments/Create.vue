@@ -1,5 +1,5 @@
 <template>
-    <div class="p-6 max-w-3xl mx-auto">
+    <div class="p-6 max-w-4xl mx-auto">
         <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-6">
             New Stock Adjustment
         </h1>
@@ -64,7 +64,8 @@
             </div>
 
             <!-- Reason -->
-            <div>
+            <div class="grid gap-5 lg:grid-cols-2">
+                <div>
                 <label
                     class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
                 >
@@ -81,6 +82,34 @@
                     <option value="count_discrepancy">Count Discrepancy</option>
                     <option value="other">Other</option>
                 </select>
+                </div>
+
+                <div>
+                    <label
+                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    >
+                        Adjustment Type
+                    </label>
+                    <select
+                        v-model="form.adjustment_type"
+                        class="w-full py-2 px-2 border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800
+                 text-gray-900 dark:text-gray-100 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    >
+                        <option
+                            v-for="option in adjustment_type_options"
+                            :key="option.value"
+                            :value="option.value"
+                        >
+                            {{ option.label }}
+                        </option>
+                    </select>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ selectedAdjustmentTypeDescription }}
+                    </p>
+                    <p v-if="form.errors.adjustment_type" class="text-red-500 text-sm mt-1">
+                        {{ form.errors.adjustment_type }}
+                    </p>
+                </div>
             </div>
 
             <!-- Note -->
@@ -121,10 +150,11 @@
 </template>
 <script setup>
 import { useForm, Link } from '@inertiajs/vue3'
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 
 const props = defineProps({
     variants: Array,
+    adjustment_type_options: Array,
 })
 
 const form = useForm({
@@ -132,16 +162,21 @@ const form = useForm({
     variant_id: '',
     previous_quantity: '',
     adjusted_quantity: '',
+    adjustment_type: 'correction',
     reason: 'manual_correction',
     employee_id: null,
     note: '',
     reference: '',
 })
 
+const selectedAdjustmentTypeDescription = computed(() => (
+    props.adjustment_type_options.find(option => option.value === form.adjustment_type)?.description
+    || ''
+))
+
 // Watch for variant change and auto-fill previous_quantity
 watch(() => form.variant_id, (newId) => {
     const selected = props.variants.find(v => v.id === newId)
-    console.log(selected)
     form.previous_quantity = selected ? selected.current_quantity : ''
 })
 

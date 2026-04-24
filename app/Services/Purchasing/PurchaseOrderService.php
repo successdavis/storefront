@@ -5,6 +5,7 @@ namespace App\Services\Purchasing;
 
 use App\Enums\PurchaseOrderStatus;
 use App\Events\PurchaseOrderStatusChanged;
+use App\Services\Accounting\AccountingService;
 use App\Services\InventoryService;
 use App\Models\{PurchaseOrder, PurchaseOrderItem, ItemReceipt, ItemReceiptItem, VendorBill, VendorPayment};
 use App\Services\Inventory\InventoryServiceInterface;
@@ -286,6 +287,7 @@ class PurchaseOrderService
             $po->save();
 
             event(new PurchaseOrderStatusChanged($po, $po->getOriginal('status'), $po->status, 'Items received'));
+            app(AccountingService::class)->postInventoryReceipt($receipt, auth()->id());
 
             return $receipt->load('items');
         });
