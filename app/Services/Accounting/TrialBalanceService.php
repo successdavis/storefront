@@ -36,7 +36,7 @@ class TrialBalanceService
                 $debit = (float) $row->total_debit;
                 $credit = (float) $row->total_credit;
                 $net = $debit - $credit;
-                $normalDebit = in_array($row->type, ['asset', 'expense'], true);
+                $normalDebit = in_array($row->type, ['asset', 'expense', 'cost_of_goods_sold'], true);
                 $presentation = $normalDebit ? $net : -1 * $net;
 
                 return [
@@ -91,7 +91,7 @@ class TrialBalanceService
                 $debit = (float) $row->total_debit;
                 $credit = (float) $row->total_credit;
                 $net = $debit - $credit;
-                $normalDebit = in_array($row->type, ['asset', 'expense'], true);
+                $normalDebit = in_array($row->type, ['asset', 'expense', 'cost_of_goods_sold'], true);
                 $presentation = $normalDebit ? $net : -1 * $net;
 
                 return [

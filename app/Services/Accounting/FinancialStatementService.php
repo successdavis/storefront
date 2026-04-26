@@ -11,17 +11,30 @@ class FinancialStatementService
     {
         $trial = collect(app(TrialBalanceService::class)->report($filters)['rows']);
 
-        $income = $this->statementRows($trial->where('type', 'income'), false);
-        $expenses = $this->statementRows($trial->where('type', 'expense'), true);
+        $revenue = $this->statementRows($trial->where('type', 'revenue'), false);
+        $costOfGoodsSold = $this->statementRows($trial->where('type', 'cost_of_goods_sold'), true);
+        $operatingExpenses = $this->statementRows($trial->where('type', 'expense'), true);
+        $revenueTotal = round($revenue->sum('signed_amount'), 4);
+        $cogsTotal = round($costOfGoodsSold->sum('signed_amount'), 4);
+        $operatingExpensesTotal = round($operatingExpenses->sum('signed_amount'), 4);
+        $grossProfit = round($revenueTotal - $cogsTotal, 4);
+        $netProfit = round($grossProfit - $operatingExpensesTotal, 4);
 
         return [
             'filters' => [
                 'from' => $filters['from'] ?? now()->startOfMonth()->toDateString(),
                 'to' => $filters['to'] ?? now()->toDateString(),
             ],
-            'income' => $income,
-            'expenses' => $expenses,
-            'net_profit' => round($income->sum('amount') - $expenses->sum('amount'), 4),
+            'revenue' => $revenue,
+            'cost_of_goods_sold' => $costOfGoodsSold,
+            'operating_expenses' => $operatingExpenses,
+            'revenue_total' => $revenueTotal,
+            'cost_of_goods_sold_total' => $cogsTotal,
+            'gross_profit' => $grossProfit,
+            'operating_expenses_total' => $operatingExpensesTotal,
+            'net_profit' => $netProfit,
+            'gross_margin_percent' => $revenueTotal > 0 ? round(($grossProfit / $revenueTotal) * 100, 2) : 0.0,
+            'net_margin_percent' => $revenueTotal > 0 ? round(($netProfit / $revenueTotal) * 100, 2) : 0.0,
         ];
     }
 
@@ -87,9 +100,10 @@ class FinancialStatementService
 
     protected function unclosedEarnings(Collection $trialRows): float
     {
-        $income = round((float) $trialRows->where('type', 'income')->sum(fn (array $row) => ((float) ($row['raw_credit'] ?? $row['credit'] ?? 0)) - ((float) ($row['raw_debit'] ?? $row['debit'] ?? 0))), 4);
+        $revenue = round((float) $trialRows->where('type', 'revenue')->sum(fn (array $row) => ((float) ($row['raw_credit'] ?? $row['credit'] ?? 0)) - ((float) ($row['raw_debit'] ?? $row['debit'] ?? 0))), 4);
+        $costOfGoodsSold = round((float) $trialRows->where('type', 'cost_of_goods_sold')->sum(fn (array $row) => ((float) ($row['raw_debit'] ?? $row['debit'] ?? 0)) - ((float) ($row['raw_credit'] ?? $row['credit'] ?? 0))), 4);
         $expenses = round((float) $trialRows->where('type', 'expense')->sum(fn (array $row) => ((float) ($row['raw_debit'] ?? $row['debit'] ?? 0)) - ((float) ($row['raw_credit'] ?? $row['credit'] ?? 0))), 4);
 
-        return round($income - $expenses, 4);
+        return round($revenue - $costOfGoodsSold - $expenses, 4);
     }
 }

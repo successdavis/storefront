@@ -5,6 +5,8 @@ namespace App\Services\Accounting;
 use App\Enums\StockAdjustmentType;
 use App\Models\Accounting\Expense;
 use App\Models\Accounting\JournalEntry;
+use App\Models\Accounting\CashBankTransfer;
+use App\Models\CustomerInvoice;
 use App\Models\Accounting\PaymentGatewaySettlement;
 use App\Models\ItemReceipt;
 use App\Models\OpeningBalance;
@@ -26,19 +28,22 @@ class AccountingService
 
     public function postOrder(Order $order, ?string $paymentMethod = null, ?int $postedBy = null): JournalEntry
     {
-        $order->loadMissing('items');
+        $order->loadMissing('items', 'payments', 'invoice');
 
-        $receiptAccount = $this->resolveOrderReceiptAccount($order, $paymentMethod);
         $salesAccount = $this->accountResolver->resolve('product_sales_revenue');
         $shippingRevenueAccount = $this->accountResolver->resolve('shipping_revenue');
         $discountAccount = $this->accountResolver->resolve('sales_discount_contra');
         $taxPayableAccount = $this->accountResolver->resolve('tax_payable');
         $cogsAccount = $this->accountResolver->resolve('cost_of_goods_sold');
         $inventoryAccount = $this->accountResolver->resolve('inventory_asset');
+        $builder = JournalBuilder::make();
+        $receiptBreakdown = $this->resolveOrderReceiptBreakdown($order, $paymentMethod);
 
-        $builder = JournalBuilder::make()
-            ->debit($receiptAccount, (float) $order->total_amount, 'Order receipt')
-            ->credit($salesAccount, (float) $order->subtotal, 'Product sales revenue');
+        foreach ($receiptBreakdown as $receiptLine) {
+            $builder->debit($receiptLine['account'], $receiptLine['amount'], $receiptLine['description']);
+        }
+
+        $builder->credit($salesAccount, (float) $order->subtotal, 'Product sales revenue');
 
         if ((float) $order->discount > 0) {
             $builder->debit($discountAccount, (float) $order->discount, 'Sales discount');
@@ -72,6 +77,11 @@ class AccountingService
             'meta' => [
                 'channel' => $order->channel,
                 'payment_method' => $paymentMethod,
+                'receipt_breakdown' => collect($receiptBreakdown)->map(fn (array $line) => [
+                    'account_code' => $line['account']->code,
+                    'account_name' => $line['account']->name,
+                    'amount' => $line['amount'],
+                ])->values()->all(),
                 'subtotal' => (float) $order->subtotal,
                 'discount' => (float) $order->discount,
                 'shipping_total' => (float) $order->shipping_total,
@@ -79,6 +89,34 @@ class AccountingService
                 'cogs_amount' => $cogsAmount,
             ],
         ], $builder->lines());
+    }
+
+    public function postCustomerInvoicePayment(CustomerInvoice $invoice, Payment $payment, ?int $postedBy = null): ?JournalEntry
+    {
+        if ($payment->payable_type !== CustomerInvoice::class || (float) $payment->amount <= 0 || $payment->status !== 'paid') {
+            return null;
+        }
+
+        $accountsReceivable = $this->accountResolver->resolve('accounts_receivable');
+        $paymentAccount = $this->resolvePaymentMethodAccount((string) $payment->method);
+
+        return $this->journalPostingService->post([
+            'event_key' => "payment:{$payment->id}:customer_invoice_receipt",
+            'source_event' => 'customer_invoice_receipt_posted',
+            'entry_date' => optional($payment->paid_at)?->toDateString() ?? optional($payment->created_at)?->toDateString() ?? now()->toDateString(),
+            'posting_date' => optional($payment->paid_at)?->toDateString() ?? optional($payment->created_at)?->toDateString() ?? now()->toDateString(),
+            'description' => "Receivable repayment {$invoice->invoice_number}",
+            'source' => $payment,
+            'posted_by' => $postedBy,
+            'meta' => [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'method' => $payment->method,
+            ],
+        ], JournalBuilder::make()
+            ->debit($paymentAccount, (float) $payment->amount, 'Customer repayment received')
+            ->credit($accountsReceivable, (float) $payment->amount, 'Accounts receivable reduced')
+            ->lines());
     }
 
     public function postSale(Sale $sale, ?string $paymentMethod = null, ?int $postedBy = null): ?JournalEntry
@@ -407,6 +445,36 @@ class AccountingService
         return $entry;
     }
 
+    public function postCashBankTransfer(CashBankTransfer $transfer, ?int $postedBy = null): JournalEntry
+    {
+        $transfer->loadMissing('cashAccount', 'bankAccount');
+
+        $entry = $this->journalPostingService->post([
+            'event_key' => "cash_bank_transfer:{$transfer->id}:posted",
+            'source_event' => 'cash_bank_transfer_posted',
+            'entry_date' => optional($transfer->transfer_date)?->toDateString() ?? now()->toDateString(),
+            'posting_date' => optional($transfer->transfer_date)?->toDateString() ?? now()->toDateString(),
+            'description' => $transfer->description,
+            'source' => $transfer,
+            'posted_by' => $postedBy ?: $transfer->recorded_by,
+            'currency' => $transfer->currency,
+            'meta' => [
+                'reference' => $transfer->reference,
+                'cash_account_id' => $transfer->cash_account_id,
+                'bank_account_id' => $transfer->bank_account_id,
+            ],
+        ], JournalBuilder::make()
+            ->debit($transfer->bankAccount, (float) $transfer->amount, 'Cash deposited into bank')
+            ->credit($transfer->cashAccount, (float) $transfer->amount, 'Cash on hand reduced')
+            ->lines());
+
+        if (!$transfer->journal_entry_id) {
+            $transfer->forceFill(['journal_entry_id' => $entry->id])->save();
+        }
+
+        return $entry;
+    }
+
     public function postRefund(Order $order, float $amount, bool $includeShipping = false, ?int $postedBy = null): JournalEntry
     {
         $refundsPayable = $this->accountResolver->resolve('refunds_payable');
@@ -450,6 +518,57 @@ class AccountingService
         }
 
         return $this->resolvePaymentMethodAccount($paymentMethod ?: 'cash');
+    }
+
+    /**
+     * @return list<array{account:\App\Models\Accounting\Account, amount:float, description:string}>
+     */
+    protected function resolveOrderReceiptBreakdown(Order $order, ?string $paymentMethod): array
+    {
+        if ($order->channel === 'online') {
+            return [[
+                'account' => $this->accountResolver->resolve('payment_gateway_clearing'),
+                'amount' => round((float) $order->total_amount, 4),
+                'description' => 'Order receipt',
+            ]];
+        }
+
+        $paidPayments = $order->relationLoaded('payments')
+            ? $order->payments->where('status', 'paid')
+            : $order->payments()->where('status', 'paid')->get();
+
+        if ($paidPayments->isEmpty()) {
+            return [[
+                'account' => $this->resolveOrderReceiptAccount($order, $paymentMethod),
+                'amount' => round((float) $order->total_amount, 4),
+                'description' => 'Order receipt',
+            ]];
+        }
+
+        $lines = $paidPayments
+            ->groupBy('method')
+            ->map(function ($group, string $method) {
+                return [
+                    'account' => $this->resolvePaymentMethodAccount($method),
+                    'amount' => round((float) $group->sum('amount'), 4),
+                    'description' => str($method)->headline()->prepend('Order receipt - ')->value(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $paidAmount = round((float) collect($lines)->sum('amount'), 4);
+        $receivableAmount = round(max(0, (float) $order->total_amount - $paidAmount), 4);
+
+        if ($receivableAmount > 0.0001) {
+            $lines[] = [
+                'account' => $this->accountResolver->resolve('accounts_receivable'),
+                'amount' => $receivableAmount,
+                'description' => 'Accounts receivable created',
+            ];
+        }
+
+        return $lines;
     }
 
     protected function resolvePaymentMethodAccount(string $paymentMethod): \App\Models\Accounting\Account

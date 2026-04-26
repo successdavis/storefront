@@ -57,7 +57,7 @@ export function useCart() {
         if (cartItems.value.length === 0) {
             // optional: locally show a toast or inline message
             // but you said global toast is already set up elsewhere
-            return
+            return Promise.resolve()
         }
 
         const data = {
@@ -69,33 +69,32 @@ export function useCart() {
             })),
             subtotal: payload.subtotal,
             total: payload.total,
+            payment_mode: payload.payment_mode ?? 'full',
+            payment_method: payload.payment_method ?? null,
+            payment_lines: payload.payment_lines ?? [],
+            due_date: payload.due_date ?? null,
+            repayment_terms: payload.repayment_terms ?? null,
             shipping: payload.shipping,
             coupon: payload.coupon ?? null,
             checkout_token: payload.checkout_token,
         }
 
-        router.post(page.props.pos_routes.place_order, data, {
-            // Keep the page in place; Inertia will still receive flash props
-            preserveScroll: true,
-            preserveState: false,
-
-            // If the server flashes "success", your global watcher will show the toast.
-            onSuccess: () => {
-                clearCart()
-                // eventBus.emit('order-placed')
-            },
-
-            // If the server flashes "error", your global watcher will show it.
-            // You can still inspect errors here if needed.
-            onError: (errors) => {
-                // validation field errors (if you add them later)
-                // leave flash to the global toast
-                console.debug('POS onError', errors)
-            },
-
-            onFinish: () => {
-                // optional cleanup/spinners
-            },
+        return new Promise((resolve, reject) => {
+            router.post(page.props.pos_routes.place_order, data, {
+                preserveScroll: true,
+                preserveState: false,
+                onSuccess: () => {
+                    clearCart()
+                    resolve(true)
+                },
+                onError: (errors) => {
+                    console.debug('POS onError', errors)
+                    reject(errors)
+                },
+                onCancel: () => {
+                    reject(new Error('POS order request was cancelled.'))
+                },
+            })
         })
     }
 

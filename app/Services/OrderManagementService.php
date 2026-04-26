@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Events\OrderLifecycleChanged;
+use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Models\OrderNote;
 use App\Models\OrderStatusHistory;
@@ -44,6 +45,7 @@ class OrderManagementService
     public function __construct(
         protected InventoryService $inventoryService,
         protected ProductService $productService,
+        protected CustomerInvoiceService $customerInvoiceService,
     ) {}
 
     public function listOrders(array $filters = []): LengthAwarePaginator
@@ -55,6 +57,7 @@ class OrderManagementService
                 'user:id,name,email,phone',
                 'shipment:id,shippable_id,shippable_type,status,type,courier_name,tracking_number,tracking_url,ready_at,shipped_at,delivered_at',
                 'payments:id,payable_id,payable_type,amount,status,method,paid_at,transaction_reference',
+                'invoice:id,order_id,invoice_number,total_amount,amount_paid,outstanding_balance,status,due_date',
             ])
             ->withCount('items')
             ->withSum('items as item_quantity', 'quantity');
@@ -72,6 +75,7 @@ class OrderManagementService
             ->with([
                 'shipment:id,shippable_id,shippable_type,status,type',
                 'payments:id,payable_id,payable_type,amount,status,method,paid_at',
+                'invoice:id,order_id,invoice_number,total_amount,amount_paid,outstanding_balance,status,due_date',
             ])
             ->withCount('items')
             ->withSum('items as item_quantity', 'quantity')
@@ -173,6 +177,12 @@ class OrderManagementService
             'currency' => $order->currency,
             'item_count' => (int) ($order->item_quantity ?? $order->items_count ?? 0),
             'payment_method' => $order->payments->sortByDesc(fn ($payment) => $payment->paid_at ?? $payment->created_at)->first()?->method,
+            'invoice' => $order->invoice ? [
+                'invoice_number' => $order->invoice->invoice_number,
+                'status' => $order->invoice->status,
+                'outstanding_balance' => (float) $order->invoice->outstanding_balance,
+                'due_date' => optional($order->invoice->due_date)?->toDateString(),
+            ] : null,
             'tracking_number' => $order->shipment?->tracking_number,
             'courier_name' => $order->shipment?->courier_name,
             'created_at' => optional($order->created_at)?->toIso8601String(),
@@ -492,19 +502,27 @@ class OrderManagementService
     public function resolvePaymentStatus(Order $order): string
     {
         $payments = $order->relationLoaded('payments') ? $order->payments : $order->payments()->get();
+        $invoice = $order->relationLoaded('invoice')
+            ? $order->invoice
+            : $order->invoice()->with('payments')->first();
 
         if ($payments->contains(fn ($payment) => $payment->status === 'refunded')) {
             return 'refunded';
         }
 
         $paidAmount = (float) $payments->where('status', 'paid')->sum('amount');
+        $invoicePayments = $invoice
+            ? ($invoice->relationLoaded('payments') ? $invoice->payments : $invoice->payments()->get())
+            : collect();
+        $invoicePaidAmount = (float) $invoicePayments->where('status', 'paid')->sum('amount');
         $failedCount = (int) $payments->where('status', 'failed')->count();
+        $coveredAmount = $paidAmount + $invoicePaidAmount;
 
-        if ($paidAmount >= (float) $order->total_amount && (float) $order->total_amount > 0) {
+        if ($coveredAmount >= (float) $order->total_amount && (float) $order->total_amount > 0) {
             return 'paid';
         }
 
-        if ($paidAmount > 0) {
+        if ($coveredAmount > 0) {
             return 'partially_paid';
         }
 
@@ -598,6 +616,9 @@ class OrderManagementService
         $paymentStatus = $this->resolvePaymentStatus($order);
         $fulfillmentStatus = $this->resolveFulfillmentStatus($order);
         $addresses = $order->shipment?->addresses ?? collect();
+        $invoicePayments = $order->invoice?->payments ?? collect();
+        $directPaidAmount = (float) $order->payments->where('status', 'paid')->sum('amount');
+        $receivablePaidAmount = (float) $invoicePayments->where('status', 'paid')->sum('amount');
 
         return [
             'id' => (int) $order->id,
@@ -659,10 +680,37 @@ class OrderManagementService
             'payment_summary' => [
                 'status' => $paymentStatus,
                 'status_label' => $this->statusLabel($paymentStatus),
-                'paid_amount' => (float) $order->payments->where('status', 'paid')->sum('amount'),
+                'paid_amount' => $directPaidAmount,
+                'receivable_paid_amount' => $receivablePaidAmount,
                 'refunded_amount' => (float) $order->payments->where('status', 'refunded')->sum('amount'),
-                'outstanding_amount' => max(0, round((float) $order->total_amount - (float) $order->payments->where('status', 'paid')->sum('amount'), 2)),
+                'outstanding_amount' => max(0, round((float) $order->total_amount - ($directPaidAmount + $receivablePaidAmount), 2)),
             ],
+            'invoice' => $order->invoice ? [
+                'id' => (int) $order->invoice->id,
+                'invoice_number' => $order->invoice->invoice_number,
+                'status' => $order->invoice->status,
+                'status_label' => $this->statusLabel($order->invoice->status),
+                'total_amount' => (float) $order->invoice->total_amount,
+                'amount_paid' => (float) $order->invoice->amount_paid,
+                'outstanding_balance' => (float) $order->invoice->outstanding_balance,
+                'due_date' => optional($order->invoice->due_date)?->toDateString(),
+                'repayment_terms' => $order->invoice->repayment_terms,
+                'payments' => $invoicePayments->map(fn ($payment) => [
+                    'id' => (int) $payment->id,
+                    'method' => $payment->method,
+                    'amount' => (float) $payment->amount,
+                    'currency' => $payment->currency,
+                    'status' => $payment->status,
+                    'status_label' => $this->statusLabel($payment->status),
+                    'paid_at' => optional($payment->paid_at)?->toIso8601String(),
+                    'reference' => $payment->transaction_reference,
+                    'recorded_by' => $payment->employee ? [
+                        'id' => (int) $payment->employee->id,
+                        'name' => $payment->employee->name,
+                        'email' => $payment->employee->email,
+                    ] : null,
+                ])->values()->all(),
+            ] : null,
             'shipment' => $order->shipment ? [
                 'status' => $order->shipment->status,
                 'status_label' => $this->statusLabel($order->shipment->status),
@@ -699,6 +747,7 @@ class OrderManagementService
             'items.variant.product.images',
             'items.variant.values.type',
             'payments.employee:id,name,email',
+            'invoice.payments.employee:id,name,email',
             'shipment.method',
             'shipment.pickup.location',
             'shipment.addresses.country',
@@ -844,21 +893,29 @@ class OrderManagementService
             ]);
         }
 
-        $order->addPayment([
-            'type' => 'inflow',
-            'method' => $method,
-            'amount' => $amount,
-            'status' => 'paid',
-            'paid_at' => now(),
-            'employee_id' => $actor->id,
-            'transaction_reference' => $payload['transaction_reference'] ?? null,
-            'meta' => [
-                'source' => 'admin_order_management',
-                'note' => $payload['note'] ?? null,
-            ],
-        ]);
+        if ($order->invoice && (float) $order->invoice->outstanding_balance > 0) {
+            $this->customerInvoiceService->recordRepayment($order->invoice, [[
+                'method' => $method,
+                'amount' => $amount,
+                'transaction_reference' => $payload['transaction_reference'] ?? null,
+            ]], $actor->id);
+        } else {
+            $order->addPayment([
+                'type' => 'inflow',
+                'method' => $method,
+                'amount' => $amount,
+                'status' => 'paid',
+                'paid_at' => now(),
+                'employee_id' => $actor->id,
+                'transaction_reference' => $payload['transaction_reference'] ?? null,
+                'meta' => [
+                    'source' => 'admin_order_management',
+                    'note' => $payload['note'] ?? null,
+                ],
+            ]);
+        }
 
-        $order->load('payments');
+        $order->load('payments', 'invoice.payments');
         $paymentStatusAfter = $this->resolvePaymentStatus($order);
 
         if ($paymentStatusAfter !== $paymentStatusBefore) {

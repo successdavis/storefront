@@ -19,7 +19,7 @@ class StoreAccountRequest extends FormRequest
             'code' => ['required', 'string', 'max:20', 'unique:accounts,code'],
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255', 'unique:accounts,slug'],
-            'type' => ['required', Rule::in(['asset', 'liability', 'equity', 'income', 'expense'])],
+            'type' => ['required', Rule::in(['asset', 'liability', 'equity', 'revenue', 'cost_of_goods_sold', 'expense'])],
             'subtype' => ['nullable', 'string', 'max:50'],
             'classification' => ['nullable', 'string', 'max:50'],
             'parent_id' => ['nullable', 'integer', 'exists:accounts,id'],

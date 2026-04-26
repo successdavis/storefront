@@ -186,7 +186,8 @@ function toggleAccount(account: AccountRow) {
                                         <option value="asset">Asset</option>
                                         <option value="liability">Liability</option>
                                         <option value="equity">Equity</option>
-                                        <option value="income">Income</option>
+                                        <option value="revenue">Revenue</option>
+                                        <option value="cost_of_goods_sold">Cost of Goods Sold</option>
                                         <option value="expense">Expense</option>
                                     </select>
                                     <input v-model="form.subtype" type="text" placeholder="Subtype (optional)" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />

@@ -57,6 +57,6 @@ class Account extends Model
 
     public function normalBalanceSide(): string
     {
-        return in_array($this->type, ['asset', 'expense'], true) ? 'debit' : 'credit';
+        return in_array($this->type, ['asset', 'expense', 'cost_of_goods_sold'], true) ? 'debit' : 'credit';
     }
 }

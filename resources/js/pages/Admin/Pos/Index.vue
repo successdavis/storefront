@@ -12,10 +12,17 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { useSidebar } from '@/components/ui/sidebar'
+import { onMounted, ref } from 'vue'
 import ProductSection from './components/ProductSection.vue'
 import CartSection from './components/CartSection.vue'
 // import OffcanvasOrders from './components/OffcanvasOrders.vue'
 
 const showOrders = ref(false)
+const { setOpen, setOpenMobile } = useSidebar()
+
+onMounted(() => {
+    setOpen(false)
+    setOpenMobile(false)
+})
 </script>

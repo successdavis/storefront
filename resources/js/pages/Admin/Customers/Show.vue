@@ -572,6 +572,64 @@ function markCustomerVerified() {
                 </div>
             </section>
 
+            <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                <div class="flex items-center justify-between gap-4">
+                    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Credit and receivables</h2>
+                    <div class="text-right">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Outstanding balance</p>
+                        <p class="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{{ money(customer.receivables.outstanding_balance) }}</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 grid gap-4 md:grid-cols-3">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Open invoices</p>
+                        <p class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{{ customer.receivables.open_invoices_count }}</p>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Overdue balance</p>
+                        <p class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{{ money(customer.receivables.overdue_balance) }}</p>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Credit utilization</p>
+                        <p class="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{{ customer.receivables.credit_utilization_percent.toFixed(2) }}%</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                        <thead class="bg-slate-50 dark:bg-slate-950">
+                            <tr class="text-left text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                                <th class="px-4 py-3">Invoice</th>
+                                <th class="px-4 py-3">Status</th>
+                                <th class="px-4 py-3">Due date</th>
+                                <th class="px-4 py-3 text-right">Debt</th>
+                                <th class="px-4 py-3 text-right">Recovered</th>
+                                <th class="px-4 py-3 text-right">Outstanding</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                            <tr v-for="invoice in customer.receivables.invoices" :key="invoice.id">
+                                <td class="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
+                                    {{ invoice.invoice_number }}
+                                    <p class="mt-1 text-xs font-normal text-slate-500 dark:text-slate-400">{{ invoice.order?.order_number || 'No order link' }}</p>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span :class="['inline-flex rounded-full px-2.5 py-1 text-xs font-semibold', statusBadgeClass(invoice.status)]">{{ invoice.status_label }}</span>
+                                </td>
+                                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ dateOnly(invoice.due_date) }}</td>
+                                <td class="px-4 py-3 text-right font-semibold text-slate-900 dark:text-slate-100">{{ money(invoice.total_amount) }}</td>
+                                <td class="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{{ money(invoice.amount_paid) }}</td>
+                                <td class="px-4 py-3 text-right font-semibold text-slate-900 dark:text-slate-100">{{ money(invoice.outstanding_balance) }}</td>
+                            </tr>
+                            <tr v-if="customer.receivables.invoices.length === 0">
+                                <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">No receivable invoices recorded for this customer yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <section class="grid gap-6 xl:grid-cols-2">
                 <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                     <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Payments</h2>
@@ -579,8 +637,8 @@ function markCustomerVerified() {
                         <div v-for="payment in customer.payments" :key="payment.id" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
                             <div class="flex items-center justify-between gap-4">
                                 <div>
-                                    <p class="font-semibold text-slate-900 dark:text-slate-100">{{ payment.order_number || 'Order payment' }}</p>
-                                    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ payment.method }} - {{ payment.status }}</p>
+                                    <p class="font-semibold text-slate-900 dark:text-slate-100">{{ payment.order_number || 'Payment' }}</p>
+                                    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ payment.method }} - {{ payment.status }} <span v-if="payment.source === 'invoice'">&middot; Debt recovery</span></p>
                                 </div>
                                 <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">{{ money(payment.amount, payment.currency) }}</p>
                             </div>

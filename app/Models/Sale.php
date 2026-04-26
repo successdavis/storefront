@@ -24,6 +24,11 @@ class Sale extends Model
         return $this->belongsTo(Order::class);
     }
 
+    public function invoice()
+    {
+        return $this->hasOne(CustomerInvoice::class);
+    }
+
     public function posTerminal()
     {
         return $this->belongsTo(PosTerminal::class);

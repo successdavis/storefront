@@ -54,7 +54,8 @@ class AccountController extends Controller
                 ['value' => 'asset', 'label' => 'Asset'],
                 ['value' => 'liability', 'label' => 'Liability'],
                 ['value' => 'equity', 'label' => 'Equity'],
-                ['value' => 'income', 'label' => 'Income'],
+                ['value' => 'revenue', 'label' => 'Revenue'],
+                ['value' => 'cost_of_goods_sold', 'label' => 'Cost of Goods Sold'],
                 ['value' => 'expense', 'label' => 'Expense'],
             ],
             'status_options' => [

@@ -42,8 +42,8 @@ watch(
 const cardIcons: Record<string, any> = {
     accounts: Landmark,
     journals: ReceiptText,
-    income: TrendingUp,
-    expense: TrendingDown,
+    revenue: TrendingUp,
+    operating_expense: TrendingDown,
 }
 
 function formatCurrency(value: number) {
@@ -118,7 +118,7 @@ function syncHistory() {
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">{{ card.label }}</p>
                         <p class="mt-3 text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">
-                            {{ ['income', 'expense'].includes(card.key) ? formatCurrency(card.value) : card.value }}
+                            {{ ['revenue', 'operating_expense'].includes(card.key) ? formatCurrency(card.value) : card.value }}
                         </p>
                     </div>
                     <component :is="cardIcons[card.key] || BookOpen" class="h-10 w-10 rounded-2xl bg-sky-50 p-2.5 text-sky-500 dark:bg-sky-500/10" />
@@ -183,6 +183,11 @@ function syncHistory() {
                 <Link :href="route('admin.accounting.reports.trial-balance')" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-500">
                     <h3 class="text-lg font-semibold text-slate-950 dark:text-white">Trial balance and reports</h3>
                     <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">Move from account balances into trial balance, general ledger, profit and loss, and balance sheet views.</p>
+                </Link>
+
+                <Link :href="route('admin.accounting.charts')" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-500">
+                    <h3 class="text-lg font-semibold text-slate-950 dark:text-white">Charts and trends</h3>
+                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">See monthly cash flow, expenses, sales, profit, and liquidity balances in one finance dashboard.</p>
                 </Link>
             </div>
         </section>

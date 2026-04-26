@@ -29,6 +29,7 @@ class OrderService
         protected DiscountService $discountService,
         protected StockReservationService $stockReservationService,
         protected OrderManagementService $orderManagementService,
+        protected CustomerInvoiceService $customerInvoiceService,
         protected AccountingService $accountingService,
     ) {}
 
@@ -65,13 +66,14 @@ class OrderService
             $this->handlePosSale($order, $userId, $payload, $channel);
             $this->handleShipping($order, $payload, $session, $userId);
             $this->recordPayment($order, $payload, (float) $session->total, $channel);
+            $this->syncReceivable($order, $payload, $channel);
             $this->finalizeOrderStatus($order, $channel);
             $this->commitDiscount($order, $session);
             $this->markSessionUsed($session, $order);
             $this->orderManagementService->initializeOrderLifecycle($order, auth()->id());
             $this->accountingService->postOrder(
                 $order,
-                $payload['payment_method'] ?? null,
+                $this->primaryPaymentMethod($payload),
                 auth()->id(),
             );
             $this->logOrder($order);
@@ -287,7 +289,6 @@ class OrderService
             'employee_id' => auth()->id(),
             'customer_id' => $userId,
             'total_amount' => $order->total_amount,
-            'payment_method' => $payload['payment_method'] ?? 'cash',
             'order_id' => $order->id,
             'pos_terminal_id' => session()->get('pos_terminal_id'),
         ]);
@@ -352,7 +353,7 @@ class OrderService
 
         $shipment->addPayment([
             'type' => 'inflow',
-            'method' => $payload['payment_method'] ?? 'cash',
+            'method' => $this->primaryPaymentMethod($payload),
             'amount' => (float) $session->shipping_total,
             'status' => $payload['shipping_payment_status'] ?? ($payload['payment_status'] ?? 'pending'),
             'transaction_reference' => $payload['transaction_reference'] ?? null,
@@ -362,6 +363,29 @@ class OrderService
 
     private function recordPayment(Order $order, array $payload, float $amount, string $channel): void
     {
+        if ($channel === 'pos') {
+            $paymentLines = $this->normalizePaymentLines($payload, $amount);
+
+            foreach ($paymentLines as $index => $line) {
+                $order->addPayment([
+                    'type' => 'inflow',
+                    'method' => $line['method'],
+                    'amount' => $line['amount'],
+                    'status' => $line['status'] ?? 'paid',
+                    'paid_at' => $line['paid_at'] ?? now(),
+                    'employee_id' => auth()->id(),
+                    'transaction_reference' => $line['transaction_reference'] ?? null,
+                    'meta' => [
+                        'source' => 'pos_checkout',
+                        'line_number' => $index + 1,
+                    ],
+                    'note' => 'POS Order Payment',
+                ]);
+            }
+
+            return;
+        }
+
         $order->addPayment([
             'type' => 'inflow',
             'method' => $payload['payment_method'] ?? 'cash',
@@ -370,6 +394,32 @@ class OrderService
             'transaction_reference' => $payload['transaction_reference'] ?? null,
             'note' => $channel === 'pos' ? 'POS Order Payment' : 'Online Order Payment',
         ]);
+    }
+
+    private function syncReceivable(Order $order, array $payload, string $channel): void
+    {
+        if ($channel !== 'pos') {
+            return;
+        }
+
+        $order->loadMissing('payments', 'sale', 'user');
+        $outstanding = round((float) $order->outstandingBalance(), 2);
+
+        if ($outstanding <= $this->moneyTolerance) {
+            return;
+        }
+
+        if (!$order->user || strtolower((string) $order->user->email) === 'walkincustomer@example.com') {
+            throw ValidationException::withMessages([
+                'customer_id' => 'A saved customer is required for partial payment and receivable tracking.',
+            ]);
+        }
+
+        $this->customerInvoiceService->createFromOrder($order, [
+            'due_date' => $payload['due_date'] ?? null,
+            'repayment_terms' => $payload['repayment_terms'] ?? null,
+            'payment_breakdown' => $this->normalizePaymentLines($payload, (float) $order->total_amount),
+        ], auth()->id());
     }
 
     private function finalizeOrderStatus(Order $order, string $channel): void
@@ -503,6 +553,49 @@ class OrderService
         }
 
         return 0.0;
+    }
+
+    private function normalizePaymentLines(array $payload, float $orderTotal): array
+    {
+        $lines = collect($payload['payment_lines'] ?? [])
+            ->filter(fn ($line) => is_array($line))
+            ->map(fn (array $line) => [
+                'method' => (string) ($line['method'] ?? ''),
+                'amount' => round((float) ($line['amount'] ?? 0), 2),
+                'status' => (string) ($line['status'] ?? 'paid'),
+                'paid_at' => $line['paid_at'] ?? now(),
+                'transaction_reference' => $line['transaction_reference'] ?? null,
+            ])
+            ->filter(fn (array $line) => $line['method'] !== '' && $line['amount'] > 0)
+            ->values();
+
+        if ($lines->isEmpty() && !empty($payload['payment_method'])) {
+            $lines = collect([[
+                'method' => (string) $payload['payment_method'],
+                'amount' => round($orderTotal, 2),
+                'status' => (string) ($payload['payment_status'] ?? 'paid'),
+                'paid_at' => now(),
+                'transaction_reference' => $payload['transaction_reference'] ?? null,
+            ]]);
+        }
+
+        $totalPaid = round((float) $lines->sum('amount'), 2);
+        if ($totalPaid > round($orderTotal, 2) + $this->moneyTolerance) {
+            throw ValidationException::withMessages([
+                'payment_lines' => 'Total payment cannot exceed the order total.',
+            ]);
+        }
+
+        return $lines->all();
+    }
+
+    private function primaryPaymentMethod(array $payload): string
+    {
+        if (!empty($payload['payment_lines'][0]['method'])) {
+            return (string) $payload['payment_lines'][0]['method'];
+        }
+
+        return (string) ($payload['payment_method'] ?? 'cash');
     }
 }
 

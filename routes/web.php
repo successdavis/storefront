@@ -5,9 +5,11 @@ use App\Http\Controllers\Admin\AdminCategoryController;
 use App\Http\Controllers\Admin\AdminCustomerController;
 use App\Http\Controllers\Admin\AdminCustomerNoteController;
 use App\Http\Controllers\Admin\Accounting\AccountController as AdminAccountingAccountController;
+use App\Http\Controllers\Admin\Accounting\CashBankTransferController as AdminAccountingCashBankTransferController;
 use App\Http\Controllers\Admin\Accounting\ExpenseController as AdminAccountingExpenseController;
 use App\Http\Controllers\Admin\Accounting\JournalEntryController as AdminAccountingJournalEntryController;
 use App\Http\Controllers\Admin\Accounting\PaymentGatewaySettlementController as AdminAccountingPaymentGatewaySettlementController;
+use App\Http\Controllers\Admin\Accounting\CustomerInvoiceController as AdminAccountingCustomerInvoiceController;
 use App\Http\Controllers\Admin\Accounting\ReportController as AdminAccountingReportController;
 use App\Http\Controllers\Admin\StorefrontAnalyticsController as AdminStorefrontAnalyticsController;
 use App\Http\Controllers\Admin\CategoryPriceListReportController;
@@ -286,6 +288,9 @@ Route::prefix('admin')
         Route::get('/accounting', [AdminAccountingReportController::class, 'overview'])
             ->middleware('permission.any:admin.accounting.view')
             ->name('accounting.index');
+        Route::get('/accounting/charts', [AdminAccountingReportController::class, 'charts'])
+            ->middleware('permission.any:admin.accounting.view')
+            ->name('accounting.charts');
         Route::post('/accounting/sync-history', [AdminAccountingReportController::class, 'syncHistory'])
             ->middleware('permission.any:admin.accounting.manage')
             ->name('accounting.sync-history');
@@ -316,6 +321,12 @@ Route::prefix('admin')
         Route::post('/accounting/gateway-settlements', [AdminAccountingPaymentGatewaySettlementController::class, 'store'])
             ->middleware('permission.any:admin.accounting.manage')
             ->name('accounting.gateway-settlements.store');
+        Route::get('/accounting/cash-bank-transfers', [AdminAccountingCashBankTransferController::class, 'index'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.cash-bank-transfers.index');
+        Route::post('/accounting/cash-bank-transfers', [AdminAccountingCashBankTransferController::class, 'store'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.cash-bank-transfers.store');
         Route::get('/accounting/expenses', [AdminAccountingExpenseController::class, 'index'])
             ->middleware('permission.any:admin.accounting.expenses.manage')
             ->name('accounting.expenses.index');
@@ -331,9 +342,24 @@ Route::prefix('admin')
         Route::get('/accounting/reports/profit-loss', [AdminAccountingReportController::class, 'profitAndLoss'])
             ->middleware('permission.any:admin.accounting.reports.view')
             ->name('accounting.reports.profit-loss');
+        Route::get('/accounting/reports/inventory-valuation', [AdminAccountingReportController::class, 'inventoryValuation'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.inventory-valuation');
+        Route::get('/accounting/reports/inventory-valuation/export', [AdminAccountingReportController::class, 'exportInventoryValuation'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.inventory-valuation.export');
         Route::get('/accounting/reports/balance-sheet', [AdminAccountingReportController::class, 'balanceSheet'])
             ->middleware('permission.any:admin.accounting.reports.view')
             ->name('accounting.reports.balance-sheet');
+        Route::get('/accounting/reports/cash-summary', [AdminAccountingReportController::class, 'cashSummary'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.cash-summary');
+        Route::get('/accounting/reports/receivables', [AdminAccountingReportController::class, 'receivables'])
+            ->middleware('permission.any:admin.accounting.reports.view')
+            ->name('accounting.reports.receivables');
+        Route::post('/accounting/customer-invoices/{customerInvoice}/payments', [AdminAccountingCustomerInvoiceController::class, 'storePayment'])
+            ->middleware('permission.any:admin.accounting.manage')
+            ->name('accounting.customer-invoices.payments.store');
 
         Route::get('/payment-recovery', [PaymentRecoveryController::class, 'index'])
             ->middleware('permission.any:admin.payment_recovery.manage')

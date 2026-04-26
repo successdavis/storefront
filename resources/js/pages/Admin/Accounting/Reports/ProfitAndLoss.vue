@@ -105,6 +105,10 @@ function formatCurrency(value: number) {
         currency: 'NGN',
     }).format(value)
 }
+
+function formatSignedCurrency(value: number) {
+    return `${value < 0 ? '-' : ''}${formatCurrency(Math.abs(value))}`
+}
 </script>
 
 <template>
@@ -145,35 +149,68 @@ function formatCurrency(value: number) {
 
         <section class="grid gap-6 xl:grid-cols-2">
             <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h2 class="text-xl font-semibold text-slate-950 dark:text-white">Income</h2>
+                <h2 class="text-xl font-semibold text-slate-950 dark:text-white">Revenue</h2>
                 <div class="mt-4 space-y-3">
-                    <div v-for="row in report.income" :key="row.code" class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <div v-for="row in report.revenue" :key="row.code" class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-800">
                         <div>
                             <div class="font-semibold text-slate-900 dark:text-slate-100">{{ row.name }}</div>
                             <div class="text-xs text-slate-500 dark:text-slate-400">{{ row.code }}</div>
                         </div>
-                        <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatCurrency(row.amount) }}</div>
+                        <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatSignedCurrency(row.signed_amount ?? row.amount) }}</div>
                     </div>
                 </div>
             </div>
 
             <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h2 class="text-xl font-semibold text-slate-950 dark:text-white">Expenses</h2>
+                <h2 class="text-xl font-semibold text-slate-950 dark:text-white">Cost of Goods Sold</h2>
                 <div class="mt-4 space-y-3">
-                    <div v-for="row in report.expenses" :key="row.code" class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <div v-for="row in report.cost_of_goods_sold" :key="row.code" class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-800">
                         <div>
                             <div class="font-semibold text-slate-900 dark:text-slate-100">{{ row.name }}</div>
                             <div class="text-xs text-slate-500 dark:text-slate-400">{{ row.code }}</div>
                         </div>
-                        <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatCurrency(row.amount) }}</div>
+                        <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatSignedCurrency(row.signed_amount ?? row.amount) }}</div>
                     </div>
                 </div>
             </div>
         </section>
 
         <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Net result</p>
-            <p class="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">{{ formatCurrency(report.net_profit) }}</p>
+            <h2 class="text-xl font-semibold text-slate-950 dark:text-white">Operating Expenses</h2>
+            <div class="mt-4 space-y-3">
+                <div v-for="row in report.operating_expenses" :key="row.code" class="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <div>
+                        <div class="font-semibold text-slate-900 dark:text-slate-100">{{ row.name }}</div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400">{{ row.code }}</div>
+                    </div>
+                    <div class="font-semibold text-slate-900 dark:text-slate-100">{{ formatSignedCurrency(row.signed_amount ?? row.amount) }}</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div class="min-w-0 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Revenue</p>
+                <p class="mt-3 whitespace-nowrap text-[clamp(1.6rem,1.6vw,2.5rem)] font-semibold leading-tight tracking-tight text-slate-950 dark:text-white">{{ formatCurrency(report.revenue_total) }}</p>
+            </div>
+            <div class="min-w-0 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Cost of Goods Sold</p>
+                <p class="mt-3 whitespace-nowrap text-[clamp(1.6rem,1.6vw,2.5rem)] font-semibold leading-tight tracking-tight text-slate-950 dark:text-white">{{ formatCurrency(report.cost_of_goods_sold_total) }}</p>
+            </div>
+            <div class="min-w-0 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Gross Profit</p>
+                <p class="mt-3 whitespace-nowrap text-[clamp(1.6rem,1.6vw,2.5rem)] font-semibold leading-tight tracking-tight text-slate-950 dark:text-white">{{ formatCurrency(report.gross_profit) }}</p>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Gross margin {{ report.gross_margin_percent.toFixed(2) }}%</p>
+            </div>
+            <div class="min-w-0 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Operating Expenses</p>
+                <p class="mt-3 whitespace-nowrap text-[clamp(1.6rem,1.6vw,2.5rem)] font-semibold leading-tight tracking-tight text-slate-950 dark:text-white">{{ formatCurrency(report.operating_expenses_total) }}</p>
+            </div>
+            <div class="min-w-0 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Net Profit</p>
+                <p class="mt-3 whitespace-nowrap text-[clamp(1.6rem,1.6vw,2.5rem)] font-semibold leading-tight tracking-tight text-slate-950 dark:text-white">{{ formatCurrency(report.net_profit) }}</p>
+                <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Net margin {{ report.net_margin_percent.toFixed(2) }}%</p>
+            </div>
         </section>
     </div>
 </template>

@@ -51,6 +51,64 @@ class AdminAccountingPagesTest extends TestCase
             );
 
         $this->actingAs($director)
+            ->get(route('admin.accounting.cash-bank-transfers.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Accounting/CashBankTransfers/Index')
+                ->has('cash_account_options')
+                ->has('bank_account_options')
+            );
+
+        $this->actingAs($director)
+            ->get(route('admin.accounting.charts'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Accounting/Charts')
+                ->has('report.summary_cards', 7)
+                ->has('report.cash_flow_chart.labels')
+                ->has('report.expense_chart.segments')
+                ->has('report.expense_chart.period_options')
+                ->has('report.expense_chart.total')
+                ->has('report.profit_loss_chart.rows')
+                ->has('report.profit_loss_chart.period_options')
+                ->has('report.profit_loss_chart.net_profit')
+                ->has('report.bank_balances')
+                ->has('report.cash_balances')
+            );
+
+        $this->actingAs($director)
+            ->get(route('admin.accounting.reports.cash-summary'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Accounting/Reports/CashSummary')
+                ->has('report.summary_cards', 6)
+            );
+
+        $this->actingAs($director)
+            ->get(route('admin.accounting.reports.inventory-valuation'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Accounting/Reports/InventoryValuation')
+                ->has('categories')
+                ->has('report.summary')
+                ->has('report.groups')
+            );
+
+        $this->actingAs($director)
+            ->get(route('admin.accounting.reports.inventory-valuation.export'))
+            ->assertOk();
+
+        $this->actingAs($director)
+            ->get(route('admin.accounting.reports.receivables'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/Accounting/Reports/Receivables')
+                ->has('report.summary_cards', 4)
+                ->has('report.aging_buckets')
+                ->has('report.invoices.data')
+            );
+
+        $this->actingAs($director)
             ->post(route('admin.accounting.sync-history'))
             ->assertRedirect(route('admin.accounting.index'));
     }

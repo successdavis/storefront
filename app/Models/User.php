@@ -293,6 +293,11 @@ class User extends Authenticatable
         ];
     }
 
+    public function customerInvoices()
+    {
+        return $this->hasMany(CustomerInvoice::class, 'customer_id');
+    }
+
     protected static function generateUniqueCustomerSlug(?string $name, ?string $email = null, ?int $ignoreId = null): ?string
     {
         if (!Schema::hasColumn('users', 'customer_slug')) {

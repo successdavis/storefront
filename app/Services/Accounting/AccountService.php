@@ -23,7 +23,7 @@ class AccountService
                         ->orWhere('slug', 'like', "%{$search}%");
                 });
             })
-            ->when(in_array($type, ['asset', 'liability', 'equity', 'income', 'expense'], true), fn ($query) => $query->where('type', $type))
+            ->when(in_array($type, ['asset', 'liability', 'equity', 'revenue', 'cost_of_goods_sold', 'expense'], true), fn ($query) => $query->where('type', $type))
             ->when($status === 'active', fn ($query) => $query->where('is_active', true))
             ->when($status === 'inactive', fn ($query) => $query->where('is_active', false))
             ->orderBy('code')
@@ -87,6 +87,28 @@ class AccountService
                 'type' => $account->type,
                 'subtype' => $account->subtype,
                 'label' => "{$account->code} · {$account->name}",
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function cashAccountOptions(): array
+    {
+        return Account::query()
+            ->where('is_active', true)
+            ->where('type', 'asset')
+            ->where('subtype', 'cash')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type', 'subtype'])
+            ->map(fn (Account $account) => [
+                'id' => $account->id,
+                'code' => $account->code,
+                'name' => $account->name,
+                'type' => $account->type,
+                'subtype' => $account->subtype,
+                'label' => "{$account->code} Â· {$account->name}",
             ])
             ->all();
     }

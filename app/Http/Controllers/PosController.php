@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Exceptions\InsufficientStockException;
 use App\Models\PosTerminal;
 use App\Models\Setting;
+use App\Models\User;
 use App\Services\InventoryService;
 use App\Services\OrderService;
+use App\Support\RoleNames;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -80,6 +82,7 @@ class PosController extends Controller
             'categories' => $categories,
             'brands'     => $brands,
             'cart'       => $cart,
+            'recent_customers' => $this->recentCustomers(),
             'pos_routes' => $this->posRoutes(),
             'filters'    => [
                 'q' => $q,
@@ -115,15 +118,80 @@ class PosController extends Controller
             'items.*.quantity' => 'required|numeric|min:1',
             'items.*.price' => 'required|numeric|min:0',
             'total' => 'required|numeric|min:0',
-            'payment_method' => 'nullable|string',
+            'payment_mode' => 'nullable|in:full,partial',
+            'payment_method' => 'nullable|string|in:cash,card,transfer,wallet,paypal,stripe,cheque',
+            'payment_lines' => 'nullable|array|min:1',
+            'payment_lines.*.method' => 'required_with:payment_lines|in:cash,card,transfer,wallet,paypal,stripe,cheque',
+            'payment_lines.*.amount' => 'required_with:payment_lines|numeric|min:0.01',
+            'payment_lines.*.transaction_reference' => 'nullable|string|max:255',
             'subtotal' => 'required|numeric|min:0',
             'shipping' => 'nullable|array',
             'coupon'   => 'nullable|string',
             'channel'  => 'nullable|in:online,pos',
             'checkout_token' => 'required|string|exists:checkout_sessions,token',
+            'due_date' => 'nullable|date',
+            'repayment_terms' => 'nullable|string|max:255',
         ]);
 
         $validated['channel'] = 'pos';
+        $validated['payment_lines'] = collect($validated['payment_lines'] ?? [])
+            ->filter(fn ($line) => is_array($line) && (float) ($line['amount'] ?? 0) > 0)
+            ->values()
+            ->all();
+
+        if ($validated['payment_lines'] === [] && !empty($validated['payment_method'])) {
+            $validated['payment_lines'] = [[
+                'method' => (string) $validated['payment_method'],
+                'amount' => round((float) $validated['total'], 2),
+            ]];
+        }
+
+        if ($validated['payment_lines'] === []) {
+            return back()->withErrors([
+                'payment_lines' => 'Add at least one payment line before placing the sale.',
+            ]);
+        }
+
+        $totalPaid = round((float) collect($validated['payment_lines'])->sum('amount'), 2);
+        $total = round((float) $validated['total'], 2);
+        $outstanding = round(max(0, $total - $totalPaid), 2);
+
+        if ($totalPaid > $total + 0.01) {
+            return back()->withErrors([
+                'payment_lines' => 'Total paid cannot exceed the order total.',
+            ]);
+        }
+
+        if ($outstanding > 0) {
+            if (empty($validated['customer_id'])) {
+                return back()->withErrors([
+                    'customer_id' => 'Select a saved customer before creating a credit sale.',
+                ]);
+            }
+
+            $customer = User::query()->find($validated['customer_id']);
+            if (!$customer || strtolower((string) $customer->email) === 'walkincustomer@example.com') {
+                return back()->withErrors([
+                    'customer_id' => 'Walk-in customers cannot be used for partial payment or receivable sales.',
+                ]);
+            }
+
+            if (empty($validated['due_date'])) {
+                return back()->withErrors([
+                    'due_date' => 'A due date is required when part of the sale remains outstanding.',
+                ]);
+            }
+
+            if (blank($validated['repayment_terms'] ?? null)) {
+                return back()->withErrors([
+                    'repayment_terms' => 'Repayment terms are required for credit sales.',
+                ]);
+            }
+
+            $validated['payment_mode'] = 'partial';
+        } else {
+            $validated['payment_mode'] = 'full';
+        }
 
 
         try {
@@ -343,6 +411,48 @@ class PosController extends Controller
         $routeName = (string) request()->route()?->getName();
 
         return str_starts_with($routeName, 'admin.');
+    }
+
+    protected function recentCustomers(int $limit = 10): array
+    {
+        return User::query()
+            ->role(RoleNames::CUSTOMER)
+            ->where(function ($query) {
+                $query
+                    ->whereNull('email')
+                    ->orWhereRaw('LOWER(email) <> ?', ['walkincustomer@example.com']);
+            })
+            ->select('id', 'name', 'email', 'phone', 'created_at')
+            ->withSum([
+                'customerInvoices as outstanding_receivable' => fn ($query) => $query->where('outstanding_balance', '>', 0),
+            ], 'outstanding_balance')
+            ->withCount([
+                'customerInvoices as overdue_invoice_count' => fn ($query) => $query
+                    ->where('outstanding_balance', '>', 0)
+                    ->whereDate('due_date', '<', now()->toDateString()),
+            ])
+            ->withMax('sales as latest_sale_at', 'created_at')
+            ->withMax('orders as latest_order_at', 'created_at')
+            ->orderByRaw("
+                GREATEST(
+                    COALESCE(latest_sale_at, '1970-01-01 00:00:00'),
+                    COALESCE(latest_order_at, '1970-01-01 00:00:00'),
+                    COALESCE(created_at, '1970-01-01 00:00:00')
+                ) DESC
+            ")
+            ->orderBy('name')
+            ->limit($limit)
+            ->get()
+            ->map(fn (User $customer) => [
+                'id' => (int) $customer->id,
+                'name' => $customer->name,
+                'email' => $customer->hasRealEmail() ? $customer->email : null,
+                'phone' => $customer->phone,
+                'outstanding_receivable' => round((float) ($customer->outstanding_receivable ?? 0), 2),
+                'overdue_invoice_count' => (int) ($customer->overdue_invoice_count ?? 0),
+            ])
+            ->values()
+            ->all();
     }
 
 

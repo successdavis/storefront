@@ -176,7 +176,7 @@ class StockAdjustmentAccountingClassificationTest extends TestCase
             'to' => '2026-04-30',
         ]);
 
-        $lossRow = collect($report['expenses'])->firstWhere('code', '5510');
+        $lossRow = collect($report['operating_expenses'])->firstWhere('code', '5510');
 
         $this->assertNotNull($lossRow);
         $this->assertSame(200.0, (float) $lossRow['amount']);

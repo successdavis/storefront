@@ -23,7 +23,7 @@ class UpdateAccountRequest extends FormRequest
             'code' => ['sometimes', 'string', 'max:20', Rule::unique('accounts', 'code')->ignore($account?->id)],
             'name' => ['sometimes', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255', Rule::unique('accounts', 'slug')->ignore($account?->id)],
-            'type' => ['sometimes', Rule::in(['asset', 'liability', 'equity', 'income', 'expense'])],
+            'type' => ['sometimes', Rule::in(['asset', 'liability', 'equity', 'revenue', 'cost_of_goods_sold', 'expense'])],
             'subtype' => ['nullable', 'string', 'max:50'],
             'classification' => ['nullable', 'string', 'max:50'],
             'parent_id' => ['nullable', 'integer', 'exists:accounts,id'],

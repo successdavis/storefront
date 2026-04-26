@@ -64,7 +64,7 @@ class PaymentService
                 'status' => $status,
                 'paid_at' => $data['paid_at'] ?? ($status === 'paid' ? now() : null),
                 'employee_id' => $data['employee_id'] ?? null,
-                'meta' => isset($data['meta']) ? json_encode($data['meta']) : null,
+                'meta' => $data['meta'] ?? null,
             ]);
 
             $this->payable->payments()->save($payment);

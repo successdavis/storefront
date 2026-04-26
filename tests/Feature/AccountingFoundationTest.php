@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Accounting\Account;
+use App\Models\Accounting\CashBankTransfer;
 use App\Models\Accounting\Expense;
 use App\Models\Accounting\JournalEntry;
 use App\Models\Accounting\PaymentGatewaySettlement;
+use App\Models\Category;
 use App\Models\OpeningBalance;
 use App\Models\OpeningBalanceItem;
 use App\Models\Order;
@@ -15,12 +17,14 @@ use App\Models\ProductVariant;
 use App\Models\StockEntry;
 use App\Models\User;
 use App\Services\Accounting\AccountingService;
+use App\Services\Accounting\AccountingDashboardService;
 use App\Services\Accounting\HistoricalAccountingSyncService;
 use App\Services\Accounting\JournalBuilder;
 use App\Services\Accounting\FinancialStatementService;
 use App\Services\Accounting\LedgerQueryService;
 use App\Services\Accounting\JournalPostingService;
 use App\Services\Accounting\SystemAccountResolver;
+use App\Services\Reports\InventoryValuationReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -33,6 +37,8 @@ class AccountingFoundationTest extends TestCase
     {
         $this->assertDatabaseHas('accounts', ['code' => '1110', 'name' => 'Cash on Hand']);
         $this->assertDatabaseHas('accounts', ['code' => '1310', 'name' => 'Inventory Asset']);
+        $this->assertDatabaseHas('accounts', ['code' => '4110', 'type' => 'revenue']);
+        $this->assertDatabaseHas('accounts', ['code' => '5110', 'type' => 'cost_of_goods_sold']);
         $this->assertDatabaseHas('accounting_settings', ['key' => 'product_sales_revenue']);
 
         $resolver = app(SystemAccountResolver::class);
@@ -339,5 +345,276 @@ class AccountingFoundationTest extends TestCase
         $this->assertSame(0.0, (float) $lines['1120']->credit);
         $this->assertSame(0.0, (float) $lines['1130']->debit);
         $this->assertSame(500000.0, (float) $lines['1130']->credit);
+    }
+
+    public function test_cash_bank_transfer_moves_value_from_cash_to_bank(): void
+    {
+        $cashAccount = app(SystemAccountResolver::class)->resolve('cash_on_hand');
+        $bankAccount = app(SystemAccountResolver::class)->resolve('main_bank_account');
+        $actor = User::factory()->create();
+
+        $transfer = app(\App\Services\Accounting\CashBankTransferService::class)->createAndPost([
+            'transfer_date' => '2026-04-26',
+            'amount' => 125000,
+            'currency' => 'NGN',
+            'cash_account_id' => $cashAccount->id,
+            'bank_account_id' => $bankAccount->id,
+            'reference' => 'DEP-001',
+            'description' => 'Cash deposited from the till into main bank',
+            'note' => 'Feature test transfer',
+        ], $actor->id);
+
+        $entry = JournalEntry::query()
+            ->where('source_type', CashBankTransfer::class)
+            ->where('source_id', $transfer->id)
+            ->first();
+
+        $this->assertNotNull($entry);
+        $this->assertSame($entry->id, $transfer->journal_entry_id);
+        $this->assertEquals((float) $entry->total_debit, (float) $entry->total_credit);
+
+        $lines = $entry->lines()->with('account:id,code')->get()->keyBy('account.code');
+
+        $this->assertSame(125000.0, (float) $lines['1120']->debit);
+        $this->assertSame(0.0, (float) $lines['1120']->credit);
+        $this->assertSame(0.0, (float) $lines['1110']->debit);
+        $this->assertSame(125000.0, (float) $lines['1110']->credit);
+    }
+
+    public function test_accounting_dashboard_report_builds_monthly_charts_and_liquidity_balances(): void
+    {
+        $cash = app(SystemAccountResolver::class)->resolve('cash_on_hand');
+        $bank = app(SystemAccountResolver::class)->resolve('main_bank_account');
+        $sales = app(SystemAccountResolver::class)->resolve('product_sales_revenue');
+        $cogs = app(SystemAccountResolver::class)->resolve('cost_of_goods_sold');
+        $expense = app(SystemAccountResolver::class)->resolve('miscellaneous_expense');
+        $actor = User::factory()->create();
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:dashboard:jan-sale',
+            'description' => 'January sale',
+            'entry_date' => '2026-01-10',
+            'posting_date' => '2026-01-10',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($cash, 1000)
+            ->credit($sales, 1000)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:dashboard:jan-cogs',
+            'description' => 'January cost of goods sold',
+            'entry_date' => '2026-01-10',
+            'posting_date' => '2026-01-10',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($cogs, 400)
+            ->credit(app(SystemAccountResolver::class)->resolve('inventory_asset'), 400)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:dashboard:jan-expense',
+            'description' => 'January expense',
+            'entry_date' => '2026-01-14',
+            'posting_date' => '2026-01-14',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($expense, 300)
+            ->credit($cash, 300)
+            ->lines());
+
+        app(\App\Services\Accounting\CashBankTransferService::class)->createAndPost([
+            'transfer_date' => '2026-01-20',
+            'amount' => 200,
+            'currency' => 'NGN',
+            'cash_account_id' => $cash->id,
+            'bank_account_id' => $bank->id,
+            'reference' => 'CASH-DEP-001',
+            'description' => 'Cash deposited into bank',
+        ], $actor->id);
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:dashboard:feb-sale',
+            'description' => 'February sale',
+            'entry_date' => '2026-02-08',
+            'posting_date' => '2026-02-08',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($bank, 1500)
+            ->credit($sales, 1500)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:dashboard:feb-cogs',
+            'description' => 'February cost of goods sold',
+            'entry_date' => '2026-02-08',
+            'posting_date' => '2026-02-08',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($cogs, 500)
+            ->credit(app(SystemAccountResolver::class)->resolve('inventory_asset'), 500)
+            ->lines());
+
+        $report = app(AccountingDashboardService::class)->report([
+            'period' => 'custom',
+            'from' => '2026-01-01',
+            'to' => '2026-02-28',
+            'expense_period' => 'selected_range',
+        ]);
+
+        $this->assertSame(['Jan 2026', 'Feb 2026'], $report['cash_flow_chart']['labels']);
+        $this->assertSame([1000.0, 1500.0], $report['cash_flow_chart']['inflow']);
+        $this->assertSame([300.0, 0.0], $report['cash_flow_chart']['outflow']);
+        $this->assertSame([700.0, 1500.0], $report['cash_flow_chart']['net']);
+        $this->assertSame(300.0, (float) $report['expense_chart']['total']);
+        $this->assertSame('selected_range', $report['expense_chart']['filters']['period']);
+        $this->assertCount(1, $report['expense_chart']['segments']);
+        $this->assertSame('Miscellaneous Expense', $report['expense_chart']['segments'][0]['name']);
+        $this->assertSame(300.0, (float) $report['expense_chart']['segments'][0]['amount']);
+        $this->assertSame('selected_range', $report['profit_loss_chart']['filters']['period']);
+        $this->assertSame(1300.0, (float) $report['profit_loss_chart']['net_profit']);
+        $this->assertSame('Revenue', $report['profit_loss_chart']['rows'][0]['label']);
+        $this->assertSame(2500.0, (float) $report['profit_loss_chart']['rows'][0]['amount']);
+        $this->assertSame('COGS', $report['profit_loss_chart']['rows'][1]['label']);
+        $this->assertSame(900.0, (float) $report['profit_loss_chart']['rows'][1]['amount']);
+        $this->assertSame('Expenses', $report['profit_loss_chart']['rows'][2]['label']);
+        $this->assertSame(300.0, (float) $report['profit_loss_chart']['rows'][2]['amount']);
+        $this->assertSame([300.0, 1000.0], $report['sales_profit_chart']['profit']);
+        $this->assertSame([1000.0, 1500.0], $report['sales_profit_chart']['sales']);
+        $this->assertSame(1700.0, collect($report['bank_balances'])->firstWhere('code', '1120')['balance']);
+        $this->assertSame(500.0, collect($report['cash_balances'])->firstWhere('code', '1110')['balance']);
+    }
+
+    public function test_profit_and_loss_separates_revenue_cogs_and_operating_expenses(): void
+    {
+        $cash = app(SystemAccountResolver::class)->resolve('cash_on_hand');
+        $revenue = app(SystemAccountResolver::class)->resolve('product_sales_revenue');
+        $cogs = app(SystemAccountResolver::class)->resolve('cost_of_goods_sold');
+        $rent = app(SystemAccountResolver::class)->resolve('operating_expense');
+        $salary = app(SystemAccountResolver::class)->resolve('staff_admin_expense');
+        $utilities = app(SystemAccountResolver::class)->resolve('utilities_expense');
+        $inventory = app(SystemAccountResolver::class)->resolve('inventory_asset');
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:pnl:revenue',
+            'description' => 'Revenue posting',
+            'entry_date' => '2026-04-01',
+            'posting_date' => '2026-04-01',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($cash, 2000000)
+            ->credit($revenue, 2000000)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:pnl:cogs',
+            'description' => 'COGS posting',
+            'entry_date' => '2026-04-02',
+            'posting_date' => '2026-04-02',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($cogs, 900000)
+            ->credit($inventory, 900000)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:pnl:opex-rent',
+            'description' => 'Rent expense',
+            'entry_date' => '2026-04-03',
+            'posting_date' => '2026-04-03',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($rent, 100000)
+            ->credit($cash, 100000)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:pnl:opex-salary',
+            'description' => 'Salary expense',
+            'entry_date' => '2026-04-04',
+            'posting_date' => '2026-04-04',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($salary, 200000)
+            ->credit($cash, 200000)
+            ->lines());
+
+        app(JournalPostingService::class)->post([
+            'event_key' => 'test:pnl:opex-utilities',
+            'description' => 'Utilities expense',
+            'entry_date' => '2026-04-05',
+            'posting_date' => '2026-04-05',
+            'status' => JournalEntry::STATUS_POSTED,
+        ], JournalBuilder::make()
+            ->debit($utilities, 55900)
+            ->credit($cash, 55900)
+            ->lines());
+
+        $report = app(FinancialStatementService::class)->incomeStatement([
+            'from' => '2026-04-01',
+            'to' => '2026-04-30',
+        ]);
+
+        $this->assertSame(2000000.0, (float) $report['revenue_total']);
+        $this->assertSame(900000.0, (float) $report['cost_of_goods_sold_total']);
+        $this->assertSame(1100000.0, (float) $report['gross_profit']);
+        $this->assertSame(355900.0, (float) $report['operating_expenses_total']);
+        $this->assertSame(744100.0, (float) $report['net_profit']);
+        $this->assertSame(55.0, (float) $report['gross_margin_percent']);
+        $this->assertSame(37.21, (float) $report['net_margin_percent']);
+    }
+
+    public function test_inventory_valuation_summary_groups_stocked_variants_and_totals_asset_values(): void
+    {
+        $laptops = Category::query()->create([
+            'name' => 'Laptop',
+            'description' => 'Laptop devices',
+        ]);
+
+        $mice = Category::query()->create([
+            'name' => 'Mouse',
+            'description' => 'Mouse devices',
+        ]);
+
+        $laptopProduct = Product::factory()->create(['name' => 'Asus ZenBook 14']);
+        $laptopProduct->categories()->attach($laptops->id);
+
+        $mouseProduct = Product::factory()->create(['name' => 'Rechargeable Mouse']);
+        $mouseProduct->categories()->attach($mice->id);
+
+        ProductVariant::factory()->for($laptopProduct)->create([
+            'sku' => 'ASUS-ZB14-16GB',
+            'quantity' => 45,
+            'average_cost' => 89444.44,
+            'regular_price' => 180000,
+        ]);
+
+        ProductVariant::factory()->for($mouseProduct)->create([
+            'sku' => 'MOUSE-RG-01',
+            'quantity' => 30,
+            'average_cost' => 5000,
+            'regular_price' => 7500,
+        ]);
+
+        $report = app(InventoryValuationReportService::class)->report([
+            'as_of' => now()->toDateString(),
+        ]);
+
+        $this->assertSame(75, $report['summary']['total_on_hand']);
+        $this->assertSame(4174999.8, (float) $report['summary']['total_asset_value']);
+        $this->assertSame(8325000.0, (float) $report['summary']['total_retail_value']);
+        $this->assertCount(2, $report['groups']);
+
+        $laptopGroup = collect($report['groups'])->firstWhere('category_name', 'Laptop');
+        $mouseGroup = collect($report['groups'])->firstWhere('category_name', 'Mouse');
+
+        $this->assertNotNull($laptopGroup);
+        $this->assertNotNull($mouseGroup);
+        $this->assertSame(45, $laptopGroup['totals']['on_hand']);
+        $this->assertSame(4024999.8, (float) $laptopGroup['totals']['asset_value']);
+        $this->assertSame(8100000.0, (float) $laptopGroup['totals']['retail_value']);
+        $this->assertSame(30, $mouseGroup['totals']['on_hand']);
+        $this->assertSame(150000.0, (float) $mouseGroup['totals']['asset_value']);
+        $this->assertSame(225000.0, (float) $mouseGroup['totals']['retail_value']);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\AdminCustomerMessageMail;
 use App\Models\Cart;
 use App\Models\CustomerActivityLog;
+use App\Models\CustomerInvoice;
 use App\Models\CustomerNote;
 use App\Models\Order;
 use App\Models\Payment;
@@ -148,6 +149,7 @@ class CustomerManagementService
 
         $orders = $this->ordersPaginator($customer);
         $summary = $this->orderSummary($customer);
+        $receivables = $this->receivableSummary($customer);
         $wishlistCounts = $this->customerSavedItemService->counts($customer);
         $cartInsight = $this->cartInsight($customer);
         $lastSeenAt = $this->lastSeenAt($customer);
@@ -184,6 +186,7 @@ class CustomerManagementService
                 ['key' => 'addresses', 'label' => 'Saved addresses', 'value' => (int) $customer->customerAddresses->count()],
             ],
             'commerce_summary' => $summary,
+            'receivables' => $receivables,
             'analytics' => [
                 'preferred_payment_method' => $this->preferredPaymentMethod($customer),
                 'top_category' => $this->topCategory($customer),
@@ -719,7 +722,7 @@ class CustomerManagementService
 
     protected function recentPayments(User $customer): array
     {
-        return Payment::query()
+        $orderPayments = Payment::query()
             ->select('payments.*', 'orders.order_number')
             ->join('orders', function ($join) {
                 $join->on('orders.id', '=', 'payments.payable_id')
@@ -739,9 +742,89 @@ class CustomerManagementService
                 'transaction_reference' => $payment->transaction_reference,
                 'paid_at' => optional($payment->paid_at)?->toIso8601String(),
                 'created_at' => optional($payment->created_at)?->toIso8601String(),
+                'source' => 'order',
+            ])
+            ->values();
+
+        $invoicePayments = Payment::query()
+            ->select('payments.*', 'customer_invoices.invoice_number')
+            ->join('customer_invoices', function ($join) {
+                $join->on('customer_invoices.id', '=', 'payments.payable_id')
+                    ->where('payments.payable_type', CustomerInvoice::class);
+            })
+            ->where('customer_invoices.customer_id', $customer->id)
+            ->latest('payments.created_at')
+            ->limit(12)
+            ->get()
+            ->map(fn (Payment $payment) => [
+                'id' => (int) $payment->id,
+                'order_number' => $payment->invoice_number,
+                'amount' => (float) $payment->amount,
+                'currency' => $payment->currency,
+                'status' => $payment->status,
+                'method' => $payment->method,
+                'transaction_reference' => $payment->transaction_reference,
+                'paid_at' => optional($payment->paid_at)?->toIso8601String(),
+                'created_at' => optional($payment->created_at)?->toIso8601String(),
+                'source' => 'invoice',
+            ])
+            ->values();
+
+        return $orderPayments
+            ->concat($invoicePayments)
+            ->sortByDesc('created_at')
+            ->take(12)
+            ->values()
+            ->all();
+    }
+
+    protected function receivableSummary(User $customer): array
+    {
+        $base = CustomerInvoice::query()
+            ->where('customer_id', $customer->id);
+
+        $outstandingBalance = round((float) (clone $base)->sum('outstanding_balance'), 2);
+        $overdueBalance = round((float) (clone $base)
+            ->where('outstanding_balance', '>', 0)
+            ->whereDate('due_date', '<', now()->toDateString())
+            ->sum('outstanding_balance'), 2);
+
+        $invoiceRows = (clone $base)
+            ->with('order:id,order_number,total_amount')
+            ->latest('issued_at')
+            ->limit(12)
+            ->get()
+            ->map(fn (CustomerInvoice $invoice) => [
+                'id' => (int) $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'status' => $invoice->status,
+                'status_label' => $this->statusLabel($invoice->status),
+                'total_amount' => (float) $invoice->total_amount,
+                'amount_paid' => (float) $invoice->amount_paid,
+                'outstanding_balance' => (float) $invoice->outstanding_balance,
+                'due_date' => optional($invoice->due_date)?->toDateString(),
+                'issued_at' => optional($invoice->issued_at)?->toIso8601String(),
+                'order' => $invoice->order ? [
+                    'id' => (int) $invoice->order->id,
+                    'order_number' => $invoice->order->order_number,
+                    'total_amount' => (float) $invoice->order->total_amount,
+                ] : null,
             ])
             ->values()
             ->all();
+
+        $creditLimit = $outstandingBalance + round((float) (clone $base)->sum('amount_paid'), 2);
+        $creditUtilization = $creditLimit > 0
+            ? round(($outstandingBalance / $creditLimit) * 100, 2)
+            : 0.0;
+
+        return [
+            'outstanding_balance' => $outstandingBalance,
+            'overdue_balance' => $overdueBalance,
+            'open_invoices_count' => (int) (clone $base)->where('outstanding_balance', '>', 0)->count(),
+            'credit_utilization_percent' => $creditUtilization,
+            'invoices' => $invoiceRows,
+        ];
     }
 
     protected function cartInsight(User $customer): array
