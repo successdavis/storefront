@@ -16,6 +16,8 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\StockEntry;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Models\VendorBill;
 use App\Services\Accounting\AccountingService;
 use App\Services\Accounting\AccountingDashboardService;
 use App\Services\Accounting\HistoricalAccountingSyncService;
@@ -153,6 +155,54 @@ class AccountingFoundationTest extends TestCase
             'id' => $expense->id,
             'journal_entry_id' => $entry->id,
         ]);
+    }
+
+    public function test_vendor_bill_payments_refresh_status_without_legacy_method_errors(): void
+    {
+        $employee = User::factory()->create();
+        $vendor = Vendor::query()->create([
+            'name' => 'Acme Supplies',
+            'email' => 'vendor@example.com',
+            'phone' => '08000000000',
+            'address' => '12 Marina, Lagos',
+            'active' => true,
+        ]);
+
+        $bill = VendorBill::query()->create([
+            'vendor_id' => $vendor->id,
+            'bill_number' => 'VB-TEST-001',
+            'bill_date' => '2026-04-27',
+            'due_date' => '2026-05-10',
+            'status' => 'unpaid',
+            'total_amount' => 100000,
+        ]);
+
+        $bill->addPayment([
+            'type' => 'outflow',
+            'method' => 'transfer',
+            'amount' => 40000,
+            'status' => 'paid',
+            'paid_at' => '2026-04-27 10:00:00',
+            'employee_id' => $employee->id,
+            'transaction_reference' => 'VBP-TEST-001',
+        ]);
+
+        $this->assertSame('partially_paid', $bill->fresh()->status);
+        $this->assertSame(40000.0, $bill->fresh()->totalPayments());
+
+        $bill->addPayment([
+            'type' => 'outflow',
+            'method' => 'transfer',
+            'amount' => 60000,
+            'status' => 'paid',
+            'paid_at' => '2026-04-27 12:00:00',
+            'employee_id' => $employee->id,
+            'transaction_reference' => 'VBP-TEST-002',
+        ]);
+
+        $this->assertSame('paid', $bill->fresh()->status);
+        $this->assertSame(100000.0, $bill->fresh()->totalPayments());
+        $this->assertSame(0.0, $bill->fresh()->outstandingBalance());
     }
 
     public function test_ledger_statement_filters_by_posting_date_without_sql_errors(): void

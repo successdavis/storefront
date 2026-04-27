@@ -49,6 +49,14 @@ trait HasPayments
     }
 
     /**
+     * Backward-compatible alias for legacy paymentable models.
+     */
+    public function amountPaid(): float
+    {
+        return $this->totalPayments();
+    }
+
+    /**
      * Get the outstanding balance (assuming model has a `total_amount` field).
      *
      * @return float

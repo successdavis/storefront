@@ -73,7 +73,7 @@ class VendorBill extends Model
     /** Update the bill status based on payments */
     public function refreshPaymentStatus(): void
     {
-        $paid = $this->amountPaid();
+        $paid = $this->totalPayments();
 
         if ($paid <= 0) {
             $this->update(['status' => 'unpaid']);
