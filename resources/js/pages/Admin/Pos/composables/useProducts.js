@@ -3,14 +3,22 @@ import { router, usePage } from '@inertiajs/vue3'
 import { eventBus } from '@/eventBus.js';
 
 export function useProducts() {
-    const { props } = usePage()
-    const variants = computed(() => props.variants ?? { data: [] })
-    const categories = computed(() => props.categories ?? [])
-    const brands = computed(() => props.brands ?? [])
-    const filters = ref({ ...(props.filters ?? {}) })
+    const page = usePage()
+    const variants = computed(() => page.props.variants ?? { data: [] })
+    const categories = computed(() => page.props.categories ?? [])
+    const brands = computed(() => page.props.brands ?? [])
+    const filters = ref({ ...(page.props.filters ?? {}) })
+
+    watch(
+        () => page.props.filters,
+        (nextFilters) => {
+            filters.value = { ...(nextFilters ?? {}) }
+        },
+        { deep: true },
+    )
 
     const reload = () => {
-        router.get(props.pos_routes.index, filters.value, {
+        router.get(page.props.pos_routes.index, filters.value, {
             preserveState: true,
             replace: true,
         })

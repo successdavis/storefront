@@ -389,6 +389,9 @@ const {
 const { formatCurrency } = useCurrencyFormatter();
 const page = usePage()
 const posRoutes = computed(() => page.props.pos_routes || {})
+const isAdminPosContext = computed(() => String(page.url || '').startsWith('/admin/'))
+const customerListUrl = computed(() => posRoutes.value.customers_list || (isAdminPosContext.value ? '/admin/customers/list' : '/sales/pos/customers'))
+const customerStoreUrl = computed(() => posRoutes.value.customers_store || (isAdminPosContext.value ? '/admin/customers/store' : '/sales/pos/customers'))
 
 
 // Customers + location lists are parent-controlled now
@@ -504,7 +507,7 @@ async function loadCustomers(query = '') {
     loadingCustomers.value = true;
 
     try {
-        const res = await axios.get(posRoutes.value.customers_list, {
+        const res = await axios.get(customerListUrl.value, {
             params: {
                 q: query || undefined,
                 limit: 10,
@@ -512,6 +515,25 @@ async function loadCustomers(query = '') {
         });
         customers.value = Array.isArray(res.data) ? res.data : customers.value;
     } catch (error) {
+        if (error?.response?.status === 404) {
+            const fallbackUrl = isAdminPosContext.value ? '/admin/customers/list' : '/sales/pos/customers';
+
+            try {
+                const fallbackResponse = await axios.get(fallbackUrl, {
+                    params: {
+                        q: query || undefined,
+                        limit: 10,
+                    },
+                });
+
+                customers.value = Array.isArray(fallbackResponse.data) ? fallbackResponse.data : customers.value;
+                return;
+            } catch (fallbackError) {
+                console.error('Failed to load POS customers:', fallbackError);
+                return;
+            }
+        }
+
         console.error('Failed to load POS customers:', error);
     } finally {
         loadingCustomers.value = false;
@@ -561,7 +583,7 @@ onMounted(async () => {
 // called when modal emits 'save'
 async function handleSaveNewCustomer(payload) {
     try {
-        const res = await axios.post(posRoutes.value.customers_store, payload);
+        const res = await axios.post(customerStoreUrl.value, payload);
         const newCust = res.data;
         const customerRecord = {
             id: newCust.id,
@@ -581,6 +603,34 @@ async function handleSaveNewCustomer(payload) {
             (k) => (newCustomer.value[k] = ''),
         );
     } catch (err) {
+        if (err?.response?.status === 404) {
+            try {
+                const fallbackUrl = isAdminPosContext.value ? '/admin/customers/store' : '/sales/pos/customers';
+                const res = await axios.post(fallbackUrl, payload);
+                const newCust = res.data;
+                const customerRecord = {
+                    id: newCust.id,
+                    name: newCust.name,
+                    email: newCust.email,
+                    phone: newCust.phone,
+                };
+
+                customers.value = [
+                    customerRecord,
+                    ...customers.value.filter((customer) => customer.id !== customerRecord.id),
+                ].slice(0, 10);
+                selectedCustomerMeta.value = customerRecord;
+                selectedCustomer.value = newCust.id;
+                showCustomerModal.value = false;
+                Object.keys(newCustomer.value).forEach(
+                    (k) => (newCustomer.value[k] = ''),
+                );
+                return;
+            } catch (fallbackError) {
+                console.error(fallbackError);
+            }
+        }
+
         alert('Failed to create customer.');
         console.error(err);
     }
