@@ -11,7 +11,7 @@ export function useProducts() {
 
     const reload = () => {
         router.get(props.pos_routes.index, filters.value, {
-            preserveState: false,
+            preserveState: true,
             replace: true,
         })
     }
