@@ -39,7 +39,7 @@ class PurchaseOrderResource extends JsonResource
                         'product_variant' => [
                             'id' => $item->productVariant?->id,
                             'sku' => $item->productVariant?->sku ?? null,
-                            'title' => $item->productVariant?->display_name ?? $item->productVariant?->name ?? null,
+                            'title' => $this->variantDisplayName($item->productVariant),
                             'product' => $item->productVariant?->product?->only(['id','name']) ?? null,
                         ],
                         'quantity_ordered' => (int) $item->quantity_ordered,
@@ -63,6 +63,7 @@ class PurchaseOrderResource extends JsonResource
                             ? $receipt->items->map(fn($ri) => [
                                 'id' => $ri->id,
                                 'sku' => $ri->productVariant?->sku ?? null,
+                                'title' => $this->variantDisplayName($ri->productVariant),
                                 'product_variant_id' => $ri->product_variant_id,
                                 'quantity_received' => (int) $ri->quantity_received,
                                 'unit_cost' => number_format((float)$ri->unit_cost, 2, '.', ''),
@@ -137,5 +138,21 @@ class PurchaseOrderResource extends JsonResource
             'created_at' => $this->created_at?->toDateTimeString(),
             'updated_at' => $this->updated_at?->toDateTimeString(),
         ];
+    }
+
+    private function variantDisplayName($variant): ?string
+    {
+        if (! $variant) {
+            return null;
+        }
+
+        $productName = $variant->product?->name;
+        $valueLabel = $variant->relationLoaded('values')
+            ? $variant->values->pluck('value')->filter()->implode(', ')
+            : '';
+
+        $display = trim((string) $productName . ($valueLabel !== '' ? " {$valueLabel}" : ''));
+
+        return $display !== '' ? $display : ($variant->sku ?? null);
     }
 }

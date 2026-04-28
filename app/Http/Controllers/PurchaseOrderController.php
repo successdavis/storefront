@@ -71,15 +71,20 @@ class PurchaseOrderController extends Controller
 
     public function create()
     {
-        $productVariants = ProductVariant::with('product:id,name') // eager load product name only
+        $productVariants = ProductVariant::with(['product:id,name', 'values.type:id,name']) // eager load product + variant labels
         ->select('id', 'sku', 'product_id','last_purchase_price')                   // we need product_id to match the relation
         ->orderByRaw('LOWER(sku)')                            // or name if you prefer
         ->get()
             ->map(function ($variant) {
+                $valueLabel = $variant->values
+                    ->pluck('value')
+                    ->filter()
+                    ->implode(', ');
+
                 return [
                     'id'   => $variant->id,
                     'sku'  => $variant->sku,
-                    'name' => $variant->product->name, // use product name
+                    'name' => trim($variant->product->name . ($valueLabel !== '' ? " {$valueLabel}" : '')),
                     'last_purchase_price' => $variant->last_purchase_price, // use product name
                 ];
             });
@@ -107,7 +112,9 @@ class PurchaseOrderController extends Controller
             'vendor',
             'warehouse',
             'items.productVariant.product',      // productVariant->product if available
-            'itemReceipts.items.productVariant',
+            'items.productVariant.values.type',
+            'itemReceipts.items.productVariant.product',
+            'itemReceipts.items.productVariant.values.type',
             'vendorBills.payments',
         ]);
 

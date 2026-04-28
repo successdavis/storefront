@@ -135,7 +135,7 @@
                                 >
                                     <option value="" disabled>Select product</option>
                                     <option v-for="p in productVariants" :key="p.id" :value="p.id">
-                                        {{ p.sku ? `${p.sku} — ${p.name}` : p.name }}
+                                        {{ p.name }}
                                     </option>
                                 </select>
 
@@ -501,3 +501,4 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
     color: #6b7280;
 }
 </style>
+

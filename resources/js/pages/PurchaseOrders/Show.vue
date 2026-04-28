@@ -70,7 +70,7 @@
                         <table class="min-w-full divide-y divide-border">
                             <thead class="bg-muted">
                             <tr>
-                                <th class="px-4 py-2 text-left text-sm font-medium text-muted-foreground">SKU / Title</th>
+                                <th class="px-4 py-2 text-left text-sm font-medium text-muted-foreground">Product</th>
                                 <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Ordered</th>
                                 <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Received</th>
                                 <th class="px-4 py-2 text-right text-sm font-medium text-muted-foreground">Remaining</th>
@@ -125,14 +125,17 @@
                                     <table class="w-full text-sm">
                                         <thead>
                                         <tr class="text-xs text-muted-foreground">
-                                            <th class="text-left">SKU</th>
+                                            <th class="text-left">Product</th>
                                             <th class="text-right">Qty</th>
                                             <th class="text-right">Line total</th>
                                         </tr>
                                         </thead>
                                         <tbody>
                                         <tr v-for="ri in r.items" :key="ri.id">
-                                            <td class="py-1">{{ ri.sku }}</td>
+                                            <td class="py-1">
+                                                <div class="font-medium">{{ ri.title || 'â€”' }}</div>
+                                                <div class="text-xs text-muted-foreground">{{ ri.sku || 'â€”' }}</div>
+                                            </td>
                                             <td class="py-1 text-right">{{ ri.quantity_received }}</td>
                                             <td class="py-1 text-right">{{ formatCurrency(ri.line_total) }}</td>
                                         </tr>
