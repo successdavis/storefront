@@ -46,6 +46,7 @@ class OrderManagementService
         protected InventoryService $inventoryService,
         protected ProductService $productService,
         protected CustomerInvoiceService $customerInvoiceService,
+        protected DropshippingService $dropshippingService,
     ) {}
 
     public function listOrders(array $filters = []): LengthAwarePaginator
@@ -649,6 +650,19 @@ class OrderManagementService
                     'quantity' => (int) $item->quantity,
                     'price' => (float) $item->price,
                     'subtotal' => round((float) $item->price * (int) $item->quantity, 2),
+                    'fulfillment_type' => $item->fulfillment_type ?? 'stocked',
+                    'fulfillment_label' => $item->isDropshipping() ? 'Dropshipping' : 'Stocked',
+                    'dropship_status' => $item->dropship_status,
+                    'dropship_status_label' => $item->isDropshipping() ? $this->statusLabel((string) $item->dropship_status) : null,
+                    'customer_dropship_status_label' => $item->isDropshipping() ? $this->dropshippingService->customerStatusLabel($item->dropship_status) : null,
+                    'supplier' => $item->isDropshipping() && $item->supplier ? [
+                        'id' => (int) $item->supplier->id,
+                        'name' => $item->supplier->name,
+                    ] : null,
+                    'supplier_cost' => $item->isDropshipping() ? (float) ($item->supplier_cost ?? 0) : null,
+                    'supplier_reference' => $item->isDropshipping() ? $item->supplier_reference : null,
+                    'supplier_expected_delivery_at' => $item->isDropshipping() ? optional($item->supplier_expected_delivery_at)?->toIso8601String() : null,
+                    'dropship_admin_note' => $item->isDropshipping() ? $item->dropship_admin_note : null,
                     'product' => [
                         'id' => $product?->id,
                         'name' => $product?->name,
@@ -744,6 +758,8 @@ class OrderManagementService
     {
         $order->load([
             'user:id,name,email,phone,created_at',
+            'items.supplier:id,name,email,phone,active',
+            'items.dropshipFulfillment',
             'items.variant.product.images',
             'items.variant.values.type',
             'payments.employee:id,name,email',
@@ -1126,6 +1142,14 @@ class OrderManagementService
             ->keyBy('variant_id');
 
         foreach ($order->items as $item) {
+            if ($item->isDropshipping()) {
+                if ($item->dropshipFulfillment) {
+                    $this->dropshippingService->updateStatus($item->dropshipFulfillment, 'cancelled', ['override' => true]);
+                }
+
+                continue;
+            }
+
             $stockOutEntry = $stockOutEntries->get($item->variant_id);
             $unitCost = (float) ($stockOutEntry?->unit_cost ?? $item->variant?->average_cost ?? 0);
 

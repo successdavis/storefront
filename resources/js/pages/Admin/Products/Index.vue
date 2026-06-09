@@ -168,6 +168,12 @@ function applyBulk() {
                                 <div>
                                     <div class="font-medium">{{ p.name }}</div>
                                     <div class="text-xs text-gray-500">{{ p.category || '-' }} - {{ p.brand || '-' }}</div>
+                                    <span
+                                        v-if="p.has_dropshipping"
+                                        class="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-200"
+                                    >
+                                        Dropshipping
+                                    </span>
                                 </div>
                             </div>
                         </th>

@@ -63,6 +63,7 @@
                 v-for="item in cartItems"
                 :key="item.variant_id"
                 class="flex items-start gap-3 border-b border-gray-200 py-3 dark:border-gray-700"
+                :class="item.stock_status ? 'rounded-md border border-red-200 bg-red-50 px-2 dark:border-red-900/60 dark:bg-red-950/20' : ''"
             >
                 <img :src="item.image" class="h-14 w-14 rounded object-cover" />
                 <div class="flex-1">
@@ -70,6 +71,12 @@
                     <div class="text-xs text-gray-500 dark:text-gray-400">
                         {{ item.variant_label }}
                     </div>
+                    <p
+                        v-if="item.stock_status"
+                        class="mt-2 text-xs font-semibold text-red-700 dark:text-red-300"
+                    >
+                        Out of stock
+                    </p>
 
                     <div class="mt-2 flex items-center gap-2">
                         <button
@@ -321,10 +328,11 @@
                         </DialogClose>
                         <button
                             type="button"
-                            class="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+                            class="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            :disabled="isPlacingOrder"
                             @click="onPlaceOrder"
                         >
-                            Confirm sale
+                            {{ isPlacingOrder ? 'Confirming...' : 'Confirm sale' }}
                         </button>
                     </DialogFooter>
                 </DialogContent>
@@ -373,10 +381,12 @@ import debounce from 'lodash/debounce';
 import { useCurrencyFormatter } from '@/pages/Admin/Pos/composables/useCurrencyFormatter.js';
 import OffcanvasOrders from '@/pages/Admin/Pos/components/OffcanvasOrders.vue'; // optional: you can implement your own debounce
 import { usePage } from '@inertiajs/vue3';
+import { eventBus } from '@/eventBus.js';
 
 // useCart provides reactive cartItems and subtotal, and item operations
 const {
     cartItems,
+    isPlacingOrder,
     subtotal,
     increment,
     decrement,
@@ -639,6 +649,7 @@ async function handleSaveNewCustomer(payload) {
 // auto call /checkout/preview
 const refreshPreview = debounce(async function () {
     if (cartItems.value.length === 0) {
+        checkout_token.value = '';
         previewTotals.value = { subtotal: 0, shipping_total: 0, discount: 0, discount_label: null, total: 0 };
         return;
     }
@@ -730,6 +741,10 @@ watch(paymentMode, (value) => {
 
 // place order — include shipping info & items; useCart.placeOrder should accept this payload on backend
 async function onPlaceOrder() {
+    if (isPlacingOrder.value) {
+        return;
+    }
+
     checkoutError.value = '';
 
     if (paymentLines.value.length === 0 || totalPaid.value <= 0) {
@@ -785,19 +800,33 @@ async function onPlaceOrder() {
     };
 
     try {
-        await placeOrder(payload);
+        const result = await placeOrder(payload);
         showCheckoutModal.value = false;
+        eventBus.emit('order-placed', {
+            items: payload.items,
+            stock_updates: result?.data?.stock_updates || [],
+        });
+        eventBus.emit('toast', {
+            type: 'success',
+            message: result?.message || 'Sale placed successfully.',
+        });
         shippingInfo.value = null;
         couponCode.value = '';
         paymentMode.value = 'full';
         paymentLines.value = [createPaymentLine('cash', 0)];
         dueDate.value = '';
         repaymentTerms.value = '';
+        checkout_token.value = '';
         checkoutError.value = '';
         previewTotals.value = { subtotal: 0, shipping_total: 0, discount: 0, discount_label: null, total: 0 };
     } catch (err) {
         console.error('Order placement failed', err);
-        checkoutError.value = 'We could not complete the sale. Please review the payment details and try again.';
+        showCheckoutModal.value = false;
+        checkoutError.value = '';
+        eventBus.emit('toast', {
+            type: 'error',
+            message: err?.message || 'There was an error placing your order.',
+        });
     }
 }
 
@@ -811,6 +840,7 @@ function clearCartAndShipping() {
     paymentLines.value = [createPaymentLine('cash', 0)];
     dueDate.value = '';
     repaymentTerms.value = '';
+    checkout_token.value = '';
     checkoutError.value = '';
     previewTotals.value = { subtotal: 0, shipping_total: 0, discount: 0, discount_label: null, total: 0 };
 }

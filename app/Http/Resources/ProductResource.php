@@ -78,6 +78,13 @@ class ProductResource extends JsonResource
                     'length'                    => $v->length,
                     'width'                     => $v->width,
                     'height'                    => $v->height,
+                    'fulfillment_type'          => $v->fulfillment_type ?? 'stocked',
+                    'is_dropshippable'          => (bool) $v->is_dropshippable,
+                    'default_supplier_id'       => $v->default_supplier_id ? (int) $v->default_supplier_id : null,
+                    'supplier_cost'             => $v->supplier_cost,
+                    'supplier_lead_time_days'   => $v->supplier_lead_time_days,
+                    'show_as_available_when_dropshipping' => (bool) $v->show_as_available_when_dropshipping,
+                    'dropshipping_note'         => $v->dropshipping_note,
                     'value_ids'                 => $v->values->pluck('id')->map(fn ($id) => (int) $id)->values(),
                     'images'                    => $v->images->map(fn ($img) => [
                         'id'                    => (int) $img->id,

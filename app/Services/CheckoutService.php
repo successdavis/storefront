@@ -648,6 +648,7 @@ class CheckoutService
             'unit_price' => (float) $item['variant']['price']['current'],
             'product_id' => (int) $item['product']['id'],
             'category_ids' => $item['category_ids'] ?? [],
+            'fulfillment_type' => $item['variant']['stock']['fulfillment_type'] ?? 'stocked',
         ])->values()->all();
 
         $discountSnapshot = $quote['discount_snapshot'] ?? [
@@ -836,7 +837,6 @@ class CheckoutService
         ];
     }
 }
-
 
 
 

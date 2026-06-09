@@ -14,10 +14,15 @@ class ProductVariant extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public const FULFILLMENT_STOCKED = 'stocked';
+    public const FULFILLMENT_DROPSHIPPING = 'dropshipping';
+
     protected $fillable = [
         'product_id','sku','quantity','barcode','cost_price',
         'regular_price','sale_starts_at','sale_ends_at',
         'weight','length','width','height','track_inventory','reorder_point','is_active',
+        'fulfillment_type','is_dropshippable','default_supplier_id','supplier_cost',
+        'supplier_lead_time_days','show_as_available_when_dropshipping','dropshipping_note',
     ];
 
     protected $casts = [
@@ -29,6 +34,10 @@ class ProductVariant extends Model
         'height' => 'decimal:2',
         'track_inventory' => 'boolean',
         'is_active' => 'boolean',
+        'is_dropshippable' => 'boolean',
+        'supplier_cost' => 'decimal:2',
+        'supplier_lead_time_days' => 'integer',
+        'show_as_available_when_dropshipping' => 'boolean',
     ];
 
     /**
@@ -79,7 +88,14 @@ class ProductVariant extends Model
      */
     public function scopeInStock($query)
     {
-        return $query->where('quantity', '>', 0);
+        return $query->where(function ($query) {
+            $query->where('quantity', '>', 0)
+                ->orWhere(function ($dropship) {
+                    $dropship
+                        ->where('fulfillment_type', self::FULFILLMENT_DROPSHIPPING)
+                        ->where('show_as_available_when_dropshipping', true);
+                });
+        });
     }
 
     public function scopeActive($query)
@@ -132,6 +148,21 @@ class ProductVariant extends Model
         return $this->hasMany(InventoryAlert::class, 'variant_id');
     }
 
+    public function defaultSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class, 'default_supplier_id');
+    }
+
+    public function isDropshipping(): bool
+    {
+        return $this->fulfillment_type === self::FULFILLMENT_DROPSHIPPING;
+    }
+
+    public function requiresLocalStock(): bool
+    {
+        return $this->fulfillment_type !== self::FULFILLMENT_DROPSHIPPING;
+    }
+
     public function getIsOnSaleAttribute(): bool
     {
         return false;
@@ -142,6 +173,10 @@ class ProductVariant extends Model
      */
     public function reduceStock(int $quantity): void
     {
+        if (! $this->requiresLocalStock()) {
+            return;
+        }
+
         $this->decrement('quantity', $quantity);
     }
 

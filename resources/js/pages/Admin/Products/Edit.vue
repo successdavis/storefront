@@ -11,6 +11,7 @@ const props = defineProps({
     product: Object,
     categories: Array,
     brands: Array,
+    suppliers: { type: Array, default: () => [] },
     variantTypes: Array, // [{id, name, values: [{id, variant_type_id, value}]}]
 })
 
@@ -425,7 +426,7 @@ watch(() => form.errors, () => {
                 <multi-select v-model="selectedVariants" :options="variantNames"></multi-select>
 
                 <div ref="variantsRef" :ref="el => variantsRef.value = el">
-                    <VariantMatrix :isEdit="isEdit" v-model="form.variants" :variant-types="filteredVariantTypes"/>
+                    <VariantMatrix :isEdit="isEdit" v-model="form.variants" :variant-types="filteredVariantTypes" :suppliers="suppliers"/>
                 </div>
 
                 <!-- Variants root error or any nested error -->

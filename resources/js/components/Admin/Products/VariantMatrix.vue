@@ -13,7 +13,8 @@ const props = defineProps({
     variantTypes: { type: Array, required: true },            // [{id,name,values:[{id,value}]}]
     storageBase: { type: String, default: '/storage' },
     skuCheckUrl: { type: String, default: '/admin/skus/check' },
-    isEdit: {type: Boolean, default: false}
+    isEdit: {type: Boolean, default: false},
+    suppliers: { type: Array, default: () => [] },
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -203,7 +204,7 @@ onBeforeUnmount(() => {
                         <input
                             v-model.number="r.quantity"
                             type="number" min="0"
-                            :disabled="r.id || r.archived"
+                            :disabled="r.id || r.archived || r.fulfillment_type === 'dropshipping'"
                             class="border rounded px-2 w-full py-1"
                             :class="errors.table[i]?.quantity ? 'border-red-400 bg-red-50' : ''"
                             @input="emitRows()"
@@ -212,7 +213,6 @@ onBeforeUnmount(() => {
                         />
                         <p v-if="errors.table[i]?.quantity" :id="`err-qty-${i}`" class="text-xs text-red-600 dark:text-red-400 mt-1">{{ errors.table[i].quantity }}</p>
                     </td>
-
 
                     <td class="p-2">
                         <input
@@ -253,7 +253,7 @@ onBeforeUnmount(() => {
                 </tr>
 
                 <tr v-if="rows.length === 0">
-                    <td class="p-3 text-center text-gray-500" colspan="6">No variants. Select values above to generate them.</td>
+                    <td class="p-3 text-center text-gray-500" colspan="7">No variants. Select values above to generate them.</td>
                 </tr>
                 </tbody>
             </table>
@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
             role="dialog"
         >
             <div class="absolute inset-0 bg-black/40" @click="closeDetails()" />
-            <div class="relative z-50 w-full max-w-2xl bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 text-gray-800 dark:text-gray-200" @keydown.esc="closeDetails()">
+            <div class="relative z-50 w-full max-w-3xl bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 text-gray-800 dark:text-gray-200" @keydown.esc="closeDetails()">
                 <div class="flex items-center justify-between border-b pb-2 mb-4 dark:border-gray-700">
                     <h3 class="text-base font-semibold">Variant details</h3>
                     <button class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" @click="closeDetails()" aria-label="Close">✕</button>
@@ -280,6 +280,87 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="md:col-span-2 rounded border border-gray-200 p-3 dark:border-gray-700">
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Fulfillment Method</h4>
+                            <div v-if="draft.fulfillment_type === 'dropshipping'" class="flex flex-wrap gap-1 text-[11px]">
+                                <span class="rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-200">Supplier Fulfilled</span>
+                                <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">No Local Stock Required</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <label class="flex flex-col gap-1">
+                                <span class="text-xs text-gray-500">Fulfillment Type</span>
+                                <select
+                                    v-model="draft.fulfillment_type"
+                                    class="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                                >
+                                    <option value="stocked">Stocked Inventory</option>
+                                    <option value="dropshipping">Dropshipping</option>
+                                </select>
+                            </label>
+
+                            <label v-if="draft.fulfillment_type === 'dropshipping'" class="flex flex-col gap-1">
+                                <span class="text-xs text-gray-500">Supplier</span>
+                                <select
+                                    v-model="draft.default_supplier_id"
+                                    class="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                                >
+                                    <option :value="null">No supplier selected</option>
+                                    <option v-for="supplier in suppliers" :key="supplier.id" :value="supplier.id">
+                                        {{ supplier.name }}{{ supplier.active === false ? ' (inactive)' : '' }}
+                                    </option>
+                                </select>
+                            </label>
+
+                            <label v-if="draft.fulfillment_type === 'dropshipping'" class="flex flex-col gap-1">
+                                <span class="text-xs text-gray-500">Supplier Cost</span>
+                                <input
+                                    v-model.number="draft.supplier_cost"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    class="border rounded px-2 py-1"
+                                    :class="errors.modal[editingIndex ?? -1]?.supplier_cost ? 'border-red-400 bg-red-50' : ''"
+                                    @blur="validateModalDraft(editingIndex ?? -1)"
+                                />
+                                <span v-if="errors.modal[editingIndex ?? -1]?.supplier_cost" class="text-xs text-red-600 dark:text-red-400">
+                                    {{ errors.modal[editingIndex ?? -1].supplier_cost }}
+                                </span>
+                            </label>
+
+                            <label v-if="draft.fulfillment_type === 'dropshipping'" class="flex flex-col gap-1">
+                                <span class="text-xs text-gray-500">Supplier Lead Time (days)</span>
+                                <input
+                                    v-model.number="draft.supplier_lead_time_days"
+                                    type="number"
+                                    min="0"
+                                    class="border rounded px-2 py-1"
+                                    :class="errors.modal[editingIndex ?? -1]?.supplier_lead_time_days ? 'border-red-400 bg-red-50' : ''"
+                                    @blur="validateModalDraft(editingIndex ?? -1)"
+                                />
+                                <span v-if="errors.modal[editingIndex ?? -1]?.supplier_lead_time_days" class="text-xs text-red-600 dark:text-red-400">
+                                    {{ errors.modal[editingIndex ?? -1].supplier_lead_time_days }}
+                                </span>
+                            </label>
+
+                            <label v-if="draft.fulfillment_type === 'dropshipping'" class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                <input v-model="draft.show_as_available_when_dropshipping" type="checkbox" />
+                                Show as available
+                            </label>
+
+                            <label v-if="draft.fulfillment_type === 'dropshipping'" class="flex flex-col gap-1 md:col-span-2">
+                                <span class="text-xs text-gray-500">Dropshipping Note</span>
+                                <textarea
+                                    v-model="draft.dropshipping_note"
+                                    rows="2"
+                                    placeholder="Internal dropshipping note"
+                                    class="border rounded px-2 py-1"
+                                />
+                            </label>
+                        </div>
+                    </div>
 
                     <label class="flex flex-col gap-1">
                         <span class="text-xs text-gray-500">Weight (kg)</span>

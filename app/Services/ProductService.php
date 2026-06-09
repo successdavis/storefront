@@ -319,7 +319,27 @@ class ProductService
             'length',
             'width',
             'height',
+            'fulfillment_type',
+            'is_dropshippable',
+            'default_supplier_id',
+            'supplier_cost',
+            'supplier_lead_time_days',
+            'show_as_available_when_dropshipping',
+            'dropshipping_note',
         ]);
+
+        $attributes['fulfillment_type'] = $attributes['fulfillment_type'] ?? ProductVariant::FULFILLMENT_STOCKED;
+        $attributes['is_dropshippable'] = ($attributes['fulfillment_type'] ?? null) === ProductVariant::FULFILLMENT_DROPSHIPPING;
+        $attributes['show_as_available_when_dropshipping'] = (bool) ($attributes['show_as_available_when_dropshipping'] ?? true);
+
+        if ($attributes['fulfillment_type'] !== ProductVariant::FULFILLMENT_DROPSHIPPING) {
+            $attributes['is_dropshippable'] = false;
+            $attributes['default_supplier_id'] = null;
+            $attributes['supplier_cost'] = null;
+            $attributes['supplier_lead_time_days'] = null;
+            $attributes['show_as_available_when_dropshipping'] = true;
+            $attributes['dropshipping_note'] = null;
+        }
 
         if ($preserveExistingDefaults && blank(data_get($payload, 'barcode')) && filled($variant->barcode)) {
             unset($attributes['barcode']);
@@ -732,6 +752,13 @@ class ProductService
                     'track_inventory' => $variant->track_inventory,
                     'reorder_point' => $variant->reorder_point,
                     'is_active' => $variant->is_active,
+                    'fulfillment_type' => $variant->fulfillment_type,
+                    'is_dropshippable' => $variant->is_dropshippable,
+                    'default_supplier_id' => $variant->default_supplier_id,
+                    'supplier_cost' => $variant->supplier_cost,
+                    'supplier_lead_time_days' => $variant->supplier_lead_time_days,
+                    'show_as_available_when_dropshipping' => $variant->show_as_available_when_dropshipping,
+                    'dropshipping_note' => $variant->dropshipping_note,
                     'deleted_at' => null,
                 ]);
                 $v->save();
@@ -1589,17 +1616,21 @@ class ProductService
     {
         $variants = $product->relationLoaded('variants')
             ? $product->variants->where('is_active', true)
-            : $product->variants()->active()->get(['id', 'product_id', 'quantity', 'reserved', 'is_active']);
+            : $product->variants()->active()->get(['id', 'product_id', 'quantity', 'reserved', 'is_active', 'fulfillment_type', 'show_as_available_when_dropshipping']);
 
         $onHand = (int) $variants->sum('quantity');
         $reserved = (int) $variants->sum('reserved');
-        $available = max($onHand - $reserved, 0);
+        $localAvailable = max($onHand - $reserved, 0);
+        $hasAvailableDropship = $variants->contains(
+            fn (ProductVariant $variant) => $variant->isDropshipping() && (bool) $variant->show_as_available_when_dropshipping
+        );
 
         return [
             'on_hand' => $onHand,
             'reserved' => $reserved,
-            'available' => $available,
-            'is_in_stock' => $available > 0,
+            'available' => $localAvailable,
+            'is_in_stock' => $localAvailable > 0 || $hasAvailableDropship,
+            'has_dropshipping_available' => $hasAvailableDropship,
         ];
     }
 
@@ -1607,13 +1638,18 @@ class ProductService
     {
         $onHand = (int) $variant->quantity;
         $reserved = (int) ($variant->reserved ?? 0);
-        $available = max($onHand - $reserved, 0);
+        $localAvailable = max($onHand - $reserved, 0);
+        $isAvailableDropship = $variant->isDropshipping() && (bool) $variant->show_as_available_when_dropshipping;
 
         return [
             'on_hand' => $onHand,
             'reserved' => $reserved,
-            'available' => $available,
-            'is_in_stock' => $available > 0,
+            'available' => $localAvailable,
+            'is_in_stock' => $localAvailable > 0 || $isAvailableDropship,
+            'requires_local_stock' => $variant->requiresLocalStock(),
+            'fulfillment_type' => $variant->fulfillment_type ?? ProductVariant::FULFILLMENT_STOCKED,
+            'is_dropshipping' => $variant->isDropshipping(),
+            'show_as_available_when_dropshipping' => (bool) $variant->show_as_available_when_dropshipping,
         ];
     }
 
@@ -1686,6 +1722,8 @@ class ProductService
                     'sale_starts_at',
                     'sale_ends_at',
                     'is_active',
+                    'fulfillment_type',
+                    'show_as_available_when_dropshipping',
                 ])
                 ->orderBy('regular_price')
                 ->orderBy('id'),
@@ -1725,6 +1763,10 @@ class ProductService
 
         if ((bool) $product->featured) {
             $badges[] = 'Featured';
+        }
+
+        if ($product->variants->contains(fn (ProductVariant $variant) => $variant->isDropshipping())) {
+            $badges[] = 'Dropshipping';
         }
 
         return $badges;

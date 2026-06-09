@@ -57,6 +57,7 @@ class HandleInertiaRequests extends Middleware
                 'error'   => fn () => $request->session()->get('error'),
                 'warning' => fn () => $request->session()->get('warning'),
                 'info'    => fn () => $request->session()->get('info'),
+                'pos_out_of_stock_items' => fn () => $request->session()->get('pos_out_of_stock_items'),
             ],
             'analytics' => [
                 'storefront' => $analyticsSettings->frontendConfig(),

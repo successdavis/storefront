@@ -12,6 +12,7 @@ use App\Support\RoleNames;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use App\Models\ProductVariant;
 use App\Models\Category;
@@ -70,6 +71,11 @@ class PosController extends Controller
         // append readable variant values
         $variants->getCollection()->transform(function ($variant) {
             $variant->variant_values = $variant->values->pluck('name')->join(' / ');
+            $variant->requires_local_stock = $variant->requiresLocalStock();
+            $variant->is_dropshipping = $variant->isDropshipping();
+            $variant->is_sellable = $variant->requiresLocalStock()
+                ? (($variant->quantity - ($variant->reserved ?? 0)) > 0)
+                : (bool) $variant->show_as_available_when_dropshipping;
             return $variant;
         });
 
@@ -95,18 +101,44 @@ class PosController extends Controller
     // Optional separate endpoint for infinite load or client-side fetching
     public function productsApi(Request $request)
     {
+        $barcode = trim((string) $request->input('barcode', ''));
+        $search = trim((string) $request->input('q', ''));
+
         $variants = ProductVariant::query()
             ->active()
-            ->with(['product','product.images'])
-            ->when($request->input('q'), function ($q) use ($request) {
-                $term = $request->input('q');
-                $q->where('sku', 'like', "%{$term}%")
-                    ->orWhere('barcode', 'like', "%{$term}%")
-                    ->orWhereHas('product', fn($qp) => $qp->where('name','like', "%{$term}%"));
+            ->with(['product', 'product.images', 'values.type'])
+            ->when($barcode !== '', function ($query) use ($barcode) {
+                $query->where(function ($barcodeQuery) use ($barcode) {
+                    $barcodeQuery
+                        ->where('barcode', $barcode)
+                        ->orWhere('sku', $barcode);
+                });
+            })
+            ->when($barcode === '' && $search !== '', function ($query) use ($search) {
+                $query->where(function ($searchQuery) use ($search) {
+                    $searchQuery
+                        ->where('sku', 'like', "%{$search}%")
+                        ->orWhere('barcode', 'like', "%{$search}%")
+                        ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', "%{$search}%"));
+                });
             })
             ->paginate(12);
 
+        $variants->getCollection()->transform(fn (ProductVariant $variant) => $this->decoratePosVariant($variant));
+
         return response()->json($variants);
+    }
+
+    protected function decoratePosVariant(ProductVariant $variant): ProductVariant
+    {
+        $variant->variant_values = $variant->values->pluck('name')->join(' / ');
+        $variant->requires_local_stock = $variant->requiresLocalStock();
+        $variant->is_dropshipping = $variant->isDropshipping();
+        $variant->is_sellable = $variant->requiresLocalStock()
+            ? (($variant->quantity - ($variant->reserved ?? 0)) > 0)
+            : (bool) $variant->show_as_available_when_dropshipping;
+
+        return $variant;
     }
 
     public function placeOrder(Request $request, OrderService $orderService)
@@ -147,7 +179,7 @@ class PosController extends Controller
         }
 
         if ($validated['payment_lines'] === []) {
-            return back()->withErrors([
+            return $this->posValidationErrorResponse($request, [
                 'payment_lines' => 'Add at least one payment line before placing the sale.',
             ]);
         }
@@ -157,33 +189,33 @@ class PosController extends Controller
         $outstanding = round(max(0, $total - $totalPaid), 2);
 
         if ($totalPaid > $total + 0.01) {
-            return back()->withErrors([
+            return $this->posValidationErrorResponse($request, [
                 'payment_lines' => 'Total paid cannot exceed the order total.',
             ]);
         }
 
         if ($outstanding > 0) {
             if (empty($validated['customer_id'])) {
-                return back()->withErrors([
+                return $this->posValidationErrorResponse($request, [
                     'customer_id' => 'Select a saved customer before creating a credit sale.',
                 ]);
             }
 
             $customer = User::query()->find($validated['customer_id']);
             if (!$customer || strtolower((string) $customer->email) === 'walkincustomer@example.com') {
-                return back()->withErrors([
+                return $this->posValidationErrorResponse($request, [
                     'customer_id' => 'Walk-in customers cannot be used for partial payment or receivable sales.',
                 ]);
             }
 
             if (empty($validated['due_date'])) {
-                return back()->withErrors([
+                return $this->posValidationErrorResponse($request, [
                     'due_date' => 'A due date is required when part of the sale remains outstanding.',
                 ]);
             }
 
             if (blank($validated['repayment_terms'] ?? null)) {
-                return back()->withErrors([
+                return $this->posValidationErrorResponse($request, [
                     'repayment_terms' => 'Repayment terms are required for credit sales.',
                 ]);
             }
@@ -195,15 +227,181 @@ class PosController extends Controller
 
 
         try {
-            $sale = $orderService->handle($validated);
+            $order = $orderService->handle($validated);
+            $message = 'Sale placed successfully.';
 
-            return back()->with('success', 'Sale placed successfully.');
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'status' => 'success',
+                    'type' => 'success',
+                    'message' => $message,
+                    'order' => [
+                        'id' => (int) $order->id,
+                        'order_number' => $order->order_number,
+                    ],
+                    'stock_updates' => $this->posStockUpdates($validated['items'] ?? []),
+                ]);
+            }
+
+            return back()->with('success', $message);
         } catch (InsufficientStockException $e) {
-            return back()->with('error', $e->getMessage());
+            return $this->posOutOfStockResponse($request, $validated['items'] ?? [], $e->getDetails());
+        } catch (ValidationException $e) {
+            return $this->posValidationErrorResponse($request, $e->errors());
         } catch (\Throwable $e) {
+            if (str_contains(strtolower($e->getMessage()), 'insufficient stock')) {
+                return $this->posOutOfStockResponse($request, $validated['items'] ?? []);
+            }
+
             report($e);
-            return back()->with('error', 'An unexpected error occurred while placing the order.');
+            return $this->posUnexpectedErrorResponse($request);
         }
+    }
+
+    protected function posValidationErrorResponse(Request $request, array $errors, ?string $message = null, int $status = 422)
+    {
+        $message ??= collect($errors)->flatten()->first() ?: 'There was an error placing your order.';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'status' => 'error',
+                'type' => 'validation',
+                'message' => $message,
+                'errors' => $errors,
+            ], $status);
+        }
+
+        return back()
+            ->withErrors($errors)
+            ->with('error', $message);
+    }
+
+    protected function posStockUpdates(array $items): array
+    {
+        $variantIds = collect($items)
+            ->filter(fn ($item) => is_array($item) && !empty($item['variant_id']))
+            ->pluck('variant_id')
+            ->map(fn ($variantId) => (int) $variantId)
+            ->unique()
+            ->values();
+
+        if ($variantIds->isEmpty()) {
+            return [];
+        }
+
+        return ProductVariant::query()
+            ->whereIn('id', $variantIds->all())
+            ->get()
+            ->map(function (ProductVariant $variant) {
+                $available = $variant->requiresLocalStock()
+                    ? max(0, (float) $variant->quantity - (float) ($variant->reserved ?? 0))
+                    : null;
+
+                return [
+                    'variant_id' => (int) $variant->id,
+                    'quantity' => (float) $variant->quantity,
+                    'reserved' => (float) ($variant->reserved ?? 0),
+                    'available' => $available,
+                    'is_sellable' => $variant->requiresLocalStock()
+                        ? (($available ?? 0) > 0)
+                        : (bool) $variant->show_as_available_when_dropshipping,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    protected function posUnexpectedErrorResponse(Request $request)
+    {
+        $message = 'There was an error placing your order.';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'status' => 'error',
+                'type' => 'error',
+                'message' => $message,
+                'errors' => [
+                    'order' => [$message],
+                ],
+            ], 500);
+        }
+
+        return back()->with('error', $message);
+    }
+
+    protected function posOutOfStockResponse(Request $request, array $items, array $details = [])
+    {
+        $outOfStockItems = $this->normalizeOutOfStockDetails($items, $details);
+        $message = 'An item in your cart is out of stock please remove';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'status' => 'error',
+                'type' => 'stock',
+                'message' => $message,
+                'errors' => [
+                    'stock' => [$message],
+                ],
+                'out_of_stock_items' => $outOfStockItems,
+                'pos_out_of_stock_items' => $outOfStockItems,
+            ], 409);
+        }
+
+        return back()
+            ->withErrors([
+                'stock' => $message,
+                'pos_out_of_stock_items' => json_encode($outOfStockItems),
+            ])
+            ->with('error', $message)
+            ->with('pos_out_of_stock_items', $outOfStockItems);
+    }
+
+    protected function normalizeOutOfStockDetails(array $items, array $details = []): array
+    {
+        $normalized = collect($details)
+            ->filter(fn ($detail) => is_array($detail))
+            ->map(fn (array $detail) => [
+                'variant_id' => (int) ($detail['variant_id'] ?? 0),
+                'sku' => $detail['sku'] ?? null,
+                'requested' => (float) ($detail['requested'] ?? 0),
+                'available' => max(0, (float) ($detail['available'] ?? 0)),
+            ])
+            ->filter(fn (array $detail) => $detail['variant_id'] > 0)
+            ->values();
+
+        if ($normalized->isNotEmpty()) {
+            return $normalized->all();
+        }
+
+        $requestedByVariant = collect($items)
+            ->filter(fn ($item) => is_array($item) && !empty($item['variant_id']))
+            ->mapWithKeys(fn (array $item) => [
+                (int) $item['variant_id'] => (float) ($item['quantity'] ?? 0),
+            ]);
+
+        if ($requestedByVariant->isEmpty()) {
+            return [];
+        }
+
+        return ProductVariant::query()
+            ->whereIn('id', $requestedByVariant->keys()->all())
+            ->get()
+            ->map(function (ProductVariant $variant) use ($requestedByVariant) {
+                $requested = (float) ($requestedByVariant[(int) $variant->id] ?? 0);
+                $available = $variant->requiresLocalStock()
+                    ? max(0, (float) $variant->quantity - (float) ($variant->reserved ?? 0))
+                    : $requested;
+
+                return [
+                    'variant_id' => (int) $variant->id,
+                    'sku' => $variant->sku ?? null,
+                    'requested' => $requested,
+                    'available' => $available,
+                ];
+            })
+            ->filter(fn (array $detail) => $detail['requested'] > 0 && $detail['available'] < $detail['requested'])
+            ->values()
+            ->all();
     }
 
     protected function variantLabel(ProductVariant $variant)
@@ -246,13 +444,17 @@ class PosController extends Controller
         $order = $sale->order;
 
         // 🧠 Load paper size setting from settings table
-        $paperSize = Setting::get('receipt_paper_size', '80mm');
+        $paperSize = strtoupper(str_replace(' ', '', (string) Setting::get('receipt_paper_size', '80mm')));
 
         // 🧾 Determine the paper dimension
         $paperConfig = match ($paperSize) {
             'A4' => [
                 'paper' => 'A4',
                 'view'  => 'receipts.a4',
+            ],
+            '58MM' => [
+                'paper' => [0, 0, 164.41, 1000],
+                'view'  => 'receipts.thermal',
             ],
             default => [
                 'paper' => [0, 0, 226.77, 1000],
@@ -391,6 +593,7 @@ class PosController extends Controller
             'place_order' => route($this->posRouteName('placeOrder')),
             'sales_orders' => route($this->posRouteName('orders')),
             'print_sale_template' => route($this->posRouteName('print'), ['sale' => '__SALE__']),
+            'products_api' => route($this->posRouteName('products.api')),
             'customers_list' => route($this->customerRouteName('list')),
             'customers_store' => route($this->customerRouteName('store')),
         ];

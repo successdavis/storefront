@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\{Admin\Product\ProductStoreRequest, Admin\Product\ProductUpdateRequest};
 use App\Http\Resources\ProductResource;
-use App\Models\{Brand, Category, Product, VariantType};
+use App\Models\{Brand, Category, Product, VariantType, Vendor};
 use App\Services\ProductService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -32,6 +32,8 @@ class AdminProductController extends Controller
                         'sale_starts_at',
                         'sale_ends_at',
                         'is_active',
+                        'fulfillment_type',
+                        'show_as_available_when_dropshipping',
                     ])
                     ->orderBy('regular_price')
                     ->orderBy('id'),
@@ -70,6 +72,7 @@ class AdminProductController extends Controller
                     'published'   => (bool) $p->is_active,
                     'featured'    => (bool) $p->featured,
                     'on_sale'     => $onSale,
+                    'has_dropshipping' => $p->variants->contains(fn ($variant) => $variant->isDropshipping()),
                     'updated_at'  => $p->updated_at->toDateTimeString(),
                 ];
             }),
@@ -101,6 +104,7 @@ class AdminProductController extends Controller
             'product'       => null,
             'categories'    => $categories,
             'brands'        => Brand::select('id', 'name')->orderBy('name')->get(),
+            'suppliers'     => Vendor::select('id', 'name', 'active')->orderBy('name')->get(),
             'variantTypes'  => VariantType::with('values:id,variant_type_id,value')
                 ->select('id', 'name')->get(),
         ]);
@@ -131,6 +135,7 @@ class AdminProductController extends Controller
             'product' => new ProductResource($product),
             'categories'    => $categories,
             'brands'     => Brand::select('id','name')->orderBy('name')->get(),
+            'suppliers'  => Vendor::select('id', 'name', 'active')->orderBy('name')->get(),
             'variantTypes' => VariantType::with('values:id,variant_type_id,value')
                 ->select('id','name')->get(),
         ]);

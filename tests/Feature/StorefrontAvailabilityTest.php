@@ -6,8 +6,11 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
 use App\Models\Category;
+use App\Models\Vendor;
 use App\Services\CartService;
+use App\Services\DropshippingService;
 use App\Services\ProductService;
+use App\Models\DropshipFulfillment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -93,6 +96,65 @@ class StorefrontAvailabilityTest extends TestCase
 
         $this->assertSame($variant->id, $result['variant_id']);
         $this->assertSame(1, $result['quantity']);
+    }
+
+    public function test_dropshipping_variant_is_sellable_without_local_stock(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['is_active' => true]);
+        $variant = ProductVariant::factory()->for($product)->create([
+            'quantity' => 0,
+            'reserved' => 0,
+            'regular_price' => 95000,
+            'is_active' => true,
+            'fulfillment_type' => ProductVariant::FULFILLMENT_DROPSHIPPING,
+            'is_dropshippable' => true,
+            'show_as_available_when_dropshipping' => true,
+        ]);
+
+        $stock = app(ProductService::class)->resolveVariantStock($variant);
+
+        $this->assertTrue($stock['is_in_stock']);
+        $this->assertFalse($stock['requires_local_stock']);
+
+        Redis::shouldReceive('watch')->once()->with("cart:user:{$user->id}");
+        Redis::shouldReceive('get')->once()->with("cart:user:{$user->id}")->andReturn(null);
+        Redis::shouldReceive('multi')->once();
+        Redis::shouldReceive('set')->once();
+        Redis::shouldReceive('expire')->once()->with("cart:user:{$user->id}", 60 * 60 * 24 * 30);
+        Redis::shouldReceive('exec')->once()->andReturn([true, true]);
+
+        $result = app(CartService::class)->addItem([
+            'variant_id' => $variant->id,
+            'quantity' => 3,
+        ], $user->id);
+
+        $this->assertSame(3, $result['quantity']);
+    }
+
+    public function test_invalid_dropshipping_status_transition_is_blocked(): void
+    {
+        $supplier = Vendor::create(['name' => 'Supplier A', 'active' => true]);
+        $product = Product::factory()->create(['is_active' => true]);
+        $variant = ProductVariant::factory()->for($product)->create([
+            'quantity' => 0,
+            'fulfillment_type' => ProductVariant::FULFILLMENT_DROPSHIPPING,
+            'default_supplier_id' => $supplier->id,
+            'supplier_cost' => 1000,
+        ]);
+        $order = \App\Models\Order::factory()->for($user = User::factory()->create(), 'user')->create();
+        $item = \App\Models\OrderItem::factory()->forOrder($order)->forVariant($variant)->create([
+            'fulfillment_type' => ProductVariant::FULFILLMENT_DROPSHIPPING,
+            'supplier_id' => $supplier->id,
+            'supplier_cost' => 1000,
+            'dropship_status' => DropshipFulfillment::STATUS_PENDING,
+        ]);
+
+        $fulfillment = app(DropshippingService::class)->createFulfillmentForOrderItem($item);
+
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+
+        app(DropshippingService::class)->updateStatus($fulfillment, DropshipFulfillment::STATUS_DELIVERED);
     }
 
     public function test_detailed_cart_keeps_unavailable_items_visible_with_an_actionable_message(): void

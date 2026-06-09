@@ -16,10 +16,12 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { onMounted, ref } from 'vue'
 import ProductSection from './components/ProductSection.vue'
 import CartSection from './components/CartSection.vue'
+import { useBarcodeScanner } from './composables/useBarcodeScanner'
 // import OffcanvasOrders from './components/OffcanvasOrders.vue'
 
 const showOrders = ref(false)
 const { setOpen, setOpenMobile } = useSidebar()
+useBarcodeScanner()
 
 onMounted(() => {
     setOpen(false)

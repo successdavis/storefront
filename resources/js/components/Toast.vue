@@ -1,27 +1,50 @@
 <script setup>
 import { usePage } from "@inertiajs/vue3";
-import { ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { eventBus } from "@/eventBus.js";
 
 const page = usePage();
 const show = ref(false);
 const message = ref("");
 const type = ref("success");
+let hideTimer = null;
+
+const showToast = (payload) => {
+    const nextType = payload?.type || "success";
+    const nextMessage = payload?.message;
+
+    if (!nextMessage) return;
+
+    type.value = nextType;
+    message.value = nextMessage;
+    show.value = true;
+
+    if (hideTimer) {
+        clearTimeout(hideTimer);
+    }
+
+    hideTimer = setTimeout(() => show.value = false, 4000);
+};
 
 watch(
     () => page.props.flash,
     (flash) => {
-        const key = Object.keys(flash).find(k => flash[k]);
+        const key = ['success', 'error', 'warning', 'info'].find(k => flash?.[k]);
 
         if (!key) return;
 
-        type.value = key;
-        message.value = flash[key];
-        show.value = true;
-
-        setTimeout(() => show.value = false, 4000);
+        showToast({ type: key, message: flash[key] });
     },
-    { deep: true }
+    { deep: true, immediate: true }
 );
+
+onMounted(() => {
+    eventBus.on('toast', showToast);
+});
+
+onBeforeUnmount(() => {
+    eventBus.off('toast', showToast);
+});
 </script>
 
 <template>

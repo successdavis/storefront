@@ -20,6 +20,7 @@ const actionForm = useForm({
 const noteForm = useForm({ note: '' });
 const notificationForm = useForm({ notification: 'placed' });
 const selectedAction = computed(() => props.order.available_actions?.find((action: any) => action.key === actionForm.action) || null);
+const hasDropshippingItems = computed(() => props.order.items?.some((item: any) => item.fulfillment_type === 'dropshipping') || false);
 
 const money = (value: number, currency = 'NGN') =>
     new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(Number(value || 0));
@@ -78,11 +79,29 @@ function resend(notification: string) {
 
                 <div class="rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
                     <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800"><h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Items</h2></div>
+                    <div v-if="hasDropshippingItems" class="mx-6 mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+                        This order contains dropshipping items that require supplier fulfillment.
+                    </div>
                     <div class="divide-y divide-slate-200 dark:divide-slate-800">
                         <div v-for="item in order.items" :key="item.id" class="flex flex-wrap gap-4 px-6 py-5">
                             <img v-if="item.product.image" :src="item.product.image" :alt="item.product.name ?? 'Product image'" class="h-20 w-20 rounded-2xl object-cover" />
                             <div v-else class="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-100 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">No image</div>
-                            <div class="flex-1"><p class="font-semibold text-slate-900 dark:text-slate-100">{{ item.product.name }}</p><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ item.variant.label || item.variant.sku }}</p><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Quantity: {{ item.quantity }}</p></div>
+                            <div class="flex-1">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="font-semibold text-slate-900 dark:text-slate-100">{{ item.product.name }}</p>
+                                    <span :class="['inline-flex rounded-full px-2.5 py-1 text-xs font-semibold', badgeClass(item.fulfillment_label)]">{{ item.fulfillment_label }}</span>
+                                    <span v-if="item.dropship_status_label" :class="['inline-flex rounded-full px-2.5 py-1 text-xs font-semibold', badgeClass(item.dropship_status_label)]">{{ item.dropship_status_label }}</span>
+                                </div>
+                                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ item.variant.label || item.variant.sku }}</p>
+                                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Quantity: {{ item.quantity }}</p>
+                                <div v-if="item.fulfillment_type === 'dropshipping'" class="mt-3 grid gap-2 text-xs text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+                                    <p>Supplier: <span class="font-medium">{{ item.supplier?.name || 'Unassigned' }}</span></p>
+                                    <p>Supplier cost: <span class="font-medium">{{ money(item.supplier_cost, order.currency) }}</span></p>
+                                    <p>Reference: <span class="font-medium">{{ item.supplier_reference || '-' }}</span></p>
+                                    <p>Expected: <span class="font-medium">{{ item.supplier_expected_delivery_at ? new Date(item.supplier_expected_delivery_at).toLocaleDateString() : '-' }}</span></p>
+                                    <p v-if="item.dropship_admin_note" class="sm:col-span-2">Note: {{ item.dropship_admin_note }}</p>
+                                </div>
+                            </div>
                             <div class="text-right"><p class="text-sm text-slate-500 dark:text-slate-400">{{ money(item.price, order.currency) }} each</p><p class="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">{{ money(item.subtotal, order.currency) }}</p></div>
                         </div>
                     </div>

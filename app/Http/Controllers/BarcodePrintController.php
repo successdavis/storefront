@@ -77,50 +77,117 @@ class BarcodePrintController extends Controller
             $this->barcodeService->assignToVariant($variant);
         }
 
-        $labels = $variants->map(function (ProductVariant $variant): array {
+        $currency = (string) Setting::get('business_currency', 'NGN');
+        $labels = $variants->map(function (ProductVariant $variant) use ($currency): array {
             return [
                 'name' => $this->variantNameFormatter->format($variant),
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,
+                'price' => $this->formatPrice((float) $variant->regular_price, $currency),
             ];
         })->values()->all();
 
-        $paperSize = strtoupper((string) Setting::get('receipt_paper_size', '80MM'));
-        $paperConfig = $this->resolvePaperConfig($paperSize, count($labels));
+        $paperSize = $this->normalizePaperSize((string) Setting::get('barcode_paper_size', '50mm'));
+        $orientation = $this->normalizeOrientation((string) Setting::get('barcode_label_orientation', 'portrait'));
+        $labelHeightMm = $this->normalizeLabelHeight((string) Setting::get('barcode_label_height_mm', '25'));
+        $paperConfig = $this->resolvePaperConfig($paperSize, $labelHeightMm, $orientation);
 
         $pdf = Pdf::loadView('barcode-labels', [
             'labels' => $labels,
             'columns' => $paperConfig['columns'],
             'paper_size' => $paperSize,
-        ])->setPaper($paperConfig['paper']);
+            'orientation' => $orientation,
+            'label_height_mm' => $labelHeightMm,
+        ])->setPaper($paperConfig['paper'], $paperConfig['dompdf_orientation']);
 
         return $pdf->stream(sprintf('barcodes-%s.pdf', now()->format('YmdHis')));
     }
 
-    protected function resolvePaperConfig(string $paperSize, int $labelCount): array
+    protected function resolvePaperConfig(string $paperSize, float $labelHeightMm, string $orientation): array
     {
-        $widthPt = match ($paperSize) {
+        $normalizedPaperSize = strtoupper($paperSize);
+        $widthPt = match ($normalizedPaperSize) {
             'A4' => 595.28,
+            '50MM' => 141.73,
             '58MM' => 164.41,
             default => 226.77,
         };
 
-        $margin = $paperSize === 'A4' ? 20 : 8;
+        $margin = $normalizedPaperSize === 'A4' ? 20 : 8;
         $columns = max(1, (int) floor(max($widthPt - ($margin * 2), 120) / 170));
 
-        if ($paperSize === 'A4') {
+        if ($normalizedPaperSize === 'A4') {
             return [
                 'paper' => 'A4',
                 'columns' => $columns,
+                'dompdf_orientation' => $orientation,
             ];
         }
 
-        $rows = (int) ceil(max($labelCount, 1) / $columns);
-        $pageHeight = max(320, ($rows * 130) + ($margin * 2));
+        $labelHeightPt = $this->millimetersToPoints($labelHeightMm);
+        $pageHeight = $labelHeightPt;
+        $paper = $orientation === 'landscape'
+            ? [0, 0, $pageHeight, $widthPt]
+            : [0, 0, $widthPt, $pageHeight];
 
         return [
-            'paper' => [0, 0, $widthPt, $pageHeight],
+            'paper' => $paper,
             'columns' => $columns,
+            'dompdf_orientation' => $orientation,
         ];
+    }
+
+    protected function normalizePaperSize(string $paperSize): string
+    {
+        $normalized = strtoupper(str_replace(' ', '', trim($paperSize)));
+
+        return match ($normalized) {
+            'A4' => 'A4',
+            '50MM' => '50mm',
+            '58MM' => '58mm',
+            '80MM' => '80mm',
+            default => '50mm',
+        };
+    }
+
+    protected function normalizeOrientation(string $orientation): string
+    {
+        return strtolower(trim($orientation)) === 'landscape' ? 'landscape' : 'portrait';
+    }
+
+    protected function normalizeLabelHeight(string $height): float
+    {
+        $height = (float) $height;
+
+        return min(500, max(10, $height ?: 25));
+    }
+
+    protected function millimetersToPoints(float $millimeters): float
+    {
+        return round($millimeters * 72 / 25.4, 2);
+    }
+
+    protected function formatPrice(float $price, string $currency): string
+    {
+        $currency = $this->normalizeCurrency($currency);
+        $formattedPrice = number_format($price, 2);
+
+        if ($currency === '') {
+            return $formattedPrice;
+        }
+
+        $separator = ctype_alpha($currency) ? ' ' : '';
+
+        return "{$currency}{$separator}{$formattedPrice}";
+    }
+
+    protected function normalizeCurrency(string $currency): string
+    {
+        $normalized = strtoupper(trim($currency));
+
+        return match ($normalized) {
+            'NGN', 'N', 'NAIRA', '?', 'â‚¦' => '₦',
+            default => trim($currency),
+        };
     }
 }

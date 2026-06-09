@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin\Product;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class ProductStoreRequest extends FormRequest
 {
@@ -49,6 +50,12 @@ class ProductStoreRequest extends FormRequest
             'variants.*.length'                 => ['nullable','numeric','min:0'],
             'variants.*.width'                  => ['nullable','numeric','min:0'],
             'variants.*.height'                 => ['nullable','numeric','min:0'],
+            'variants.*.fulfillment_type'       => ['nullable', Rule::in(['stocked', 'dropshipping'])],
+            'variants.*.default_supplier_id'    => ['nullable','integer','exists:vendors,id'],
+            'variants.*.supplier_cost'          => ['nullable','numeric','min:0'],
+            'variants.*.supplier_lead_time_days'=> ['nullable','integer','min:0'],
+            'variants.*.show_as_available_when_dropshipping' => ['nullable','boolean'],
+            'variants.*.dropshipping_note'      => ['nullable','string'],
             'variants.*.value_ids'              => ['array'], // variant_values ids
             'variants.*.images'                 => ['array'],
             'variants.*.images.*.path'          => ['required','string'],

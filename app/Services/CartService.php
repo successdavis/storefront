@@ -69,7 +69,12 @@ class CartService
                 'reserved',
                 'regular_price',
                 'sale_starts_at',
-                'sale_ends_at'
+                'sale_ends_at',
+                'fulfillment_type',
+                'default_supplier_id',
+                'supplier_cost',
+                'supplier_lead_time_days',
+                'show_as_available_when_dropshipping',
             ])
             ->with([
                 'product:id,name,slug,is_active',
@@ -87,7 +92,15 @@ class CartService
             ]);
         }
 
-        $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
+        if ($variant->isDropshipping() && ! (bool) $variant->show_as_available_when_dropshipping) {
+            throw ValidationException::withMessages([
+                'variant_id' => 'This supplier-fulfilled item is temporarily unavailable.',
+            ]);
+        }
+
+        $available = $variant->requiresLocalStock()
+            ? max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0)
+            : PHP_INT_MAX;
 
         $key = $this->redisKey($userId);
 
@@ -104,7 +117,7 @@ class CartService
             $currentQty = isset($cart[$variantId]) ? (int) $cart[$variantId]['quantity'] : 0;
             $newQuantity = $currentQty + $quantityToAdd;
 
-            if ($newQuantity > $available) {
+            if ($variant->requiresLocalStock() && $newQuantity > $available) {
                 Redis::unwatch();
                 throw ValidationException::withMessages([
                     'quantity' => "Only {$available} unit(s) of {$variant->sku} are available.",
@@ -155,11 +168,15 @@ class CartService
         }
 
         // re-check availability
-        $variant = ProductVariant::active()->select('id', 'quantity', 'reserved', 'sku')->findOrFail($variantId);
+        $variant = ProductVariant::active()
+            ->select('id', 'quantity', 'reserved', 'sku', 'fulfillment_type', 'show_as_available_when_dropshipping')
+            ->findOrFail($variantId);
 
-        $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
+        $available = $variant->requiresLocalStock()
+            ? max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0)
+            : PHP_INT_MAX;
 
-        if ($quantity > $available) {
+        if ($variant->requiresLocalStock() && $quantity > $available) {
             throw ValidationException::withMessages([
                 'quantity' => "Only {$available} unit(s) of {$variant->sku} are available.",
             ]);
@@ -343,6 +360,7 @@ class CartService
                 'unit_price' => (float) $item['variant']['price']['current'],
                 'product_id' => (int) ($item['product']['id'] ?? 0),
                 'category_ids' => $item['category_ids'] ?? [],
+                'fulfillment_type' => $item['variant']['stock']['fulfillment_type'] ?? ProductVariant::FULFILLMENT_STOCKED,
             ];
         }
 
@@ -490,6 +508,22 @@ class CartService
 
         $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
 
+        if ($variant->isDropshipping()) {
+            if ((bool) $variant->show_as_available_when_dropshipping) {
+                return [
+                    'is_available' => true,
+                    'included_in_totals' => true,
+                    'message' => null,
+                ];
+            }
+
+            return [
+                'is_available' => false,
+                'included_in_totals' => false,
+                'message' => 'This supplier-fulfilled item is temporarily unavailable.',
+            ];
+        }
+
         if ($available <= 0) {
             return [
                 'is_available' => false,
@@ -604,14 +638,27 @@ class CartService
             ->values()
             ->all();
 
+        $snapshotVariants = ProductVariant::query()
+            ->whereIn('id', collect($cartData['cart']['items'])->pluck('variant.id')->filter()->map(fn ($id) => (int) $id)->all())
+            ->get()
+            ->keyBy('id');
+
         $snapshotItems = collect($cartData['cart']['items'])
-            ->map(fn (array $item) => [
+            ->map(function (array $item) use ($snapshotVariants) {
+                $variant = $snapshotVariants->get((int) $item['variant']['id']);
+
+                return [
                 'variant_id' => (int) $item['variant']['id'],
                 'quantity' => (float) $item['quantity'],
                 'unit_price' => (float) $item['variant']['price']['current'],
                 'product_id' => (int) $item['product']['id'],
                 'category_ids' => $item['category_ids'] ?? [],
-            ])
+                'fulfillment_type' => $variant?->fulfillment_type ?? ProductVariant::FULFILLMENT_STOCKED,
+                'supplier_id' => $variant?->default_supplier_id ? (int) $variant->default_supplier_id : null,
+                'supplier_cost' => $variant?->supplier_cost !== null ? (float) $variant->supplier_cost : null,
+                'supplier_lead_time_days' => $variant?->supplier_lead_time_days !== null ? (int) $variant->supplier_lead_time_days : null,
+                ];
+            })
             ->values()
             ->all();
 

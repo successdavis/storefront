@@ -37,6 +37,11 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    public function dropshipFulfillments(): HasMany
+    {
+        return $this->hasMany(DropshipFulfillment::class);
+    }
+
     public function shipment(): MorphOne
     {
         return $this->morphOne(Shipment::class, 'shippable');

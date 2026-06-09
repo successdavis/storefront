@@ -31,7 +31,11 @@ class PricingQuoteService
      *      unit_price:float,
      *      line_total:float,
      *      product_id:int|null,
-     *      category_ids:array<int>
+     *      category_ids:array<int>,
+     *      fulfillment_type:string,
+     *      supplier_id:int|null,
+     *      supplier_cost:float|null,
+     *      supplier_lead_time_days:int|null
      *  }>,
      *  summary: array{
      *      item_count:int,
@@ -159,6 +163,10 @@ class PricingQuoteService
                 'line_total' => $lineTotal,
                 'product_id' => $variant->product_id ? (int) $variant->product_id : null,
                 'category_ids' => $variant->product?->categories?->pluck('id')->map(fn ($id) => (int) $id)->all() ?? [],
+                'fulfillment_type' => $variant->fulfillment_type ?? ProductVariant::FULFILLMENT_STOCKED,
+                'supplier_id' => $variant->default_supplier_id ? (int) $variant->default_supplier_id : null,
+                'supplier_cost' => $variant->supplier_cost !== null ? (float) $variant->supplier_cost : null,
+                'supplier_lead_time_days' => $variant->supplier_lead_time_days !== null ? (int) $variant->supplier_lead_time_days : null,
             ];
         }
 

@@ -263,8 +263,8 @@ const footerNavItems = computed<NavItem[]>(() => {
     if (capabilities.value.can_access_admin) {
         return [
             {
-                title: 'Profile Settings',
-                href: '/settings/profile',
+                title: 'Business Settings',
+                href: '/admin/business-settings',
                 icon: Settings,
             },
         ];

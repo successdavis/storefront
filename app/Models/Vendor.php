@@ -19,5 +19,14 @@ class Vendor extends Model
     {
         return $this->hasMany(VendorBill::class);
     }
-}
 
+    public function dropshipVariants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class, 'default_supplier_id');
+    }
+
+    public function dropshipFulfillments(): HasMany
+    {
+        return $this->hasMany(DropshipFulfillment::class, 'supplier_id');
+    }
+}

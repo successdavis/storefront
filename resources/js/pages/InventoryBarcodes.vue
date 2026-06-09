@@ -2,6 +2,7 @@
 import Pagination from '@/components/Pagination.vue'
 import axios from 'axios'
 import { Head, router } from '@inertiajs/vue3'
+import { Printer } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -18,6 +19,7 @@ const props = defineProps({
 const search = ref(props.filters.search || '')
 const selectedIds = ref(new Set())
 const printing = ref(false)
+const printingIds = ref(new Set())
 const errorMessage = ref('')
 
 watch(
@@ -79,14 +81,38 @@ async function printSelected() {
         return
     }
 
+    await printVariantIds(Array.from(selectedIds.value))
+}
+
+async function printVariant(variant) {
+    if (printing.value) {
+        return
+    }
+
+    await printVariantIds([variant.id])
+}
+
+async function printVariantIds(variantIds) {
+    if (!variantIds.length || printing.value) {
+        return
+    }
+
     errorMessage.value = ''
+    const printWindow = window.open('', '_blank')
+
+    if (!printWindow) {
+        errorMessage.value = 'Allow pop-ups for this site to open the barcode print dialog.'
+        return
+    }
+
     printing.value = true
+    setPrintingIds(variantIds, true)
 
     try {
         const response = await axios.post(
             '/barcodes/print',
             {
-                variant_ids: Array.from(selectedIds.value),
+                variant_ids: variantIds,
             },
             {
                 responseType: 'blob',
@@ -95,16 +121,59 @@ async function printSelected() {
 
         const blob = new Blob([response.data], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `barcodes-${Date.now()}.pdf`
-        a.click()
-        window.URL.revokeObjectURL(url)
+        openPdfPrintDialog(printWindow, url)
     } catch (error) {
-        errorMessage.value = 'Unable to generate barcode PDF. Please try again.'
+        printWindow.close()
+        errorMessage.value = 'Unable to open barcode print dialog. Please try again.'
     } finally {
         printing.value = false
+        setPrintingIds(variantIds, false)
     }
+}
+
+function setPrintingIds(ids, active) {
+    const next = new Set(printingIds.value)
+
+    ids.forEach((id) => {
+        if (active) {
+            next.add(id)
+        } else {
+            next.delete(id)
+        }
+    })
+
+    printingIds.value = next
+}
+
+function openPdfPrintDialog(printWindow, url) {
+    printWindow.document.title = 'Barcode Labels'
+    printWindow.document.body.innerHTML = ''
+    printWindow.document.body.style.margin = '0'
+
+    const iframe = printWindow.document.createElement('iframe')
+    iframe.title = 'Barcode labels'
+    iframe.src = url
+    iframe.style.border = '0'
+    iframe.style.height = '100vh'
+    iframe.style.width = '100vw'
+
+    iframe.onload = () => {
+        const target = iframe.contentWindow || printWindow
+
+        target.focus()
+        target.print()
+        window.setTimeout(() => window.URL.revokeObjectURL(url), 60000)
+    }
+
+    printWindow.addEventListener(
+        'beforeunload',
+        () => {
+            window.URL.revokeObjectURL(url)
+        },
+        { once: true },
+    )
+
+    printWindow.document.body.appendChild(iframe)
 }
 </script>
 
@@ -149,7 +218,7 @@ async function printSelected() {
                 :disabled="selectedCount === 0 || printing"
                 @click="printSelected"
             >
-                {{ printing ? 'Generating PDF...' : 'Print Barcode' }}
+                {{ printing ? 'Opening print...' : 'Print Barcode' }}
             </button>
         </div>
 
@@ -187,7 +256,18 @@ async function printSelected() {
                             />
                         </td>
                         <td class="px-4 py-3">
-                            {{ variant.display_name }}
+                            <div class="flex items-center justify-between gap-3">
+                                <span>{{ variant.display_name }}</span>
+                                <button
+                                    type="button"
+                                    class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:border-indigo-500 dark:hover:text-indigo-300"
+                                    :disabled="printing"
+                                    :title="`Print barcode for ${variant.display_name}`"
+                                    @click="printVariant(variant)"
+                                >
+                                    <Printer class="size-4" />
+                                </button>
+                            </div>
                         </td>
                         <td class="px-4 py-3 font-mono text-xs">{{ variant.sku }}</td>
                         <td class="px-4 py-3 font-mono text-xs">

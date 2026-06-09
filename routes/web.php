@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminBrandController;
+use App\Http\Controllers\Admin\BusinessSettingsController;
 use App\Http\Controllers\Admin\AdminCategoryController;
 use App\Http\Controllers\Admin\AdminCustomerController;
 use App\Http\Controllers\Admin\AdminCustomerNoteController;
@@ -12,9 +13,11 @@ use App\Http\Controllers\Admin\Accounting\PaymentGatewaySettlementController as 
 use App\Http\Controllers\Admin\Accounting\CustomerInvoiceController as AdminAccountingCustomerInvoiceController;
 use App\Http\Controllers\Admin\Accounting\ReportController as AdminAccountingReportController;
 use App\Http\Controllers\Admin\StorefrontAnalyticsController as AdminStorefrontAnalyticsController;
+use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\CategoryPriceListReportController;
 use App\Http\Controllers\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Admin\DiscountController as AdminDiscountController;
+use App\Http\Controllers\Admin\DropshippingController;
 use App\Http\Controllers\Admin\AdminOrderController;
 use App\Http\Controllers\Admin\AdminProductController;
 use App\Http\Controllers\Admin\ProductNoteController;
@@ -226,6 +229,7 @@ Route::prefix('sales')
         Route::post('/pos/place-order', [PosController::class, 'placeOrder'])->middleware('permission.any:sales.pos.use')->name('pos.placeOrder');
         Route::get('/pos/sales', [PosController::class, 'salesOrders'])->middleware('permission.any:sales.pos.use')->name('pos.orders');
         Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->middleware('permission.any:sales.pos.use')->name('pos.print');
+        Route::get('/pos/products', [PosController::class, 'productsApi'])->middleware('permission.any:sales.pos.use')->name('pos.products.api');
 
         Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])
             ->middleware('permission.any:sales.pos.use')
@@ -267,6 +271,8 @@ Route::prefix('admin')
 
         Route::get('/dashboard/kpis', [DashboardController::class, 'kpis'])->name('dashboard.kpis');
         Route::get('/dashboard/sales-chart', [DashboardController::class, 'salesChart']);
+        Route::get('/business-settings', [BusinessSettingsController::class, 'edit'])->name('business-settings.edit');
+        Route::patch('/business-settings', [BusinessSettingsController::class, 'update'])->name('business-settings.update');
         Route::post('/inventory-alerts/{alert}/close', [InventoryAlertController::class, 'close'])
             ->name('inventory-alerts.close');
         Route::get('/transactions', [TransactionController::class, 'index'])
@@ -459,6 +465,22 @@ Route::prefix('admin')
         Route::get('reports/category-price-list/export', [CategoryPriceListReportController::class, 'export'])
             ->middleware('permission.any:admin.catalog.manage')
             ->name('reports.category-price-list.export');
+
+        Route::get('dropshipping', [DropshippingController::class, 'index'])
+            ->middleware('permission.any:admin.orders.manage')
+            ->name('dropshipping.index');
+        Route::patch('dropshipping/{fulfillment}', [DropshippingController::class, 'update'])
+            ->middleware('permission.any:admin.orders.manage')
+            ->name('dropshipping.update');
+        Route::get('suppliers', [SupplierController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('suppliers.index');
+        Route::post('suppliers', [SupplierController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('suppliers.store');
+        Route::put('suppliers/{supplier}', [SupplierController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('suppliers.update');
 
         Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');

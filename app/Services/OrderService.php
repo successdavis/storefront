@@ -31,6 +31,7 @@ class OrderService
         protected OrderManagementService $orderManagementService,
         protected CustomerInvoiceService $customerInvoiceService,
         protected AccountingService $accountingService,
+        protected DropshippingService $dropshippingService,
     ) {}
 
     /**
@@ -176,6 +177,10 @@ class OrderService
             'quantity' => (float) $line['quantity'],
             'unit_price' => (float) $line['unit_price'],
             'line_total' => (float) $line['line_total'],
+            'fulfillment_type' => $line['fulfillment_type'] ?? ProductVariant::FULFILLMENT_STOCKED,
+            'supplier_id' => $line['supplier_id'] ?? null,
+            'supplier_cost' => $line['supplier_cost'] ?? null,
+            'supplier_lead_time_days' => $line['supplier_lead_time_days'] ?? null,
         ])->values()->all();
     }
 
@@ -204,6 +209,10 @@ class OrderService
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'line_total' => round($unitPrice * $quantity, 2),
+                'fulfillment_type' => (string) ($line['fulfillment_type'] ?? ProductVariant::FULFILLMENT_STOCKED),
+                'supplier_id' => !empty($line['supplier_id']) ? (int) $line['supplier_id'] : null,
+                'supplier_cost' => array_key_exists('supplier_cost', $line) && $line['supplier_cost'] !== null ? (float) $line['supplier_cost'] : null,
+                'supplier_lead_time_days' => !empty($line['supplier_lead_time_days']) ? (int) $line['supplier_lead_time_days'] : null,
             ];
         })->values()->all();
     }
@@ -257,13 +266,35 @@ class OrderService
 
     private function createOrderItemsAndAdjustInventory(Order $order, array $items, string $channel): void
     {
+        $variants = ProductVariant::query()
+            ->whereIn('id', collect($items)->pluck('variant_id')->all())
+            ->get()
+            ->keyBy('id');
+
         foreach ($items as $line) {
+            $variant = $variants->get((int) $line['variant_id']);
+            $fulfillmentType = $variant?->fulfillment_type ?? ($line['fulfillment_type'] ?? ProductVariant::FULFILLMENT_STOCKED);
+            $isDropshipping = $fulfillmentType === ProductVariant::FULFILLMENT_DROPSHIPPING;
+            $leadTimeDays = $variant?->supplier_lead_time_days ?? ($line['supplier_lead_time_days'] ?? null);
+
             $orderItem = OrderItem::create([
                 'order_id' => $order->id,
                 'variant_id' => (int) $line['variant_id'],
                 'quantity' => (float) $line['quantity'],
                 'price' => (float) $line['unit_price'],
+                'fulfillment_type' => $isDropshipping ? ProductVariant::FULFILLMENT_DROPSHIPPING : ProductVariant::FULFILLMENT_STOCKED,
+                'supplier_id' => $isDropshipping ? ($variant?->default_supplier_id ?? ($line['supplier_id'] ?? null)) : null,
+                'supplier_cost' => $isDropshipping ? ($variant?->supplier_cost ?? ($line['supplier_cost'] ?? null)) : null,
+                'dropship_status' => $isDropshipping ? 'pending_supplier_order' : null,
+                'supplier_expected_delivery_at' => $isDropshipping && $leadTimeDays
+                    ? now()->addDays((int) $leadTimeDays)
+                    : null,
             ]);
+
+            if ($isDropshipping) {
+                $this->dropshippingService->createFulfillmentForOrderItem($orderItem);
+                continue;
+            }
 
             $this->inventoryService->stockOut([
                 'variant_id' => (int) $line['variant_id'],
@@ -511,7 +542,7 @@ class OrderService
             }
 
             $available = $this->computeAvailableQuantity($variant);
-            if ($available < $quantity) {
+            if ($variant->requiresLocalStock() && $available < $quantity) {
                 $insufficient[] = [
                     'variant_id' => $variantId,
                     'sku' => $variant->sku ?? null,

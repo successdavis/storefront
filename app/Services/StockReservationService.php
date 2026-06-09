@@ -64,6 +64,10 @@ class StockReservationService
                 }
 
                 if ($delta > 0) {
+                    if (! $variant->requiresLocalStock()) {
+                        continue;
+                    }
+
                     $available = max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0);
 
                     if ($available < $delta) {
@@ -84,7 +88,7 @@ class StockReservationService
                     $variant->save();
                 }
 
-                if (!$reservation) {
+                if (!$reservation && $variant->requiresLocalStock()) {
                     StockReservation::query()->create([
                         'checkout_session_id' => $checkoutSessionId,
                         'variant_id' => $variantId,

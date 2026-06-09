@@ -36,6 +36,7 @@ class AccountingService
         $taxPayableAccount = $this->accountResolver->resolve('tax_payable');
         $cogsAccount = $this->accountResolver->resolve('cost_of_goods_sold');
         $inventoryAccount = $this->accountResolver->resolve('inventory_asset');
+        $accountsPayable = $this->accountResolver->resolve('accounts_payable');
         $builder = JournalBuilder::make();
         $receiptBreakdown = $this->resolveOrderReceiptBreakdown($order, $paymentMethod);
 
@@ -57,11 +58,18 @@ class AccountingService
             $builder->credit($taxPayableAccount, (float) $order->tax_total, 'Tax payable');
         }
 
-        $cogsAmount = $this->orderCostAmount($order);
-        if ($cogsAmount > 0) {
+        $inventoryCogsAmount = $this->orderCostAmount($order);
+        if ($inventoryCogsAmount > 0) {
             $builder
-                ->debit($cogsAccount, $cogsAmount, 'Cost of goods sold')
-                ->credit($inventoryAccount, $cogsAmount, 'Inventory asset reduction');
+                ->debit($cogsAccount, $inventoryCogsAmount, 'Cost of goods sold')
+                ->credit($inventoryAccount, $inventoryCogsAmount, 'Inventory asset reduction');
+        }
+
+        $dropshipCogsAmount = $this->dropshipOrderCostAmount($order);
+        if ($dropshipCogsAmount > 0) {
+            $builder
+                ->debit($cogsAccount, $dropshipCogsAmount, 'Dropshipping cost of goods sold')
+                ->credit($accountsPayable, $dropshipCogsAmount, 'Dropshipping supplier payable');
         }
 
         return $this->journalPostingService->post([
@@ -86,7 +94,9 @@ class AccountingService
                 'discount' => (float) $order->discount,
                 'shipping_total' => (float) $order->shipping_total,
                 'tax_total' => (float) $order->tax_total,
-                'cogs_amount' => $cogsAmount,
+                'cogs_amount' => $inventoryCogsAmount + $dropshipCogsAmount,
+                'inventory_cogs_amount' => $inventoryCogsAmount,
+                'dropship_cogs_amount' => $dropshipCogsAmount,
             ],
         ], $builder->lines());
     }
@@ -586,6 +596,15 @@ class AccountingService
             ->where('type', 'stock_out')
             ->selectRaw('COALESCE(SUM(quantity * unit_cost), 0) as total')
             ->value('total'), 4);
+    }
+
+    protected function dropshipOrderCostAmount(Order $order): float
+    {
+        $order->loadMissing('items');
+
+        return round((float) $order->items
+            ->filter(fn ($item) => method_exists($item, 'isDropshipping') && $item->isDropshipping())
+            ->sum(fn ($item) => (float) ($item->supplier_cost ?? 0) * (float) $item->quantity), 4);
     }
 
     protected function saleCostAmount(Sale $sale): float

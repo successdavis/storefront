@@ -20,7 +20,11 @@ class BusinessSettingsSeeder extends Seeder
             ['key' => 'business_logo', 'value' => null],
             ['key' => 'business_currency', 'value' => '₦'],
             ['key' => 'business_receipt_footer', 'value' => 'Thank you for your business!'],
+            ['key' => 'business_receipt_footer_refund', 'value' => null],
             ['key' => 'business_tax_id', 'value' => null],
+            ['key' => 'barcode_paper_size', 'value' => '50mm'], // Default barcode label setting
+            ['key' => 'barcode_label_orientation', 'value' => 'portrait'], // Default barcode orientation
+            ['key' => 'barcode_label_height_mm', 'value' => '25'], // Default barcode label height
             ['key' => 'receipt_paper_size', 'value' => '80mm'], // Default print setting
             ['key' => 'about_us_description', 'value' => null], // Default print setting
             ['key' => 'youtube_link', 'value' => null], // Default print setting

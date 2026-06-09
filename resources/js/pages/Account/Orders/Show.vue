@@ -56,7 +56,10 @@ function badgeClass(status: string) {
                             <img v-if="item.product.image" :src="item.product.image" :alt="item.product.name ?? 'Product image'" class="h-20 w-20 rounded-2xl object-cover" />
                             <div v-else class="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-100 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">No image</div>
                             <div class="flex-1">
-                                <p class="font-semibold text-slate-900 dark:text-slate-100">{{ item.product.name }}</p>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="font-semibold text-slate-900 dark:text-slate-100">{{ item.product.name }}</p>
+                                    <span v-if="item.fulfillment_type === 'dropshipping'" :class="['inline-flex rounded-full px-2.5 py-1 text-xs font-semibold', badgeClass(item.customer_dropship_status_label)]">{{ item.customer_dropship_status_label }}</span>
+                                </div>
                                 <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ item.variant.label || item.variant.sku }}</p>
                                 <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Quantity: {{ item.quantity }}</p>
                             </div>
