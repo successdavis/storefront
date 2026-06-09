@@ -73,6 +73,37 @@ function deleteOrder(id: number) {
         // router.delete(route('purchase-orders.destroy', id))
     }
 }
+
+function parseDateTime(value?: string | null) {
+    if (!value) return null;
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDate(value?: string | null) {
+    const date = parseDateTime(value);
+
+    if (!date) return '—';
+
+    return new Intl.DateTimeFormat('en-NG', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    }).format(date);
+}
+
+function formatTime(value?: string | null) {
+    const date = parseDateTime(value);
+
+    if (!date) return '';
+
+    return new Intl.DateTimeFormat('en-NG', {
+        hour: 'numeric',
+        minute: '2-digit',
+    }).format(date);
+}
 </script>
 
 <template>
@@ -159,7 +190,7 @@ function deleteOrder(id: number) {
                             <TableHead>Status</TableHead>
                             <TableHead>Warehouse</TableHead>
                             <TableHead>Total</TableHead>
-                            <TableHead>Date</TableHead>
+                            <TableHead>Date / Time</TableHead>
                             <TableHead class="text-right">Action</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -176,7 +207,19 @@ function deleteOrder(id: number) {
                                 po.warehouse?.name ?? '—'
                             }}</TableCell>
                             <TableCell>{{ po.total | currency }}</TableCell>
-                            <TableCell>{{ po.created_at }}</TableCell>
+                            <TableCell>
+                                <div class="whitespace-nowrap">
+                                    <div class="font-medium text-slate-900 dark:text-slate-100">
+                                        {{ formatDate(po.created_at) }}
+                                    </div>
+                                    <div
+                                        v-if="formatTime(po.created_at)"
+                                        class="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+                                    >
+                                        {{ formatTime(po.created_at) }}
+                                    </div>
+                                </div>
+                            </TableCell>
                             <TableCell class="flex justify-end space-x-3">
                                 <!-- View -->
                                 <Eye
