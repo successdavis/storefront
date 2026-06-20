@@ -14,7 +14,8 @@ class ProductUpdateRequest extends FormRequest
         $productId = $this->route('product')->id;
 
         $rules = [
-            'category_id' => ['nullable','exists:categories,id'],
+            'category_ids'   => ['required','array'],
+            'category_ids.*' => ['exists:categories,id'],
             'brand_id'    => ['nullable','exists:brands,id'],
             'name'        => ['required','string','max:255'],
             'slug'        => ['nullable','string','max:255', Rule::unique('products','slug')->ignore($productId)],

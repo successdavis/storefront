@@ -60,7 +60,10 @@ class ProductService
     public function update(Product $product, array $data): Product
     {
         return DB::transaction(function () use ($product, $data) {
-            $product->update(Arr::except($data, ['images','faqs','variants','slug','quantity']));
+            $product->update(Arr::except($data, ['images','faqs','variants','slug','quantity','category_ids']));
+            if (array_key_exists('category_ids', $data)) {
+                $this->syncCats($product, $data['category_ids']);
+            }
             $this->syncFaqs($product, $data['faqs'] ?? []);
             $this->syncVariants($product, $data['variants'] ?? []);
 
