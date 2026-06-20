@@ -380,6 +380,8 @@ Route::prefix('admin')
 //        Route::get('/', [DashboardController::class, 'index'])->middleware('permission.any:admin.dashboard.view')->name('dashboard');
 
         // Catalog management
+        Route::patch('categories/{category}/remove-parent', [AdminCategoryController::class, 'removeParent'])
+            ->name('categories.remove-parent');
         Route::resource('categories', AdminCategoryController::class)->except(['show']);
         Route::resource('brands', AdminBrandController::class)->except(['show']);
         Route::patch('brands/{brand}/toggle-top', [AdminBrandController::class, 'toggleTop'])

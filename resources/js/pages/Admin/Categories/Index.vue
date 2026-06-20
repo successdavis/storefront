@@ -1,8 +1,19 @@
 <!-- resources/js/Pages/Admin/Categories.vue -->
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3'
-import { ref, watch, computed, onMounted } from 'vue'
+import { X } from 'lucide-vue-next'
+import { ref, watch, computed, reactive } from 'vue'
 import Pagination from "@/components/Pagination.vue";
+import { Button } from '@/components/ui/button'
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 
 // Props from controller
 const props = defineProps({
@@ -31,6 +42,45 @@ function deleteCategory(id) {
     if (confirm('Are you sure you want to delete this category?')) {
         router.delete(route('admin.categories.destroy', id))
     }
+}
+
+const detaching = reactive({})
+const detachDialogOpen = ref(false)
+const categoryToDetach = ref(null)
+const detachingSelectedCategory = computed(() => {
+    return categoryToDetach.value ? !!detaching[categoryToDetach.value.id] : false
+})
+
+function openRemoveParentDialog(child) {
+    if (detaching[child.id]) return
+
+    categoryToDetach.value = child
+    detachDialogOpen.value = true
+}
+
+function setDetachDialogOpen(open) {
+    detachDialogOpen.value = open
+
+    if (!open && !detachingSelectedCategory.value) {
+        categoryToDetach.value = null
+    }
+}
+
+function removeFromParent() {
+    const child = categoryToDetach.value
+    if (!child || detaching[child.id]) return
+
+    detaching[child.id] = true
+    router.patch(route('admin.categories.remove-parent', child.id), {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+            detachDialogOpen.value = false
+            categoryToDetach.value = null
+        },
+        onFinish: () => {
+            detaching[child.id] = false
+        },
+    })
 }
 
 // Expand/collapse children per parent row
@@ -175,14 +225,27 @@ const meta = computed(() => ({
                                     <li
                                         v-for="child in cat.children"
                                         :key="child.id"
-                                        class="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2"
+                                        class="relative rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 pr-9"
                                     >
-                                        <span class="text-sm text-gray-800 dark:text-gray-300 truncate">
-                                            {{ child.name }}
-                                        </span>
-                                        <span class="inline-flex items-center text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                                            {{ child.products_count }} products
-                                        </span>
+                                        <div class="min-w-0">
+                                            <span class="block text-sm text-gray-800 dark:text-gray-300 truncate">
+                                                {{ child.name }}
+                                            </span>
+                                            <span class="mt-1 inline-flex items-center text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                                {{ child.products_count }} products
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            @click="openRemoveParentDialog(child)"
+                                            :disabled="detaching[child.id]"
+                                            :aria-label="`Remove ${child.name} from parent category`"
+                                            :title="detaching[child.id] ? 'Removing...' : 'Remove from parent'"
+                                            class="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                                        >
+                                            <X class="h-4 w-4" aria-hidden="true" />
+                                        </button>
                                     </li>
                                 </ul>
                             </div>
@@ -270,6 +333,42 @@ const meta = computed(() => ({
                 <Pagination :links="categories.links" />
             </div>
         </div>
+
+        <Dialog :open="detachDialogOpen" @update:open="setDetachDialogOpen">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader class="space-y-3">
+                    <DialogTitle>Remove from parent category?</DialogTitle>
+                    <DialogDescription>
+                        <span v-if="categoryToDetach">
+                            This will unlink "{{ categoryToDetach.name }}" from its parent category and make it a top-level category. The category and its products will not be deleted.
+                        </span>
+                        <span v-else>
+                            This will unlink the selected category from its parent. The category and its products will not be deleted.
+                        </span>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <DialogFooter class="gap-2">
+                    <DialogClose as-child>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            :disabled="detachingSelectedCategory"
+                        >
+                            Cancel
+                        </Button>
+                    </DialogClose>
+
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        :disabled="detachingSelectedCategory"
+                        @click="removeFromParent"
+                    >
+                        {{ detachingSelectedCategory ? 'Removing...' : 'Remove parent' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>
-

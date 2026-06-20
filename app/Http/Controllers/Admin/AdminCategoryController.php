@@ -212,6 +212,17 @@ class AdminCategoryController extends Controller
             ->with('success', 'Category updated.');
     }
 
+    public function removeParent(Category $category)
+    {
+        if ($category->parent_id === null) {
+            return back()->with('info', 'Category is already a parent category.');
+        }
+
+        $category->update(['parent_id' => null]);
+
+        return back()->with('success', 'Category removed from parent category.');
+    }
+
     public function destroy(Category $category)
     {
         // Optional: prevent deleting a parent if it has children
