@@ -12,18 +12,16 @@
             <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                     <label class="text-sm font-medium">Vendor</label>
-                    <select
+                    <SearchableSelect
                         v-model="form.vendor_id"
-                        @change="handleVendorChange"
-                        class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                    >
-                        <option value="__new">➕ Add New Vendor</option>
-
-                        <option value="" disabled>Select vendor</option>
-                        <option v-for="v in vendors" :key="v.id" :value="v.id">
-                            {{ v.name }}
-                        </option>
-                    </select>
+                        class="mt-1"
+                        :options="vendors"
+                        label-key="name"
+                        placeholder="Search or select vendor"
+                        empty-label="No vendors match your search."
+                        action-label="Add New Vendor"
+                        @action="openVendorModal"
+                    />
 
                     <p v-if="form.errors.vendor_id" class="mt-1 text-sm text-red-500">
                         {{ form.errors.vendor_id }}
@@ -128,16 +126,19 @@
                             <td class="px-3 py-2 align-top">{{ idx + 1 }}</td>
 
                             <td class="min-w-[260px] px-3 py-2 align-top">
-                                <select
+                                <SearchableSelect
                                     v-model="item.product_variant_id"
-                                    @change="onVariantChange(idx)"
-                                    class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                                >
-                                    <option value="" disabled>Select product</option>
-                                    <option v-for="p in productVariants" :key="p.id" :value="p.id">
-                                        {{ p.name }}
-                                    </option>
-                                </select>
+                                    :options="productVariants"
+                                    label-key="name"
+                                    meta-key="sku"
+                                    meta-prefix="SKU: "
+                                    :search-keys="['name', 'sku']"
+                                    placeholder="Search or select product"
+                                    empty-label="No products match your search."
+                                    dropdown-width="content"
+                                    portal
+                                    @select="(variant) => onVariantSelect(idx, variant)"
+                                />
 
                                 <p v-if="lineError(idx, 'product_variant_id')" class="mt-1 text-xs text-red-500">
                                     {{ lineError(idx, 'product_variant_id') }}
@@ -261,6 +262,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import VendorForm from '@/components/VendorForm.vue'
+import SearchableSelect from '@/components/SearchableSelect.vue'
 
 // Props injected by Inertia
 const props = defineProps({
@@ -302,10 +304,9 @@ const productVariants = props.productVariants;
 
 const showVendorModal = ref(false);
 
-function handleVendorChange() {
-    if (form.vendor_id === '__new') {
-        showVendorModal.value = true;
-    }
+function openVendorModal() {
+    form.vendor_id = '__new';
+    showVendorModal.value = true;
 }
 
 function closeVendorModal() {
@@ -327,15 +328,6 @@ const lineTotal = (item) => {
 
 const subtotal = computed(() => {
     return form.items.reduce((sum, it) => sum + lineTotal(it), 0);
-});
-
-const variantIndex = computed(() => {
-    const map = new Map();
-    for (const v of productVariants) {
-        // keys as strings to match <select> v-model values
-        map.set(String(v.id), v);
-    }
-    return map;
 });
 
 // when subtotal changes, keep it read-only on server-side; we still submit items and total is recalculated server-side too
@@ -399,11 +391,10 @@ function formatCurrency(value) {
     }).format(num);
 }
 
-function onVariantChange(index) {
+function onVariantSelect(index, variant) {
     const it = form.items[index];
     if (!it || !it.product_variant_id) return;
 
-    const variant = variantIndex.value.get(String(it.product_variant_id));
     if (!variant) return;
 
     const last = Number(variant.last_purchase_price ?? 0);
@@ -501,4 +492,3 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
     color: #6b7280;
 }
 </style>
-
