@@ -212,6 +212,87 @@ class AdminCategoryPriceListReportTest extends TestCase
         );
     }
 
+    public function test_parent_category_includes_child_category_products_while_child_category_stays_scoped(): void
+    {
+        $parentCategory = Category::factory()->create(['name' => 'Electronics']);
+        $laptopCategory = Category::factory()->create([
+            'name' => 'Laptops',
+            'parent_id' => $parentCategory->id,
+        ]);
+        $monitorCategory = Category::factory()->create([
+            'name' => 'Monitors',
+            'parent_id' => $parentCategory->id,
+        ]);
+        $otherCategory = Category::factory()->create(['name' => 'Clearance']);
+        $brand = Brand::factory()->create();
+
+        $directProduct = Product::factory()->create([
+            'brand_id' => $brand->id,
+            'name' => 'Cable Direct',
+            'is_active' => true,
+        ]);
+        $laptopProduct = Product::factory()->create([
+            'brand_id' => $brand->id,
+            'name' => 'Gaming Laptop',
+            'is_active' => true,
+        ]);
+        $monitorProduct = Product::factory()->create([
+            'brand_id' => $brand->id,
+            'name' => 'Office Monitor',
+            'is_active' => true,
+        ]);
+        $otherProduct = Product::factory()->create([
+            'brand_id' => $brand->id,
+            'name' => 'Clearance Phone',
+            'is_active' => true,
+        ]);
+
+        $directProduct->categories()->attach($parentCategory->id);
+        $laptopProduct->categories()->attach([$parentCategory->id, $laptopCategory->id]);
+        $monitorProduct->categories()->attach($monitorCategory->id);
+        $otherProduct->categories()->attach($otherCategory->id);
+
+        $directVariant = ProductVariant::factory()->create([
+            'product_id' => $directProduct->id,
+            'regular_price' => 10000,
+        ]);
+        $laptopVariant = ProductVariant::factory()->create([
+            'product_id' => $laptopProduct->id,
+            'regular_price' => 250000,
+        ]);
+        $monitorVariant = ProductVariant::factory()->create([
+            'product_id' => $monitorProduct->id,
+            'regular_price' => 90000,
+        ]);
+        ProductVariant::factory()->create([
+            'product_id' => $otherProduct->id,
+            'regular_price' => 50000,
+        ]);
+
+        $service = app(CategoryPriceListReportService::class);
+
+        $parentPreview = $service->preview([
+            'category_id' => $parentCategory->id,
+            'sort' => 'default',
+        ], 50);
+        $childPreview = $service->preview([
+            'category_id' => $laptopCategory->id,
+            'sort' => 'default',
+        ], 50);
+        $categoryOptions = collect($service->listCategories())->keyBy('id');
+
+        $this->assertSame(
+            [$directVariant->id, $laptopVariant->id, $monitorVariant->id],
+            $parentPreview?->getCollection()->pluck('variant_id')->all(),
+        );
+        $this->assertSame(
+            [$laptopVariant->id],
+            $childPreview?->getCollection()->pluck('variant_id')->all(),
+        );
+        $this->assertSame(3, $categoryOptions[$parentCategory->id]['active_products_count']);
+        $this->assertSame(1, $categoryOptions[$laptopCategory->id]['active_products_count']);
+    }
+
     public function test_report_rows_expose_discount_price_fields_for_fixed_and_non_discounted_variants(): void
     {
         $director = User::factory()->create();

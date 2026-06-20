@@ -9,6 +9,7 @@ use App\Services\ProductService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator as PaginationLengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -21,19 +22,28 @@ class CategoryPriceListReportService
 
     public function listCategories(): array
     {
-        return Category::query()
-            ->select('categories.id', 'categories.name')
-            ->whereHas('products', fn (Builder $query) => $query->where('is_active', true))
-            ->withCount([
-                'products as active_products_count' => fn (Builder $query) => $query->where('is_active', true),
-            ])
+        $categories = Category::query()
+            ->select('categories.id', 'categories.name', 'categories.parent_id')
             ->orderBy('categories.name')
-            ->get()
-            ->map(fn (Category $category): array => [
-                'id' => (int) $category->id,
-                'name' => $category->name,
-                'active_products_count' => (int) ($category->active_products_count ?? 0),
-            ])
+            ->get();
+        $childrenByParent = $this->childrenByParent($categories);
+        $activeProductIdsByCategory = $this->activeProductIdsByCategory();
+
+        return $categories
+            ->map(function (Category $category) use ($childrenByParent, $activeProductIdsByCategory): array {
+                $categoryIds = $this->reportCategoryIds($category, $childrenByParent);
+                $activeProductsCount = collect($categoryIds)
+                    ->flatMap(fn (int $categoryId) => $activeProductIdsByCategory[$categoryId] ?? [])
+                    ->unique()
+                    ->count();
+
+                return [
+                    'id' => (int) $category->id,
+                    'name' => $category->name,
+                    'active_products_count' => $activeProductsCount,
+                ];
+            })
+            ->filter(fn (array $category): bool => $category['active_products_count'] > 0)
             ->values()
             ->all();
     }
@@ -108,12 +118,18 @@ class CategoryPriceListReportService
     protected function rowsQuery(Category $category, array $filters): Builder
     {
         $normalized = $this->normalizeFilters($filters);
+        $categoryIds = $this->reportCategoryIds($category);
 
         return ProductVariant::query()
             ->select('product_variants.*')
             ->join('products', 'products.id', '=', 'product_variants.product_id')
-            ->join('category_product', 'category_product.product_id', '=', 'products.id')
-            ->where('category_product.category_id', $category->id)
+            ->whereExists(function ($query) use ($categoryIds) {
+                $query
+                    ->selectRaw('1')
+                    ->from('category_product')
+                    ->whereColumn('category_product.product_id', 'products.id')
+                    ->whereIn('category_product.category_id', $categoryIds);
+            })
             ->where('products.is_active', true)
             ->whereNull('products.deleted_at')
             ->when($normalized['in_stock_only'], function (Builder $query) {
@@ -223,8 +239,82 @@ SVG;
         $categoryId = (int) ($filters['category_id'] ?? 0);
 
         return $categoryId > 0
-            ? Category::query()->select('id', 'name')->find($categoryId)
+            ? Category::query()->select('id', 'name', 'parent_id')->find($categoryId)
             : null;
+    }
+
+    /**
+     * Categories with children include their descendants. Leaf categories stay scoped to themselves.
+     *
+     * @param Collection<int, Category>|null $categories
+     * @param array<int, list<int>>|null $childrenByParent
+     * @return list<int>
+     */
+    protected function reportCategoryIds(
+        Category $category,
+        ?array $childrenByParent = null,
+        ?Collection $categories = null,
+    ): array {
+        $categoryId = (int) $category->id;
+
+        $categories ??= Category::query()
+            ->select('id', 'parent_id')
+            ->get();
+        $childrenByParent ??= $this->childrenByParent($categories);
+
+        $ids = [$categoryId];
+        $pending = $childrenByParent[$categoryId] ?? [];
+
+        while ($pending) {
+            $childId = array_shift($pending);
+            $ids[] = $childId;
+
+            foreach ($childrenByParent[$childId] ?? [] as $descendantId) {
+                $pending[] = $descendantId;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param Collection<int, Category> $categories
+     * @return array<int, list<int>>
+     */
+    protected function childrenByParent(Collection $categories): array
+    {
+        $childrenByParent = [];
+
+        foreach ($categories as $category) {
+            if ($category->parent_id === null) {
+                continue;
+            }
+
+            $childrenByParent[(int) $category->parent_id][] = (int) $category->id;
+        }
+
+        return $childrenByParent;
+    }
+
+    /**
+     * @return array<int, list<int>>
+     */
+    protected function activeProductIdsByCategory(): array
+    {
+        $rows = DB::table('category_product')
+            ->join('products', 'products.id', '=', 'category_product.product_id')
+            ->where('products.is_active', true)
+            ->whereNull('products.deleted_at')
+            ->select('category_product.category_id', 'category_product.product_id')
+            ->get();
+
+        $productIdsByCategory = [];
+
+        foreach ($rows as $row) {
+            $productIdsByCategory[(int) $row->category_id][] = (int) $row->product_id;
+        }
+
+        return $productIdsByCategory;
     }
 
     protected function normalizeFilters(array $filters): array
