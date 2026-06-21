@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Inventory\Alerts\InventoryAlertEngine;
 use App\Models\{Admin\ProductImage,
     Admin\VariantImage,
     Discount,
@@ -41,6 +42,7 @@ class ProductService
         private SkuGenerator $skuGen,
         private InventoryService $inventoryService,
         private DiscountService $discountService,
+        private InventoryAlertEngine $alertEngine,
         private ImageManager $imageManager = new ImageManager(new Driver())
     ) {}
 
@@ -297,6 +299,10 @@ class ProductService
             ->reject(fn (ProductVariant $variant) => isset($preservedVariantIds[$variant->id]))
             ->each(function (ProductVariant $variant) {
                 $variant->update(['is_active' => false]);
+                $this->alertEngine->resolveStockLevelAlertsForVariant(
+                    $variant,
+                    'Variant archived from the product matrix.'
+                );
             });
     }
 
@@ -322,6 +328,8 @@ class ProductService
             'length',
             'width',
             'height',
+            'replenishment_status',
+            'replenishment_note',
             'fulfillment_type',
             'is_dropshippable',
             'default_supplier_id',
@@ -330,6 +338,9 @@ class ProductService
             'show_as_available_when_dropshipping',
             'dropshipping_note',
         ]);
+
+        $attributes['replenishment_status'] = $attributes['replenishment_status']
+            ?? ProductVariant::REPLENISHMENT_REORDERABLE;
 
         $attributes['fulfillment_type'] = $attributes['fulfillment_type'] ?? ProductVariant::FULFILLMENT_STOCKED;
         $attributes['is_dropshippable'] = ($attributes['fulfillment_type'] ?? null) === ProductVariant::FULFILLMENT_DROPSHIPPING;
@@ -352,6 +363,13 @@ class ProductService
         $variant->sku = $finalSku;
         $variant->is_active = true;
         $variant->save();
+
+        if (! $variant->isReorderable()) {
+            $this->alertEngine->resolveStockLevelAlertsForVariant(
+                $variant,
+                sprintf('Variant replenishment status changed to %s.', $variant->replenishmentStatusLabel())
+            );
+        }
 
         $variant->values()->sync($valueIds);
 
@@ -754,6 +772,8 @@ class ProductService
                     'height' => $variant->height,
                     'track_inventory' => $variant->track_inventory,
                     'reorder_point' => $variant->reorder_point,
+                    'replenishment_status' => $variant->replenishment_status,
+                    'replenishment_note' => $variant->replenishment_note,
                     'is_active' => $variant->is_active,
                     'fulfillment_type' => $variant->fulfillment_type,
                     'is_dropshippable' => $variant->is_dropshippable,
@@ -875,6 +895,9 @@ class ProductService
                     'barcode' => $variant->barcode,
                     'last_purchase_price' => $variant->last_purchase_price !== null ? (float) $variant->last_purchase_price : null,
                     'average_cost' => $variant->average_cost !== null ? (float) $variant->average_cost : null,
+                    'replenishment_status' => $variant->replenishment_status ?? ProductVariant::REPLENISHMENT_REORDERABLE,
+                    'replenishment_status_label' => $variant->replenishmentStatusLabel(),
+                    'replenishment_note' => $variant->replenishment_note,
                     'price' => $price,
                     'stock' => $stock,
                     'image' => $this->makeImageUrl(

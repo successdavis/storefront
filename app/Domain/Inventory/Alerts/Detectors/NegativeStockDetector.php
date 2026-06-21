@@ -7,6 +7,9 @@ class NegativeStockDetector implements InventoryDetector
 {
     public function detect(): iterable
     {
-        return ProductVariant::where('quantity', '<', 0)->get();
+        return ProductVariant::query()
+            ->eligibleForOperationalAlerts()
+            ->where('product_variants.quantity', '<', 0)
+            ->get();
     }
 }

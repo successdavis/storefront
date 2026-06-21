@@ -53,6 +53,22 @@ function emitRows() {
     })))
 }
 
+function replenishmentLabel(status) {
+    return {
+        paused: 'Paused',
+        discontinued: 'Discontinued',
+        reorderable: 'Reorderable',
+    }[status || 'reorderable'] || 'Reorderable'
+}
+
+function replenishmentBadgeClass(status) {
+    return {
+        paused: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
+        discontinued: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200',
+        reorderable: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
+    }[status || 'reorderable'] || 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
+}
+
 // remove a row
 function removeRow(idx) {
     const victim = rows[idx]
@@ -146,6 +162,12 @@ onBeforeUnmount(() => {
                                 class="text-xs font-medium text-amber-700 dark:text-amber-300"
                             >
                                 Archived on save
+                            </span>
+                            <span
+                                v-else-if="(r.replenishment_status || 'reorderable') !== 'reorderable'"
+                                :class="['w-fit rounded-full px-2 py-0.5 text-[11px] font-medium', replenishmentBadgeClass(r.replenishment_status)]"
+                            >
+                                {{ replenishmentLabel(r.replenishment_status) }}
                             </span>
                         </div>
                     </td>
@@ -356,6 +378,39 @@ onBeforeUnmount(() => {
                                     v-model="draft.dropshipping_note"
                                     rows="2"
                                     placeholder="Internal dropshipping note"
+                                    class="border rounded px-2 py-1"
+                                />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-2 rounded border border-gray-200 p-3 dark:border-gray-700">
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">Replenishment</h4>
+                            <span :class="['rounded-full px-2 py-0.5 text-[11px] font-medium', replenishmentBadgeClass(draft.replenishment_status)]">
+                                {{ replenishmentLabel(draft.replenishment_status) }}
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <label class="flex flex-col gap-1">
+                                <span class="text-xs text-gray-500">Replenishment Status</span>
+                                <select
+                                    v-model="draft.replenishment_status"
+                                    class="border rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
+                                >
+                                    <option value="reorderable">Reorderable</option>
+                                    <option value="paused">Paused</option>
+                                    <option value="discontinued">Discontinued</option>
+                                </select>
+                            </label>
+
+                            <label class="flex flex-col gap-1 md:col-span-2">
+                                <span class="text-xs text-gray-500">Replenishment Note</span>
+                                <textarea
+                                    v-model="draft.replenishment_note"
+                                    rows="2"
+                                    placeholder="Supplier delay, discontinued by vendor, seasonal hold..."
                                     class="border rounded px-2 py-1"
                                 />
                             </label>

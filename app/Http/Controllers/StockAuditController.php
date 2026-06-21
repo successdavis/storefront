@@ -250,6 +250,11 @@ class StockAuditController extends Controller
                 'variant.values.type:id,name',
             ])
             ->where('status', 'open')
+            ->whereNull('suppressed_at')
+            ->where(function ($query): void {
+                $query->whereNull('snoozed_until')
+                    ->orWhere('snoozed_until', '<=', now());
+            })
             ->whereIn('type', ['discrepancy', 'negative_stock'])
             ->orderByDesc('first_detected_at')
             ->get();
@@ -320,6 +325,34 @@ class StockAuditController extends Controller
                 'source' => $sourceFilter,
             ],
         ]);
+    }
+
+    public function resolveDiscrepancies(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'alert_ids' => ['required', 'array', 'min:1'],
+            'alert_ids.*' => ['integer', 'exists:inventory_alerts,id'],
+        ]);
+
+        $resolved = InventoryAlert::query()
+            ->whereIn('id', $validated['alert_ids'])
+            ->where('status', 'open')
+            ->whereNull('suppressed_at')
+            ->where(function ($query): void {
+                $query->whereNull('snoozed_until')
+                    ->orWhere('snoozed_until', '<=', now());
+            })
+            ->whereIn('type', ['discrepancy', 'negative_stock'])
+            ->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+                'resolved_by' => auth()->id(),
+                'resolved_reason' => 'Resolved from discrepancy dashboard.',
+            ]);
+
+        $message = sprintf('%d discrepancy alert(s) resolved.', $resolved);
+
+        return back()->with($resolved > 0 ? 'success' : 'warning', $message);
     }
 
     protected function auditRouteMap(Request $request): array

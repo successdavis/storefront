@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin\Product;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Models\ProductVariant;
 
 class ProductStoreRequest extends FormRequest
 {
@@ -50,6 +51,12 @@ class ProductStoreRequest extends FormRequest
             'variants.*.length'                 => ['nullable','numeric','min:0'],
             'variants.*.width'                  => ['nullable','numeric','min:0'],
             'variants.*.height'                 => ['nullable','numeric','min:0'],
+            'variants.*.replenishment_status'   => ['nullable', Rule::in([
+                ProductVariant::REPLENISHMENT_REORDERABLE,
+                ProductVariant::REPLENISHMENT_PAUSED,
+                ProductVariant::REPLENISHMENT_DISCONTINUED,
+            ])],
+            'variants.*.replenishment_note'     => ['nullable','string','max:1000'],
             'variants.*.fulfillment_type'       => ['nullable', Rule::in(['stocked', 'dropshipping'])],
             'variants.*.default_supplier_id'    => ['nullable','integer','exists:vendors,id'],
             'variants.*.supplier_cost'          => ['nullable','numeric','min:0'],

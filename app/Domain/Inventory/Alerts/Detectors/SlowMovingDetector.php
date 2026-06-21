@@ -6,7 +6,6 @@ use App\Domain\Inventory\Alerts\Contracts\InventoryDetector;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class SlowMovingDetector implements InventoryDetector
 {
@@ -18,43 +17,39 @@ class SlowMovingDetector implements InventoryDetector
 
         $ageCutoff    = Carbon::now()->subDays($minAgeDays);
         $recentCutoff = Carbon::now()->subDays($noSaleDays);
+        $lifetimeSalesSql = "
+            SELECT COALESCE(SUM(oi.quantity), 0)
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.variant_id = product_variants.id
+            AND o.status != 'cancelled'
+        ";
+        $recentSalesSql = "
+            SELECT COALESCE(SUM(oi.quantity), 0)
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.variant_id = product_variants.id
+            AND o.status != 'cancelled'
+            AND o.created_at >= ?
+        ";
 
         return ProductVariant::query()
-            ->where('track_inventory', true)
-            ->where('available', '>', 0)
-            ->where('created_at', '<=', $ageCutoff)
+            ->eligibleForStockLevelAlerts()
+            ->where('product_variants.available', '>', 0)
+            ->where('product_variants.created_at', '<=', $ageCutoff)
 
             ->select('product_variants.*')
 
             // lifetime sales
-            ->selectRaw("
-                (
-                    SELECT COALESCE(SUM(oi.quantity), 0)
-                    FROM order_items oi
-                    JOIN orders o ON o.id = oi.order_id
-                    WHERE oi.variant_id = product_variants.id
-                    AND o.status != 'cancelled'
-                ) as lifetime_sales
-            ")
+            ->selectRaw("({$lifetimeSalesSql}) as lifetime_sales")
 
             // sales in last N days
-            ->selectRaw("
-                (
-                    SELECT COALESCE(SUM(oi.quantity), 0)
-                    FROM order_items oi
-                    JOIN orders o ON o.id = oi.order_id
-                    WHERE oi.variant_id = product_variants.id
-                    AND o.status != 'cancelled'
-                    AND o.created_at >= ?
-                ) as recent_sales
-            ", [$recentCutoff])
+            ->selectRaw("({$recentSalesSql}) as recent_sales", [$recentCutoff])
 
             // apply business rules
-            ->having('lifetime_sales', '<=', $maxSales)
-            ->having('recent_sales', '=', 0)
+            ->whereRaw("({$lifetimeSalesSql}) <= ?", [$maxSales])
+            ->whereRaw("({$recentSalesSql}) = 0", [$recentCutoff])
 
             ->get();
     }
 }
-
-

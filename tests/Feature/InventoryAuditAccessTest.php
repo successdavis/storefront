@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\InventoryAlert;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\StockAdjustment;
@@ -98,6 +99,70 @@ class InventoryAuditAccessTest extends TestCase
                 ->where('adjustment.product_variant', $expectedLabel)
                 ->where('adjustment.product_sku', $variant->sku)
             );
+    }
+
+    public function test_admin_can_bulk_resolve_selected_inventory_discrepancy_alerts(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        $variant = $this->createVariantWithOptions();
+
+        $discrepancy = InventoryAlert::query()->create([
+            'type' => 'discrepancy',
+            'severity' => 'high',
+            'variant_id' => $variant->id,
+            'message' => 'Physical count differs from system quantity.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $negativeStock = InventoryAlert::query()->create([
+            'type' => 'negative_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Available quantity is negative.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $lowStock = InventoryAlert::query()->create([
+            'type' => 'low_stock',
+            'severity' => 'medium',
+            'variant_id' => $variant->id,
+            'message' => 'This alert is not part of the discrepancy dashboard.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($director)
+            ->post(route('admin.inventory.discrepancies.resolve'), [
+                'alert_ids' => [$discrepancy->id, $negativeStock->id, $lowStock->id],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $discrepancy->id,
+            'status' => 'resolved',
+            'resolved_by' => $director->id,
+            'resolved_reason' => 'Resolved from discrepancy dashboard.',
+        ]);
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $negativeStock->id,
+            'status' => 'resolved',
+            'resolved_by' => $director->id,
+            'resolved_reason' => 'Resolved from discrepancy dashboard.',
+        ]);
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $lowStock->id,
+            'status' => 'open',
+            'resolved_by' => null,
+        ]);
     }
 
     protected function createVariantWithOptions(): ProductVariant

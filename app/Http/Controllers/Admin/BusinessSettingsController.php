@@ -11,6 +11,29 @@ use Inertia\Response;
 
 class BusinessSettingsController extends Controller
 {
+    private const SECTION_FIELDS = [
+        'profile' => [
+            'business_name',
+            'business_tagline',
+            'business_currency',
+            'business_tax_id',
+        ],
+        'contact_receipt' => [
+            'business_email',
+            'business_phone',
+            'business_website',
+            'business_address',
+            'business_receipt_footer',
+            'business_receipt_footer_refund',
+        ],
+        'print' => [
+            'barcode_paper_size',
+            'barcode_label_orientation',
+            'barcode_label_height_mm',
+            'receipt_paper_size',
+        ],
+    ];
+
     private const SETTING_DEFAULTS = [
         'business_name' => '',
         'business_tagline' => '',
@@ -44,7 +67,37 @@ class BusinessSettingsController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $section = $request->string('section')->toString();
+        $rules = $this->validationRules();
+
+        if ($section !== '') {
+            $request->validate([
+                'section' => ['required', 'string', 'in:' . implode(',', array_keys(self::SECTION_FIELDS))],
+            ]);
+
+            $rules = collect(self::SECTION_FIELDS[$section])
+                ->mapWithKeys(fn (string $key): array => [$key => $rules[$key]])
+                ->all();
+        }
+
+        $validated = $request->validate($rules);
+        $keys = $section !== ''
+            ? self::SECTION_FIELDS[$section]
+            : array_keys(self::SETTING_DEFAULTS);
+
+        foreach ($keys as $key) {
+            Setting::set($key, $validated[$key] ?? null);
+        }
+
+        return back()->with('success', 'Business settings updated.');
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function validationRules(): array
+    {
+        return [
             'business_name' => ['nullable', 'string', 'max:255'],
             'business_tagline' => ['nullable', 'string', 'max:255'],
             'business_email' => ['nullable', 'email', 'max:255'],
@@ -59,13 +112,7 @@ class BusinessSettingsController extends Controller
             'barcode_label_orientation' => ['required', 'string', 'in:portrait,landscape'],
             'barcode_label_height_mm' => ['required', 'numeric', 'min:10', 'max:500'],
             'receipt_paper_size' => ['required', 'string', 'in:58mm,80mm,A4'],
-        ]);
-
-        foreach (array_keys(self::SETTING_DEFAULTS) as $key) {
-            Setting::set($key, $validated[$key] ?? null);
-        }
-
-        return back()->with('success', 'Business settings updated.');
+        ];
     }
 
     /**

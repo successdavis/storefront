@@ -91,6 +91,18 @@ function paginationLabel(label: string) {
     return label.replace('&laquo;', '«').replace('&raquo;', '»')
 }
 
+function visitPreviewPage(url: string | null) {
+    if (!url) {
+        return
+    }
+
+    router.visit(url, {
+        preserveState: false,
+        preserveScroll: true,
+        replace: true,
+    })
+}
+
 watch(sort, () => {
     if (categoryId.value) {
         runPreview()
@@ -287,7 +299,7 @@ watch(sort, () => {
                         link.active ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-slate-500',
                         !link.url ? 'cursor-not-allowed opacity-40' : '',
                     ]"
-                    @click="link.url && runPreview(new URL(link.url, window.location.origin).searchParams.get('page'))"
+                    @click="visitPreviewPage(link.url)"
                 >
                     {{ paginationLabel(link.label) }}
                 </button>

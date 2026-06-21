@@ -273,8 +273,20 @@ Route::prefix('admin')
         Route::get('/dashboard/sales-chart', [DashboardController::class, 'salesChart']);
         Route::get('/business-settings', [BusinessSettingsController::class, 'edit'])->name('business-settings.edit');
         Route::patch('/business-settings', [BusinessSettingsController::class, 'update'])->name('business-settings.update');
+        Route::get('/inventory-alerts', [InventoryAlertController::class, 'index'])
+            ->name('inventory-alerts.index');
+        Route::post('/inventory-alerts/bulk', [InventoryAlertController::class, 'bulk'])
+            ->name('inventory-alerts.bulk');
         Route::post('/inventory-alerts/{alert}/close', [InventoryAlertController::class, 'close'])
             ->name('inventory-alerts.close');
+        Route::post('/inventory-alerts/{alert}/acknowledge', [InventoryAlertController::class, 'acknowledge'])
+            ->name('inventory-alerts.acknowledge');
+        Route::post('/inventory-alerts/{alert}/snooze', [InventoryAlertController::class, 'snooze'])
+            ->name('inventory-alerts.snooze');
+        Route::post('/inventory-alerts/{alert}/suppress', [InventoryAlertController::class, 'suppress'])
+            ->name('inventory-alerts.suppress');
+        Route::post('/inventory-alerts/{alert}/unsuppress', [InventoryAlertController::class, 'unsuppress'])
+            ->name('inventory-alerts.unsuppress');
         Route::get('/transactions', [TransactionController::class, 'index'])
             ->middleware('permission.any:admin.transactions.view')
             ->name('transactions.index');
@@ -541,6 +553,7 @@ Route::prefix('admin')
         Route::get('inventory/stock-audit/lookup', [StockAuditController::class, 'lookupByBarcode'])->name('inventory.stock-audit.lookup');
         Route::post('inventory/stock-audit/items', [StockAuditController::class, 'upsertItem'])->name('inventory.stock-audit.items.upsert');
         Route::get('inventory/discrepancies', [StockAuditController::class, 'discrepancies'])->name('inventory.discrepancies');
+        Route::post('inventory/discrepancies/resolve', [StockAuditController::class, 'resolveDiscrepancies'])->name('inventory.discrepancies.resolve');
 
         Route::get('search-variants', [StockEntryController::class, 'search'])->name('variants.search');
 

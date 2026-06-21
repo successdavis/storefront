@@ -7,8 +7,9 @@ class OutOfStockDetector implements InventoryDetector
 {
     public function detect(): iterable
     {
-        return ProductVariant::where('track_inventory', true)
-            ->where('available', '<=', 0)
+        return ProductVariant::query()
+            ->eligibleForStockLevelAlerts()
+            ->where('product_variants.available', '<=', 0)
             ->get();
     }
 }

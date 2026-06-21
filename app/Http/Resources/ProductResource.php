@@ -78,6 +78,8 @@ class ProductResource extends JsonResource
                     'length'                    => $v->length,
                     'width'                     => $v->width,
                     'height'                    => $v->height,
+                    'replenishment_status'      => $v->replenishment_status ?? 'reorderable',
+                    'replenishment_note'        => $v->replenishment_note,
                     'fulfillment_type'          => $v->fulfillment_type ?? 'stocked',
                     'is_dropshippable'          => (bool) $v->is_dropshippable,
                     'default_supplier_id'       => $v->default_supplier_id ? (int) $v->default_supplier_id : null,

@@ -45,6 +45,8 @@ class RunInventoryAlerts extends Command
             );
         }
 
+        $engine->resolveRecoveredOutOfStockAlerts();
+
         foreach ((new NegativeStockDetector)->detect() as $variant) {
             $engine->raise(
                 'negative_stock',
@@ -110,4 +112,3 @@ class RunInventoryAlerts extends Command
         }
     }
 }
-

@@ -10,6 +10,8 @@ export function useVariantDetailsModal(
         length: null,
         width: null,
         height: null,
+        replenishment_status: 'reorderable',
+        replenishment_note: '',
         fulfillment_type: 'stocked',
         default_supplier_id: null,
         supplier_cost: null,
@@ -26,6 +28,8 @@ export function useVariantDetailsModal(
         draft.length = row.length ?? null
         draft.width = row.width ?? null
         draft.height = row.height ?? null
+        draft.replenishment_status = row.replenishment_status ?? 'reorderable'
+        draft.replenishment_note = row.replenishment_note ?? ''
         draft.fulfillment_type = row.fulfillment_type ?? 'stocked'
         draft.default_supplier_id = row.default_supplier_id ?? null
         draft.supplier_cost = row.supplier_cost ?? null
@@ -73,6 +77,8 @@ export function useVariantDetailsModal(
         target.length = draft.length ?? null
         target.width = draft.width ?? null
         target.height = draft.height ?? null
+        target.replenishment_status = draft.replenishment_status ?? 'reorderable'
+        target.replenishment_note = draft.replenishment_note ?? ''
         target.fulfillment_type = draft.fulfillment_type ?? 'stocked'
         target.is_dropshippable = target.fulfillment_type === 'dropshipping'
         target.default_supplier_id = target.fulfillment_type === 'dropshipping' ? (draft.default_supplier_id ?? null) : null

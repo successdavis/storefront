@@ -13,9 +13,9 @@ class OverstockDetector implements InventoryDetector
         $multiplier = Setting::get('inventory.overstock_multiplier', 3);
 
         return ProductVariant::query()
-            ->where('track_inventory', true)
-            ->where('reorder_point', '>', 0)
-            ->whereRaw('available > reorder_point * ?', [$multiplier])
+            ->eligibleForStockLevelAlerts()
+            ->where('product_variants.reorder_point', '>', 0)
+            ->whereRaw('product_variants.available > product_variants.reorder_point * ?', [$multiplier])
             ->get();
     }
 }

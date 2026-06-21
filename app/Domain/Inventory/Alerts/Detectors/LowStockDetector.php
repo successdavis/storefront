@@ -10,16 +10,16 @@ class LowStockDetector implements InventoryDetector
     public function detect(): iterable
     {
         return ProductVariant::query()
-            ->where('track_inventory', true)
-            ->where('available', '>', 0)
-            ->whereColumn('available', '<=', 'reorder_point')
+            ->eligibleForStockLevelAlerts()
+            ->where('product_variants.available', '>', 0)
+            ->whereColumn('product_variants.available', '<=', 'product_variants.reorder_point')
 
             ->select([
                 'product_variants.*',
             ])
 
             // how far below (or equal) threshold
-            ->selectRaw('reorder_point - available as stock_deficit')
+            ->selectRaw('product_variants.reorder_point - product_variants.available as stock_deficit')
 
             ->get();
     }

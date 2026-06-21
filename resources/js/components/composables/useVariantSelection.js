@@ -39,6 +39,8 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
             length: null,
             width: null,
             height: null,
+            replenishment_status: 'reorderable',
+            replenishment_note: '',
             fulfillment_type: 'stocked',
             is_dropshippable: false,
             default_supplier_id: null,
@@ -239,6 +241,8 @@ export function useVariantSelection(props, rows, emit, revokePreview, pruneSkuSt
         v => {
             rows.splice(0, rows.length, ...((Array.isArray(v) ? v : []).map(row => ({
                 archived: false,
+                replenishment_status: 'reorderable',
+                replenishment_note: '',
                 ...row,
                 value_ids: normalizeValueIds(row.value_ids),
             }))))

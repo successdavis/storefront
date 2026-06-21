@@ -42,6 +42,7 @@ class ProductVariantFactory extends Factory
             'width'          => $width,      // cm
             'height'         => $height,     // cm
             'is_active'      => true,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
         ];
     }
 

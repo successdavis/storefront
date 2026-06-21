@@ -16,11 +16,15 @@ class ProductVariant extends Model
 
     public const FULFILLMENT_STOCKED = 'stocked';
     public const FULFILLMENT_DROPSHIPPING = 'dropshipping';
+    public const REPLENISHMENT_REORDERABLE = 'reorderable';
+    public const REPLENISHMENT_PAUSED = 'paused';
+    public const REPLENISHMENT_DISCONTINUED = 'discontinued';
 
     protected $fillable = [
         'product_id','sku','quantity','barcode','cost_price',
         'regular_price','sale_starts_at','sale_ends_at',
-        'weight','length','width','height','track_inventory','reorder_point','is_active',
+        'weight','length','width','height','track_inventory','reorder_point',
+        'replenishment_status','replenishment_note','is_active',
         'fulfillment_type','is_dropshippable','default_supplier_id','supplier_cost',
         'supplier_lead_time_days','show_as_available_when_dropshipping','dropshipping_note',
     ];
@@ -100,7 +104,41 @@ class ProductVariant extends Model
 
     public function scopeActive($query)
     {
-        return $query->where('is_active', true);
+        return $query->where($query->getModel()->qualifyColumn('is_active'), true);
+    }
+
+    public function scopeOnActiveProduct($query)
+    {
+        return $query->whereHas('product', fn ($productQuery) => $productQuery->where('is_active', true));
+    }
+
+    public function scopeReorderable($query)
+    {
+        return $query->where(
+            $query->getModel()->qualifyColumn('replenishment_status'),
+            self::REPLENISHMENT_REORDERABLE
+        );
+    }
+
+    public function scopeEligibleForStockLevelAlerts($query)
+    {
+        $model = $query->getModel();
+
+        return $query
+            ->where($model->qualifyColumn('track_inventory'), true)
+            ->active()
+            ->onActiveProduct()
+            ->reorderable();
+    }
+
+    public function scopeEligibleForOperationalAlerts($query)
+    {
+        $model = $query->getModel();
+
+        return $query
+            ->where($model->qualifyColumn('track_inventory'), true)
+            ->active()
+            ->onActiveProduct();
     }
 
     public function cartItems(): HasMany
@@ -161,6 +199,20 @@ class ProductVariant extends Model
     public function requiresLocalStock(): bool
     {
         return $this->fulfillment_type !== self::FULFILLMENT_DROPSHIPPING;
+    }
+
+    public function isReorderable(): bool
+    {
+        return ($this->replenishment_status ?? self::REPLENISHMENT_REORDERABLE) === self::REPLENISHMENT_REORDERABLE;
+    }
+
+    public function replenishmentStatusLabel(): string
+    {
+        return match ($this->replenishment_status ?? self::REPLENISHMENT_REORDERABLE) {
+            self::REPLENISHMENT_PAUSED => 'Paused',
+            self::REPLENISHMENT_DISCONTINUED => 'Discontinued',
+            default => 'Reorderable',
+        };
     }
 
     public function getIsOnSaleAttribute(): bool

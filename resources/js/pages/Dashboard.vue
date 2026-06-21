@@ -22,7 +22,7 @@ const props = defineProps({
     stats: Object,
     sales: Array,
     transactions: Array,
-    inventoryAlerts: Array,
+    inventoryAlerts: [Array, Object],
     terminals: Array,
 });
 

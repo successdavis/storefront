@@ -11,7 +11,7 @@ class DiscrepancyDetector implements InventoryDetector
     {
         return ProductVariant::query()
             ->leftJoin('stock_entries', 'stock_entries.variant_id', '=', 'product_variants.id')
-            ->where('product_variants.track_inventory', true)
+            ->eligibleForOperationalAlerts()
             ->select('product_variants.*')
             ->selectRaw("COALESCE(SUM(CASE WHEN stock_entries.type = 'stock_in' THEN stock_entries.quantity WHEN stock_entries.type = 'stock_out' THEN -stock_entries.quantity ELSE 0 END), 0) as ledger_quantity")
             ->groupBy('product_variants.id')

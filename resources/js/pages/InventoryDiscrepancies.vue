@@ -1,6 +1,6 @@
 <script setup>
 import { Link, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
     alerts: {
@@ -21,11 +21,25 @@ const props = defineProps({
 })
 
 const processingId = ref(null)
+const bulkResolving = ref(false)
+const selectedAlertIds = ref([])
 const selectedSessionId = ref(props.filters.session_id || null)
 const selectedSource = ref(props.filters.source || 'all')
 
+const visibleAlertIds = computed(() => props.alerts.map(alert => alert.id))
+const selectedCount = computed(() => selectedAlertIds.value.length)
+const allVisibleSelected = computed(() => visibleAlertIds.value.length > 0
+    && visibleAlertIds.value.every(id => selectedAlertIds.value.includes(id)))
+
+watch(
+    () => props.alerts,
+    () => {
+        selectedAlertIds.value = []
+    },
+)
+
 function resolveAlert(alertId) {
-    if (processingId.value) {
+    if (processingId.value || bulkResolving.value) {
         return
     }
 
@@ -37,6 +51,36 @@ function resolveAlert(alertId) {
             preserveScroll: true,
             onFinish: () => {
                 processingId.value = null
+            },
+        },
+    )
+}
+
+function toggleAllVisible(event) {
+    selectedAlertIds.value = event.target.checked ? [...visibleAlertIds.value] : []
+}
+
+function clearSelection() {
+    selectedAlertIds.value = []
+}
+
+function resolveSelectedAlerts() {
+    if (bulkResolving.value || selectedAlertIds.value.length === 0) {
+        return
+    }
+
+    bulkResolving.value = true
+
+    router.post(
+        '/admin/inventory/discrepancies/resolve',
+        {
+            alert_ids: selectedAlertIds.value,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: clearSelection,
+            onFinish: () => {
+                bulkResolving.value = false
             },
         },
     )
@@ -102,10 +146,47 @@ function applyFilters() {
             </button>
         </div>
 
+        <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm font-medium">{{ selectedCount }} selected</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                    Select discrepancy rows on this page, then resolve them together after review.
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="selectedCount === 0 || bulkResolving || processingId"
+                    @click="resolveSelectedAlerts"
+                >
+                    Resolve Selected
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:hover:bg-gray-800"
+                    :disabled="selectedCount === 0 || bulkResolving"
+                    @click="clearSelection"
+                >
+                    Clear
+                </button>
+            </div>
+        </div>
+
         <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
             <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-800">
                     <tr>
+                        <th class="px-4 py-3 text-left">
+                            <input
+                                type="checkbox"
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900"
+                                :checked="allVisibleSelected"
+                                :disabled="alerts.length === 0 || bulkResolving"
+                                aria-label="Select all discrepancy alerts"
+                                @change="toggleAllVisible"
+                            />
+                        </th>
                         <th class="px-4 py-3 text-left">Product</th>
                         <th class="px-4 py-3 text-left">Session</th>
                         <th class="px-4 py-3 text-left">Source</th>
@@ -124,6 +205,16 @@ function applyFilters() {
                         :key="alert.id"
                         class="hover:bg-gray-50 dark:hover:bg-gray-800/70"
                     >
+                        <td class="px-4 py-3">
+                            <input
+                                v-model="selectedAlertIds"
+                                type="checkbox"
+                                class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900"
+                                :value="alert.id"
+                                :disabled="bulkResolving"
+                                :aria-label="`Select discrepancy for ${alert.product}`"
+                            />
+                        </td>
                         <td class="px-4 py-3">
                             <div class="font-medium">{{ alert.product }}</div>
                             <div class="text-xs text-gray-500">SKU: {{ alert.sku || 'N/A' }}</div>
@@ -162,7 +253,7 @@ function applyFilters() {
                                 <button
                                     type="button"
                                     class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-60"
-                                    :disabled="processingId === alert.id"
+                                    :disabled="processingId === alert.id || bulkResolving"
                                     @click="resolveAlert(alert.id)"
                                 >
                                     Resolve
@@ -178,7 +269,7 @@ function applyFilters() {
                         </td>
                     </tr>
                     <tr v-if="alerts.length === 0">
-                        <td class="px-4 py-6 text-center text-sm text-gray-500" colspan="10">
+                        <td class="px-4 py-6 text-center text-sm text-gray-500" colspan="11">
                             No open discrepancy alerts.
                         </td>
                     </tr>

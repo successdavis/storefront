@@ -40,6 +40,14 @@ function transactionBadgeClass(type) {
     return palette[type] || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
+function replenishmentBadgeClass(status) {
+    return {
+        paused: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
+        discontinued: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200',
+        reorderable: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200',
+    }[status || 'reorderable'] || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+}
+
 function formatMetric(metric) {
     if (!metric) return '-'
     if (metric.from) return `${money(metric.min)} - ${money(metric.max)}`
@@ -196,6 +204,7 @@ function deleteNote(noteId) {
                                     <th class="px-6 py-3">Price</th>
                                     <th class="px-6 py-3">Cost</th>
                                     <th class="px-6 py-3">Available</th>
+                                    <th class="px-6 py-3">Replenishment</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
@@ -219,6 +228,14 @@ function deleteNote(noteId) {
                                         <span :class="['inline-flex rounded-full px-3 py-1 text-xs font-semibold', badgeClass(variant.stock.is_in_stock)]">
                                             {{ variant.stock.is_in_stock ? 'In stock' : 'Out of stock' }}
                                         </span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span :class="['inline-flex rounded-full px-3 py-1 text-xs font-semibold', replenishmentBadgeClass(variant.replenishment_status)]">
+                                            {{ variant.replenishment_status_label || 'Reorderable' }}
+                                        </span>
+                                        <p v-if="variant.replenishment_note" class="mt-1 max-w-xs text-xs text-slate-500 dark:text-slate-400">
+                                            {{ variant.replenishment_note }}
+                                        </p>
                                     </td>
                                 </tr>
                             </tbody>

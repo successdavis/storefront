@@ -80,6 +80,43 @@ class AdminBusinessSettingsTest extends TestCase
         }
     }
 
+    public function test_director_can_update_one_business_settings_section_without_overwriting_other_sections(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        Setting::set('business_email', 'old@example.com');
+        Setting::set('barcode_paper_size', '58mm');
+        Setting::set('barcode_label_orientation', 'landscape');
+        Setting::set('barcode_label_height_mm', '35');
+        Setting::set('receipt_paper_size', 'A4');
+
+        $this->actingAs($director)
+            ->patch(route('admin.business-settings.update'), [
+                'section' => 'profile',
+                'business_name' => 'Section Retail Ltd',
+                'business_tagline' => 'Saved alone',
+                'business_currency' => 'NGN',
+                'business_tax_id' => 'TIN-SECTION',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('settings', [
+            'key' => 'business_name',
+            'value' => 'Section Retail Ltd',
+        ]);
+
+        $this->assertDatabaseHas('settings', [
+            'key' => 'business_email',
+            'value' => 'old@example.com',
+        ]);
+
+        $this->assertDatabaseHas('settings', [
+            'key' => 'barcode_paper_size',
+            'value' => '58mm',
+        ]);
+    }
+
     public function test_customer_cannot_access_business_settings(): void
     {
         $customer = User::factory()->create();
