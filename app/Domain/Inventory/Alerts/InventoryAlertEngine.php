@@ -20,7 +20,7 @@ class InventoryAlertEngine
         ?int $warehouseId,
         string $message,
         array $meta = []
-    ) {
+    ): InventoryAlert {
         $alert = InventoryAlert::firstOrCreate(
             [
                 'type' => $type,
@@ -46,6 +46,8 @@ class InventoryAlertEngine
         if ($alert->wasRecentlyCreated) {
             event(new InventoryAlertRaised($alert));
         }
+
+        return $alert;
     }
 
     public function resolveStockLevelAlertsForVariant(

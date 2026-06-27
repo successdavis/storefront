@@ -4,7 +4,11 @@ namespace Tests\Feature;
 
 use App\Domain\Inventory\Alerts\Detectors\OutOfStockDetector;
 use App\Domain\Inventory\Alerts\InventoryAlertEngine;
+use App\Domain\Inventory\Alerts\InventoryAlertMailContext;
 use App\Events\InventoryAlertRaised;
+use App\Listeners\SendInventoryAlertNotification;
+use App\Mail\InventoryAlertMail;
+use App\Mail\InventoryAlertScanSummaryMail;
 use App\Models\InventoryAlert;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -13,6 +17,7 @@ use App\Models\User;
 use App\Support\RoleNames;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -129,6 +134,99 @@ class InventoryAlertLifecycleTest extends TestCase
             'status' => 'resolved',
             'resolved_reason' => 'Stock condition recovered.',
         ]);
+    }
+
+    public function test_inventory_scan_sends_one_summary_email_for_detected_alerts(): void
+    {
+        Mail::fake();
+        Setting::set('admin_email', 'admin@example.com');
+        Setting::set('slow_moving_min_age', 10000);
+
+        $firstProduct = Product::factory()->create([
+            'name' => 'Alpha Laptop',
+            'is_active' => true,
+        ]);
+
+        $secondProduct = Product::factory()->create([
+            'name' => 'Beta Printer',
+            'is_active' => true,
+        ]);
+
+        $firstVariant = ProductVariant::factory()
+            ->for($firstProduct)
+            ->create([
+                'sku' => 'ALPHA-001',
+                'quantity' => 0,
+                'reserved' => 0,
+                'reorder_point' => 5,
+                'track_inventory' => true,
+                'is_active' => true,
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+                'created_at' => now(),
+            ]);
+
+        $secondVariant = ProductVariant::factory()
+            ->for($secondProduct)
+            ->create([
+                'sku' => 'BETA-001',
+                'quantity' => 0,
+                'reserved' => 0,
+                'reorder_point' => 3,
+                'track_inventory' => true,
+                'is_active' => true,
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+                'created_at' => now(),
+            ]);
+
+        $this->artisan('inventory:scan')->assertExitCode(0);
+
+        Mail::assertSent(InventoryAlertScanSummaryMail::class, 1);
+        Mail::assertSent(InventoryAlertScanSummaryMail::class, function (InventoryAlertScanSummaryMail $mail) use ($firstVariant, $secondVariant): bool {
+            $html = $mail->render();
+
+            return $mail->hasTo('admin@example.com')
+                && $mail->alerts->count() === 2
+                && str_contains($html, 'Alpha Laptop')
+                && str_contains($html, 'Beta Printer')
+                && $mail->alerts->pluck('variant_id')->sort()->values()->all() === collect([
+                    $firstVariant->id,
+                    $secondVariant->id,
+                ])->sort()->values()->all();
+        });
+        Mail::assertNotSent(InventoryAlertMail::class);
+    }
+
+    public function test_scan_mail_context_suppresses_immediate_critical_alert_email(): void
+    {
+        Mail::fake();
+        Setting::set('admin_email', 'admin@example.com');
+
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'track_inventory' => true,
+                'is_active' => true,
+            ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        InventoryAlertMailContext::withoutImmediateMail(function () use ($alert): void {
+            app(SendInventoryAlertNotification::class)->handle(new InventoryAlertRaised($alert));
+        });
+
+        Mail::assertNotSent(InventoryAlertMail::class);
+
+        app(SendInventoryAlertNotification::class)->handle(new InventoryAlertRaised($alert));
+
+        Mail::assertSent(InventoryAlertMail::class, 1);
     }
 
     public function test_staff_can_batch_suppress_alerts_and_audit_actor_is_exposed(): void
