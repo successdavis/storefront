@@ -194,6 +194,10 @@ class InventoryAlertLifecycleTest extends TestCase
                 ])->sort()->values()->all();
         });
         Mail::assertNotSent(InventoryAlertMail::class);
+
+        $this->artisan('inventory:scan')->assertExitCode(0);
+
+        Mail::assertSent(InventoryAlertScanSummaryMail::class, 1);
     }
 
     public function test_scan_mail_context_suppresses_immediate_critical_alert_email(): void

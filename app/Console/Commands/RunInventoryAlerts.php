@@ -133,6 +133,7 @@ class RunInventoryAlerts extends Command
         $alerts = $alerts
             ->filter()
             ->unique(fn (InventoryAlert $alert): int => (int) $alert->id)
+            ->filter(fn (InventoryAlert $alert): bool => $alert->wasRecentlyCreated)
             ->filter(fn (InventoryAlert $alert): bool => $this->shouldEmailAlert($alert))
             ->values();
 
