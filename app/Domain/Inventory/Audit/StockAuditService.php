@@ -125,6 +125,7 @@ class StockAuditService
         string $scopeType = StockAuditSession::SCOPE_FULL,
         ?int $categoryId = null,
         ?int $warehouseId = null,
+        ?string $source = null,
     ): StockAuditSession {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
         $this->pruneInactiveLocks();
@@ -144,7 +145,7 @@ class StockAuditService
                 ->first();
 
             if ($existing) {
-                return $this->touchSessionActivity($existing);
+                return $this->touchSessionActivity($existing, $source);
             }
 
             $recyclable = StockAuditSession::query()
@@ -160,6 +161,7 @@ class StockAuditService
                     $scopeType,
                     $categoryId,
                     $warehouseId,
+                    $source,
                 );
             }
         }
@@ -171,6 +173,7 @@ class StockAuditService
             'scope_type' => $scopeType,
             'category_id' => $categoryId,
             'status' => StockAuditSession::STATUS_IN_PROGRESS,
+            'source' => $this->normalizeSource($source),
             'total_expected_items' => $expectedItems,
             'total_scanned_items' => 0,
             'coverage_percentage' => 0,
@@ -241,6 +244,7 @@ class StockAuditService
         return [
             'id' => (int) $session->id,
             'status' => $session->status,
+            'source' => $session->source,
             'scope_type' => $session->scope_type,
             'category_id' => $session->category_id ? (int) $session->category_id : null,
             'warehouse_id' => $session->warehouse_id ? (int) $session->warehouse_id : null,
@@ -271,11 +275,18 @@ class StockAuditService
         return $session;
     }
 
-    public function touchSessionActivity(StockAuditSession $session): StockAuditSession
+    public function touchSessionActivity(StockAuditSession $session, ?string $source = null): StockAuditSession
     {
-        $session->update([
+        $updates = [
             'last_activity_at' => now(),
-        ]);
+        ];
+
+        $source = $this->normalizeSource($source);
+        if ($source) {
+            $updates['source'] = $source;
+        }
+
+        $session->update($updates);
 
         return $session->fresh();
     }
@@ -310,6 +321,7 @@ class StockAuditService
                 return [
                     'id' => (int) $session->id,
                     'reference' => sprintf('AUD-%06d', $session->id),
+                    'source' => $session->source,
                     'scope_type' => $session->scope_type,
                     'category_id' => $session->category_id ? (int) $session->category_id : null,
                     'category_name' => $session->category?->name,
@@ -344,14 +356,19 @@ class StockAuditService
         $session->delete();
     }
 
-    public function upsertSessionItems(StockAuditSession $session, array $counts): array
+    public function upsertSessionItems(StockAuditSession $session, array $counts, ?string $source = null): array
     {
-        return DB::transaction(function () use ($session, $counts): array {
+        return DB::transaction(function () use ($session, $counts, $source): array {
             $this->pruneInactiveLocks();
 
             $session = StockAuditSession::query()
                 ->lockForUpdate()
                 ->findOrFail($session->id);
+
+            $source = $this->normalizeSource($source);
+            if ($source && $session->source !== $source) {
+                $session->update(['source' => $source]);
+            }
 
             $normalized = collect($counts)
                 ->values()
@@ -547,7 +564,7 @@ class StockAuditService
                 $session->update(['warehouse_id' => $warehouseId]);
             }
 
-            $upsertSummary = $this->upsertSessionItems($session, $counts);
+            $upsertSummary = $this->upsertSessionItems($session, $counts, $source);
 
             if ((int) $upsertSummary['processed'] === 0) {
                 return [
@@ -760,6 +777,7 @@ class StockAuditService
         $session->update([
             'warehouse_id' => $warehouseId ?? $session->warehouse_id,
             'status' => empty($discrepancies) ? StockAuditSession::STATUS_REVIEWED : StockAuditSession::STATUS_SUBMITTED,
+            'source' => $this->normalizeSource($source),
             'total_expected_items' => $totalExpected,
             'total_scanned_items' => $totalScanned,
             'coverage_percentage' => $coverage,
@@ -872,6 +890,20 @@ class StockAuditService
         return [$scopeType, $categoryId];
     }
 
+    protected function normalizeSource(?string $source): ?string
+    {
+        $source = $source ? trim($source) : null;
+
+        return in_array($source, [
+            StockAuditSession::SOURCE_AUDIT,
+            StockAuditSession::SOURCE_MANUAL,
+            StockAuditSession::SOURCE_MOBILE,
+            StockAuditSession::SOURCE_SYSTEM,
+        ], true)
+            ? $source
+            : null;
+    }
+
     protected function warehouseScopeKey(?int $warehouseId): int
     {
         return $warehouseId ? (int) $warehouseId : 0;
@@ -882,6 +914,7 @@ class StockAuditService
         string $scopeType,
         ?int $categoryId,
         ?int $warehouseId,
+        ?string $source = null,
     ): StockAuditSession {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
 
@@ -891,6 +924,7 @@ class StockAuditService
             'warehouse_id' => $warehouseId,
             'scope_type' => $scopeType,
             'category_id' => $categoryId,
+            'source' => $this->normalizeSource($source),
             'total_expected_items' => $expectedItems,
             'total_scanned_items' => 0,
             'coverage_percentage' => 0,

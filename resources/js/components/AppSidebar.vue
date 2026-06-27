@@ -141,6 +141,7 @@ const adminNavItems: SidebarNavItem[] = [
             { title: 'Barcode Labels', href: '/admin/barcodes' },
             { title: 'Stock Audit', href: '/admin/inventory/stock-audit' },
             { title: 'Mobile Audit', href: '/admin/inventory/stock-audit/mobile' },
+            { title: 'Audit History', href: '/admin/inventory/stock-audit/history' },
             { title: 'Discrepancies', href: '/admin/inventory/discrepancies' },
         ],
     },
@@ -208,6 +209,7 @@ const salesNavItems: MainNavItem[] = [
         subItems: [
             { title: 'Stock Audit', href: '/sales/inventory/stock-audit' },
             { title: 'Mobile Audit', href: '/sales/inventory/stock-audit/mobile' },
+            { title: 'Audit History', href: '/sales/inventory/stock-audit/history' },
         ],
     },
 ];

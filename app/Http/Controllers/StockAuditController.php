@@ -12,6 +12,8 @@ use App\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -46,10 +48,11 @@ class StockAuditController extends Controller
                 scopeType: $scopeType,
                 categoryId: $categoryId,
                 warehouseId: $warehouseId,
+                source: StockAuditSession::SOURCE_MANUAL,
             );
         }
 
-        $session = $this->stockAuditService->touchSessionActivity($session);
+        $session = $this->stockAuditService->touchSessionActivity($session, StockAuditSession::SOURCE_MANUAL);
         $resumableSessions = $this->stockAuditService->resumableSessions(auth()->id(), $session->id);
 
         return Inertia::render('InventoryStockAudit', [
@@ -136,10 +139,11 @@ class StockAuditController extends Controller
                 scopeType: $scopeType,
                 categoryId: $categoryId,
                 warehouseId: $warehouseId,
+                source: StockAuditSession::SOURCE_MOBILE,
             );
         }
 
-        $session = $this->stockAuditService->touchSessionActivity($session);
+        $session = $this->stockAuditService->touchSessionActivity($session, StockAuditSession::SOURCE_MOBILE);
         $resumableSessions = $this->stockAuditService->resumableSessions(auth()->id(), $session->id);
         $sessionRows = $this->stockAuditService->sessionRows($session);
 
@@ -199,6 +203,7 @@ class StockAuditController extends Controller
             'session_id' => ['required', 'integer', 'exists:stock_audit_sessions,id'],
             'variant_id' => ['required', 'integer', 'exists:product_variants,id'],
             'physical_quantity' => ['required', 'integer', 'min:0'],
+            'source' => ['nullable', 'string', 'in:audit,mobile,manual,system'],
         ]);
 
         $session = $this->stockAuditService->getSession((int) $validated['session_id']);
@@ -211,7 +216,7 @@ class StockAuditController extends Controller
         $summary = $this->stockAuditService->upsertSessionItems($session, [[
             'variant_id' => (int) $validated['variant_id'],
             'physical_quantity' => (int) $validated['physical_quantity'],
-        ]]);
+        ]], $validated['source'] ?? null);
 
         return response()->json([
             'ok' => true,
@@ -223,6 +228,52 @@ class StockAuditController extends Controller
     {
         return Inertia::render('InventoryAuditSessions', [
             'sessions' => $this->stockAuditService->resumableSessions(auth()->id()),
+            'routes' => $this->auditRouteMap($request),
+        ]);
+    }
+
+    public function history(Request $request): Response
+    {
+        $filters = [
+            'status' => in_array($request->string('status')->toString(), ['in_progress', 'submitted', 'reviewed'], true)
+                ? $request->string('status')->toString()
+                : 'all',
+            'source' => in_array($request->string('source')->toString(), ['manual', 'mobile', 'audit', 'system', 'unknown'], true)
+                ? $request->string('source')->toString()
+                : 'all',
+            'scope' => in_array($request->string('scope')->toString(), ['full', 'category'], true)
+                ? $request->string('scope')->toString()
+                : 'all',
+            'search' => trim($request->string('search')->toString()),
+        ];
+
+        $query = $this->auditHistoryQuery($filters)
+            ->withCount([
+                'items as discrepancy_count' => fn (Builder $query) => $query->where('variance', '!=', 0),
+                'items as conflict_count' => fn (Builder $query) => $query->whereNotNull('conflict_reason'),
+            ]);
+
+        $summaryQuery = $this->auditHistoryQuery($filters);
+
+        $sessions = $query
+            ->orderByDesc('last_activity_at')
+            ->orderByDesc('id')
+            ->paginate(25)
+            ->withQueryString()
+            ->through(fn (StockAuditSession $session): array => $this->formatAuditHistorySession($request, $session));
+
+        return Inertia::render('InventoryAuditHistory', [
+            'sessions' => $sessions,
+            'filters' => $filters,
+            'summary' => [
+                'total' => (clone $summaryQuery)->count(),
+                'in_progress' => (clone $summaryQuery)->where('status', StockAuditSession::STATUS_IN_PROGRESS)->count(),
+                'submitted' => (clone $summaryQuery)->where('status', StockAuditSession::STATUS_SUBMITTED)->count(),
+                'reviewed' => (clone $summaryQuery)->where('status', StockAuditSession::STATUS_REVIEWED)->count(),
+                'partial' => (clone $summaryQuery)->where('is_partial', true)->count(),
+                'scanned_items' => (int) (clone $summaryQuery)->sum('total_scanned_items'),
+                'expected_items' => (int) (clone $summaryQuery)->sum('total_expected_items'),
+            ],
             'routes' => $this->auditRouteMap($request),
         ]);
     }
@@ -363,10 +414,94 @@ class StockAuditController extends Controller
             'index' => route($prefix . '.inventory.stock-audit.index'),
             'store' => route($prefix . '.inventory.stock-audit.store'),
             'mobile' => route($prefix . '.inventory.stock-audit.mobile'),
+            'history' => route($prefix . '.inventory.stock-audit.history'),
             'sessions' => route($prefix . '.inventory.stock-audit.sessions'),
             'lookup' => route($prefix . '.inventory.stock-audit.lookup'),
             'upsert_item' => route($prefix . '.inventory.stock-audit.items.upsert'),
             'session_discard_base' => route($prefix . '.inventory.stock-audit.sessions.discard', ['session' => '__SESSION__']),
+            'discrepancies' => Route::has($prefix . '.inventory.discrepancies')
+                ? route($prefix . '.inventory.discrepancies')
+                : null,
+        ];
+    }
+
+    protected function auditHistoryQuery(array $filters): Builder
+    {
+        return StockAuditSession::query()
+            ->with([
+                'category:id,name',
+                'warehouse:id,name',
+                'starter:id,name',
+                'submitter:id,name',
+            ])
+            ->when($filters['status'] !== 'all', fn (Builder $query) => $query->where('status', $filters['status']))
+            ->when($filters['source'] !== 'all', function (Builder $query) use ($filters): void {
+                if ($filters['source'] === 'unknown') {
+                    $query->whereNull('source');
+
+                    return;
+                }
+
+                $query->where('source', $filters['source']);
+            })
+            ->when($filters['scope'] !== 'all', fn (Builder $query) => $query->where('scope_type', $filters['scope']))
+            ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
+                $search = $filters['search'];
+                $numericSearch = preg_replace('/\D+/', '', $search);
+
+                $query->where(function (Builder $searchQuery) use ($search, $numericSearch): void {
+                    if ($numericSearch !== '') {
+                        $searchQuery->where('id', (int) $numericSearch);
+                    }
+
+                    $searchQuery
+                        ->orWhereHas('category', fn (Builder $builder) => $builder->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('warehouse', fn (Builder $builder) => $builder->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('starter', fn (Builder $builder) => $builder->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('submitter', fn (Builder $builder) => $builder->where('name', 'like', "%{$search}%"));
+                });
+            });
+    }
+
+    protected function formatAuditHistorySession(Request $request, StockAuditSession $session): array
+    {
+        $prefix = $this->auditRoutePrefix($request);
+        $expected = (int) $session->total_expected_items;
+        $scanned = (int) $session->total_scanned_items;
+        $missing = max($expected - $scanned, 0);
+        $source = $session->source ?: 'unknown';
+
+        return [
+            'id' => (int) $session->id,
+            'reference' => sprintf('AUD-%06d', $session->id),
+            'status' => $session->status,
+            'source' => $source,
+            'source_label' => str($source)->replace('_', ' ')->title()->toString(),
+            'scope_type' => $session->scope_type,
+            'scope_label' => $session->scope_type === StockAuditSession::SCOPE_CATEGORY ? 'Category' : 'Full Inventory',
+            'category_name' => $session->category?->name,
+            'warehouse_name' => $session->warehouse?->name,
+            'started_by_name' => $session->starter?->name,
+            'submitted_by_name' => $session->submitter?->name,
+            'started_at' => optional($session->started_at)->toDateTimeString(),
+            'submitted_at' => optional($session->submitted_at)->toDateTimeString(),
+            'last_activity_at' => optional($session->last_activity_at)->toDateTimeString(),
+            'total_expected_items' => $expected,
+            'total_scanned_items' => $scanned,
+            'missing_items' => $missing,
+            'coverage_percentage' => (float) $session->coverage_percentage,
+            'is_partial' => (bool) $session->is_partial,
+            'discrepancy_count' => (int) ($session->discrepancy_count ?? 0),
+            'conflict_count' => (int) ($session->conflict_count ?? 0),
+            'resume_manual_url' => $session->status === StockAuditSession::STATUS_IN_PROGRESS
+                ? route($prefix . '.inventory.stock-audit.index', ['session_id' => $session->id])
+                : null,
+            'resume_mobile_url' => $session->status === StockAuditSession::STATUS_IN_PROGRESS
+                ? route($prefix . '.inventory.stock-audit.mobile', ['session_id' => $session->id, 'ready' => 1])
+                : null,
+            'discrepancies_url' => Route::has($prefix . '.inventory.discrepancies') && $session->status !== StockAuditSession::STATUS_IN_PROGRESS
+                ? route($prefix . '.inventory.discrepancies', ['session_id' => $session->id])
+                : null,
         ];
     }
 

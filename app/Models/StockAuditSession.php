@@ -15,11 +15,17 @@ class StockAuditSession extends Model
     public const STATUS_SUBMITTED = 'submitted';
     public const STATUS_REVIEWED = 'reviewed';
 
+    public const SOURCE_AUDIT = 'audit';
+    public const SOURCE_MANUAL = 'manual';
+    public const SOURCE_MOBILE = 'mobile';
+    public const SOURCE_SYSTEM = 'system';
+
     protected $fillable = [
         'warehouse_id',
         'scope_type',
         'category_id',
         'status',
+        'source',
         'total_expected_items',
         'total_scanned_items',
         'coverage_percentage',

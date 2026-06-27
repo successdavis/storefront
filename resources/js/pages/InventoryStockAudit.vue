@@ -169,6 +169,7 @@ async function persistVariant(variantId) {
             session_id: sessionState.value.id,
             variant_id: variantId,
             physical_quantity: Number(physicalByVariant.value[variantId] ?? 0),
+            source: 'manual',
         })
 
         updateSessionStateFromResponse(data.session)

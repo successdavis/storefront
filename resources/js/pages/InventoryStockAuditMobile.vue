@@ -227,6 +227,7 @@ async function addToBatch() {
             session_id: form.session_id,
             variant_id: payload.variant_id,
             physical_quantity: payload.physical_quantity,
+            source: 'mobile',
         })
 
         updateSessionStateFromResponse(data.session)

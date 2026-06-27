@@ -34,6 +34,7 @@ class InventoryAuditAccessTest extends TestCase
                 ->component('InventoryStockAudit')
                 ->where('routes.index', route('sales.inventory.stock-audit.index'))
                 ->where('routes.mobile', route('sales.inventory.stock-audit.mobile'))
+                ->where('routes.history', route('sales.inventory.stock-audit.history'))
             );
 
         $this->actingAs($user)
@@ -60,7 +61,20 @@ class InventoryAuditAccessTest extends TestCase
             'id' => 1,
             'started_by' => $user->id,
             'status' => 'submitted',
+            'source' => 'manual',
         ]);
+
+        $this->actingAs($user)
+            ->get(route('sales.inventory.stock-audit.history'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('InventoryAuditHistory')
+                ->where('routes.history', route('sales.inventory.stock-audit.history'))
+                ->where('sessions.data.0.reference', 'AUD-000001')
+                ->where('sessions.data.0.status', 'submitted')
+                ->where('sessions.data.0.source', 'manual')
+                ->where('sessions.data.0.total_scanned_items', 1)
+            );
     }
 
     public function test_stock_adjustment_pages_expose_readable_variant_labels_alongside_sku(): void

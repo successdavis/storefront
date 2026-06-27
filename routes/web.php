@@ -237,6 +237,9 @@ Route::prefix('sales')
         Route::get('inventory/stock-audit/sessions', [StockAuditController::class, 'sessions'])
             ->middleware('permission.any:sales.pos.use')
             ->name('inventory.stock-audit.sessions');
+        Route::get('inventory/stock-audit/history', [StockAuditController::class, 'history'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('inventory.stock-audit.history');
         Route::delete('inventory/stock-audit/sessions/{session}', [StockAuditController::class, 'discardSession'])
             ->middleware('permission.any:sales.pos.use')
             ->name('inventory.stock-audit.sessions.discard');
@@ -547,6 +550,7 @@ Route::prefix('admin')
         Route::get('barcodes', [BarcodePrintController::class, 'index'])->name('barcodes.index');
         Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])->name('inventory.stock-audit.index');
         Route::get('inventory/stock-audit/sessions', [StockAuditController::class, 'sessions'])->name('inventory.stock-audit.sessions');
+        Route::get('inventory/stock-audit/history', [StockAuditController::class, 'history'])->name('inventory.stock-audit.history');
         Route::delete('inventory/stock-audit/sessions/{session}', [StockAuditController::class, 'discardSession'])->name('inventory.stock-audit.sessions.discard');
         Route::post('inventory/stock-audit', [StockAuditController::class, 'store'])->name('inventory.stock-audit.store');
         Route::get('inventory/stock-audit/mobile', [StockAuditController::class, 'mobile'])->name('inventory.stock-audit.mobile');
