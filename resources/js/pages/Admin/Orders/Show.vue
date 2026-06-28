@@ -84,7 +84,16 @@ function resend(notification: string) {
                     </div>
                     <div class="divide-y divide-slate-200 dark:divide-slate-800">
                         <div v-for="item in order.items" :key="item.id" class="flex flex-wrap gap-4 px-6 py-5">
-                            <img v-if="item.product.image" :src="item.product.image" :alt="item.product.name ?? 'Product image'" class="h-20 w-20 rounded-2xl object-cover" />
+                            <img
+                                v-if="item.product.image"
+                                :src="item.product.image"
+                                :srcset="item.product.image_srcset || undefined"
+                                sizes="80px"
+                                :alt="item.product.name ?? 'Product image'"
+                                class="h-20 w-20 rounded-2xl object-cover"
+                                loading="lazy"
+                                decoding="async"
+                            />
                             <div v-else class="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-100 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">No image</div>
                             <div class="flex-1">
                                 <div class="flex flex-wrap items-center gap-2">

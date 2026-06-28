@@ -26,9 +26,12 @@ function money(value) {
                 <img
                     v-if="product.image"
                     :src="product.image"
+                    :srcset="product.image_srcset || undefined"
+                    sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw"
                     :alt="product.name"
                     class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
                     loading="lazy"
+                    decoding="async"
                 >
                 <div v-else class="flex h-full items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                     No image

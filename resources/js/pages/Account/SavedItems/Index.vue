@@ -62,7 +62,16 @@ const moveToSaved = (id: number) => router.post(`/account/saved-items/${id}/move
         <section v-if="savedItems.data.length" class="grid gap-4 lg:grid-cols-2">
             <article v-for="item in savedItems.data" :key="item.id" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="flex gap-4">
-                    <img v-if="item.product.image" :src="item.product.image" :alt="item.product.name ?? 'Product image'" class="h-24 w-24 rounded-2xl object-cover" />
+                    <img
+                        v-if="item.product.image"
+                        :src="item.product.image"
+                        :srcset="item.product.image_srcset || undefined"
+                        sizes="96px"
+                        :alt="item.product.name ?? 'Product image'"
+                        class="h-24 w-24 rounded-2xl object-cover"
+                        loading="lazy"
+                        decoding="async"
+                    />
                     <div v-else class="flex h-24 w-24 items-center justify-center rounded-2xl bg-slate-100 text-xs text-slate-500">No image</div>
 
                     <div class="flex-1">

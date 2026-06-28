@@ -206,6 +206,9 @@ class CustomerSavedItemService
         $stock = $variant ? $this->productService->resolveVariantStock($variant) : null;
         $pricing = $variant ? $this->productService->resolveVariantPricing($variant) : null;
         $isUnavailable = !$variant || !$product || !$product->is_active || !$variant->is_active || $variant->trashed();
+        $image = $product && $variant
+            ? $this->productService->resolveProductImageMedia($product, $variant)
+            : ['url' => null, 'srcset' => null, 'variants' => []];
 
         $message = null;
         if ($isUnavailable) {
@@ -236,7 +239,9 @@ class CustomerSavedItemService
                 'id' => $product?->id,
                 'name' => $product?->name ?? $item->product_name_snapshot,
                 'slug' => $product?->slug,
-                'image' => $product && $variant ? $this->productService->resolveProductImage($product, $variant) : null,
+                'image' => $image['url'],
+                'image_srcset' => $image['srcset'],
+                'image_variants' => $image['variants'],
             ],
             'variant' => [
                 'id' => $variant?->id,

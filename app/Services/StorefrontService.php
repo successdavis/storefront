@@ -249,7 +249,7 @@ class StorefrontService
             ->whereHas('categories', fn (Builder $query) => $query->whereIn('categories.id', $categoryIds))
             ->with([
                 'categories:id,name,slug',
-                'images:id,product_id,path,alt,is_primary,sort_order',
+                'images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
                 'variants' => fn ($query) => $query
                     ->where('is_active', true)
                     ->select('id', 'product_id', 'sku', 'quantity', 'reserved', 'regular_price', 'sale_starts_at', 'sale_ends_at', 'is_active'),

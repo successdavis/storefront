@@ -139,8 +139,8 @@ class CategoryPriceListReportService
             })
             ->with([
                 'product:id,name',
-                'product.images:id,product_id,path,alt,is_primary,sort_order',
-                'images:id,product_variant_id,path,alt,is_primary,sort_order',
+                'product.images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
+                'images:id,product_variant_id,path,responsive_paths,alt,is_primary,sort_order',
                 'values:id,variant_type_id,value',
                 'values.type:id,name',
             ])

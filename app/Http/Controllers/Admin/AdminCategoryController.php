@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Models\Category;
 use App\Models\Product;
 use App\Http\Controllers\Controller;
+use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -133,7 +134,7 @@ class AdminCategoryController extends Controller
         return Inertia::render('Admin/Categories/Create', ['parents' => $parents]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ImageOptimizationService $images)
     {
         $data = $request->validate([
             'name'             => ['required','string','max:255'],
@@ -152,9 +153,17 @@ class AdminCategoryController extends Controller
         $disk = config('filesystems.uploads_disk');
 
         // Handle files on the configured uploads disk.
-        foreach (['banner','icon','cover_image'] as $key) {
+        foreach ($this->categoryImageFields() as $key => $variantColumn) {
             if ($request->hasFile($key)) {
-                $data[$key] = $request->file($key)->store('categories', $disk);
+                $optimized = $images->storeResponsiveImage(
+                    $request->file($key),
+                    'categories',
+                    (string) $disk,
+                    $this->categoryImageConfig($key)
+                );
+
+                $data[$key] = $optimized['path'];
+                $data[$variantColumn] = $optimized['variants'];
             }
         }
 
@@ -181,7 +190,7 @@ class AdminCategoryController extends Controller
         ]);
     }
 
-    public function update(Request $request, Category $category)
+    public function update(Request $request, Category $category, ImageOptimizationService $images)
     {
         $data = $request->validate([
             'name'             => ['required', 'string', 'max:255'],
@@ -198,10 +207,20 @@ class AdminCategoryController extends Controller
         ]);
 
         $disk = config('filesystems.uploads_disk');
+        $deleteAfterSave = [];
 
-        foreach (['banner', 'icon', 'cover_image'] as $key) {
+        foreach ($this->categoryImageFields() as $key => $variantColumn) {
             if ($request->hasFile($key)) {
-                $data[$key] = $request->file($key)->store('categories', $disk);
+                $optimized = $images->storeResponsiveImage(
+                    $request->file($key),
+                    'categories',
+                    (string) $disk,
+                    $this->categoryImageConfig($key)
+                );
+
+                $data[$key] = $optimized['path'];
+                $data[$variantColumn] = $optimized['variants'];
+                $deleteAfterSave[] = [$category->{$key}, $category->{$variantColumn}];
             }
         }
 
@@ -210,6 +229,10 @@ class AdminCategoryController extends Controller
         }
 
         $category->update($data);
+
+        foreach ($deleteAfterSave as [$path, $variants]) {
+            $images->deleteResponsiveImage($path, $variants, (string) $disk);
+        }
 
         return redirect()
             ->route('admin.categories.index')
@@ -227,7 +250,7 @@ class AdminCategoryController extends Controller
         return back()->with('success', 'Category removed from parent category.');
     }
 
-    public function destroy(Category $category)
+    public function destroy(Category $category, ImageOptimizationService $images)
     {
         // Optional: prevent deleting a parent if it has children
         if ($category->children()->count() > 0) {
@@ -236,13 +259,10 @@ class AdminCategoryController extends Controller
                 ->with('error', 'You cannot delete a category that has sub-categories.');
         }
 
-        // Optional: delete related files if you store banners/icons/covers
         $disk = config('filesystems.uploads_disk');
 
-        foreach (['banner', 'icon', 'cover_image'] as $field) {
-            if ($category->$field && \Storage::disk($disk)->exists($category->$field)) {
-                \Storage::disk($disk)->delete($category->$field);
-            }
+        foreach ($this->categoryImageFields() as $field => $variantColumn) {
+            $images->deleteResponsiveImage($category->{$field}, $category->{$variantColumn}, (string) $disk);
         }
 
         $category->delete();
@@ -250,5 +270,21 @@ class AdminCategoryController extends Controller
         return redirect()
             ->route('admin.categories.index')
             ->with('success', 'Category deleted successfully.');
+    }
+
+    protected function categoryImageFields(): array
+    {
+        return [
+            'banner' => 'banner_responsive_paths',
+            'icon' => 'icon_responsive_paths',
+            'cover_image' => 'cover_image_responsive_paths',
+        ];
+    }
+
+    protected function categoryImageConfig(string $field): ?array
+    {
+        return $field === 'icon'
+            ? config('media.logo_variants')
+            : config('media.image_variants');
     }
 }

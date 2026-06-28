@@ -7,8 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class VariantImage extends Model
 {
-    protected $fillable = ['product_variant_id','path','alt','is_primary','sort_order'];
-    protected $casts = [ 'is_primary' => 'boolean' ];
+    protected $fillable = ['product_variant_id','path','responsive_paths','alt','is_primary','sort_order'];
+
+    protected $casts = [
+        'is_primary' => 'boolean',
+        'responsive_paths' => 'array',
+    ];
 
     public function variant(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {

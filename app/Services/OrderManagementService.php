@@ -644,6 +644,9 @@ class OrderManagementService
             'items' => $order->items->map(function ($item) {
                 $variant = $item->variant;
                 $product = $variant?->product;
+                $image = $product && $variant
+                    ? $this->productService->resolveProductImageMedia($product, $variant)
+                    : ['url' => null, 'srcset' => null, 'variants' => []];
 
                 return [
                     'id' => (int) $item->id,
@@ -667,7 +670,9 @@ class OrderManagementService
                         'id' => $product?->id,
                         'name' => $product?->name,
                         'slug' => $product?->slug,
-                        'image' => $product && $variant ? $this->productService->resolveProductImage($product, $variant) : null,
+                        'image' => $image['url'],
+                        'image_srcset' => $image['srcset'],
+                        'image_variants' => $image['variants'],
                     ],
                     'variant' => [
                         'id' => $variant?->id,

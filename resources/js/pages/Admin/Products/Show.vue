@@ -131,8 +131,12 @@ function deleteNote(noteId) {
                         <img
                             v-if="product.image"
                             :src="product.image"
+                            :srcset="product.image_srcset || undefined"
+                            sizes="192px"
                             :alt="product.name"
                             class="h-48 w-48 rounded-3xl object-cover"
+                            loading="lazy"
+                            decoding="async"
                         />
                         <div
                             v-else

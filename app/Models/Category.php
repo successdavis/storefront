@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 use App\Support\MediaUrl;
+use App\Services\ImageOptimizationService;
 
 class Category extends Model
 {
@@ -13,8 +14,11 @@ class Category extends Model
 
     protected $appends = [
         'banner_url',
+        'banner_responsive_urls',
         'icon_url',
+        'icon_responsive_urls',
         'cover_image_url',
+        'cover_image_responsive_urls',
     ];
 
     protected $fillable = [
@@ -27,8 +31,18 @@ class Category extends Model
         'meta_description',
         'slug',
         'banner',
+        'banner_responsive_paths',
         'icon',
+        'icon_responsive_paths',
         'cover_image',
+        'cover_image_responsive_paths',
+    ];
+
+    protected $casts = [
+        'featured' => 'boolean',
+        'banner_responsive_paths' => 'array',
+        'icon_responsive_paths' => 'array',
+        'cover_image_responsive_paths' => 'array',
     ];
 
     public function getBannerUrlAttribute(): ?string
@@ -36,14 +50,29 @@ class Category extends Model
         return $this->mediaUrl($this->banner);
     }
 
+    public function getBannerResponsiveUrlsAttribute(): array
+    {
+        return $this->responsiveUrls($this->banner_responsive_paths, $this->banner);
+    }
+
     public function getIconUrlAttribute(): ?string
     {
         return $this->mediaUrl($this->icon);
     }
 
+    public function getIconResponsiveUrlsAttribute(): array
+    {
+        return $this->responsiveUrls($this->icon_responsive_paths, $this->icon);
+    }
+
     public function getCoverImageUrlAttribute(): ?string
     {
         return $this->mediaUrl($this->cover_image);
+    }
+
+    public function getCoverImageResponsiveUrlsAttribute(): array
+    {
+        return $this->responsiveUrls($this->cover_image_responsive_paths, $this->cover_image);
     }
 
     protected function mediaUrl(?string $path): ?string
@@ -53,6 +82,12 @@ class Category extends Model
         }
 
         return MediaUrl::make($path);
+    }
+
+    protected function responsiveUrls(?array $variants, ?string $fallbackPath): array
+    {
+        return app(ImageOptimizationService::class)
+            ->toResponsiveUrls($variants, $fallbackPath);
     }
 
     /**

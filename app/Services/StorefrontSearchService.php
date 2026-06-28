@@ -420,7 +420,7 @@ class StorefrontSearchService
         return [
             'brand:id,name,slug',
             'categories:id,name,slug',
-            'images:id,product_id,path,alt,is_primary,sort_order',
+            'images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
             'variants' => fn ($query) => $query
                 ->where('is_active', true)
                 ->select([

@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\Image\StoreProductImageRequest;
 use App\Models\Admin\ProductImage;
 use App\Models\Product;
+use App\Services\ImageOptimizationService;
 use App\Services\ProductService;
-use Illuminate\Support\Facades\Storage;
 
 
 class ProductImageController extends Controller
@@ -45,9 +45,13 @@ class ProductImageController extends Controller
     }
 
 
-    public function destroy(Product $product, ProductImage $image): \Illuminate\Http\Response
+    public function destroy(Product $product, ProductImage $image, ImageOptimizationService $images): \Illuminate\Http\Response
     {
-        Storage::disk(config('filesystems.uploads_disk'))->delete($image->path);
+        $images->deleteResponsiveImage(
+            $image->path,
+            $image->responsive_paths,
+            (string) config('filesystems.uploads_disk')
+        );
         $image->delete();
         return response()->noContent();
     }

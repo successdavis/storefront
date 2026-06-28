@@ -79,8 +79,8 @@ class CartService
             ->with([
                 'product:id,name,slug,is_active',
                 'product.categories:id',
-                'product.images:id,product_id,path,is_primary,sort_order',
-                'images:id,product_variant_id,path,is_primary,sort_order',
+                'product.images:id,product_id,path,responsive_paths,is_primary,sort_order',
+                'images:id,product_variant_id,path,responsive_paths,is_primary,sort_order',
                 'values:id,variant_type_id,value',
                 'values.type:id,name',
             ])
@@ -313,8 +313,8 @@ class CartService
             ->with([
                 'product' => fn ($query) => $query->withTrashed()->select('id', 'name', 'slug', 'is_active'),
                 'product.categories:id',
-                'product.images:id,product_id,path,is_primary,sort_order',
-                'images:id,product_variant_id,path,is_primary,sort_order',
+                'product.images:id,product_id,path,responsive_paths,is_primary,sort_order',
+                'images:id,product_variant_id,path,responsive_paths,is_primary,sort_order',
                 'values:id,variant_type_id,value',
                 'values.type:id,name',
             ])
@@ -450,6 +450,9 @@ class CartService
         $lineTotal = round(((float) ($pricing['current'] ?? 0)) * $quantity, 2);
         $variantLabel = $this->describeCartVariant($variant);
         $product = $variant?->product;
+        $image = $product && $variant
+            ? $this->productService->resolveProductImageMedia($product, $variant)
+            : ['url' => null, 'srcset' => null, 'variants' => []];
 
         return [
             'id' => null,
@@ -462,17 +465,17 @@ class CartService
                 'id' => $product?->id ? (int) $product->id : null,
                 'name' => $product?->name ?: 'Unavailable product',
                 'slug' => $product?->slug,
-                'image' => $product && $variant
-                    ? $this->productService->resolveProductImage($product, $variant)
-                    : null,
+                'image' => $image['url'],
+                'image_srcset' => $image['srcset'],
+                'image_variants' => $image['variants'],
             ],
             'variant' => [
                 'id' => $variant?->id ? (int) $variant->id : null,
                 'sku' => $variant?->sku,
                 'label' => $variantLabel,
-                'image' => $product && $variant
-                    ? $this->productService->resolveProductImage($product, $variant)
-                    : null,
+                'image' => $image['url'],
+                'image_srcset' => $image['srcset'],
+                'image_variants' => $image['variants'],
                 'price' => $pricing,
                 'stock' => $stock,
             ],

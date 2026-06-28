@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Support\MediaUrl;
+use App\Services\ImageOptimizationService;
 
 class Brand extends Model
 {
@@ -14,6 +15,7 @@ class Brand extends Model
     protected $fillable = [
         'name',
         'logo',
+        'logo_responsive_paths',
         'slug',
         'meta_title',
         'meta_description',
@@ -23,13 +25,20 @@ class Brand extends Model
 
     protected $casts = [
         'top_brand' => 'boolean',
+        'logo_responsive_paths' => 'array',
     ];
 
-    protected $appends = ['logo_url'];
+    protected $appends = ['logo_url', 'logo_responsive_urls'];
 
     public function getLogoUrlAttribute(): ?string
     {
         return MediaUrl::make($this->logo);
+    }
+
+    public function getLogoResponsiveUrlsAttribute(): array
+    {
+        return app(ImageOptimizationService::class)
+            ->toResponsiveUrls($this->logo_responsive_paths, $this->logo);
     }
 
     /**

@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\Brand\StoreBrandRequest;
 use App\Http\Requests\Admin\Brand\UpdateBrandRequest;
 use App\Models\Brand;
+use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -38,7 +38,7 @@ class AdminBrandController extends Controller
         return Inertia::render('Admin/Brands/Upsert');
     }
 
-    public function store(StoreBrandRequest $request)
+    public function store(StoreBrandRequest $request, ImageOptimizationService $images)
     {
         $data = $request->validated();
 
@@ -50,7 +50,15 @@ class AdminBrandController extends Controller
 
         // Handle logo upload
         if ($request->hasFile('logo')) {
-            $data['logo'] = $request->file('logo')->store('brands', config('filesystems.uploads_disk'));
+            $optimized = $images->storeResponsiveImage(
+                $request->file('logo'),
+                'brands',
+                (string) config('filesystems.uploads_disk'),
+                config('media.logo_variants')
+            );
+
+            $data['logo'] = $optimized['path'];
+            $data['logo_responsive_paths'] = $optimized['variants'];
         }
 
         Brand::create($data);
@@ -66,13 +74,18 @@ class AdminBrandController extends Controller
         return Inertia::render('Admin/Brands/Upsert', [
             'brand' => $brand->only([
                 'id','name','slug','meta_title','meta_description','description','top_brand','logo'
-            ]) + ['logo_url' => $brand->logo_url],
+            ]) + [
+                'logo_url' => $brand->logo_url,
+                'logo_responsive_urls' => $brand->logo_responsive_urls,
+            ],
         ]);
     }
 
-    public function update(UpdateBrandRequest $request, Brand $brand)
+    public function update(UpdateBrandRequest $request, Brand $brand, ImageOptimizationService $images)
     {
         $data = $request->validated();
+        $oldLogo = $brand->logo;
+        $oldLogoVariants = $brand->logo_responsive_paths;
 
         // Slug
         if (!empty($data['slug'])) {
@@ -84,28 +97,35 @@ class AdminBrandController extends Controller
 
         // Logo
         if ($request->hasFile('logo')) {
-            $disk = config('filesystems.uploads_disk');
-            $newPath = $request->file('logo')->store('brands', $disk);
-            // delete old if exists
-            if ($brand->logo && Storage::disk($disk)->exists($brand->logo)) {
-                Storage::disk($disk)->delete($brand->logo);
-            }
-            $data['logo'] = $newPath;
+            $disk = (string) config('filesystems.uploads_disk');
+            $optimized = $images->storeResponsiveImage(
+                $request->file('logo'),
+                'brands',
+                $disk,
+                config('media.logo_variants')
+            );
+
+            $data['logo'] = $optimized['path'];
+            $data['logo_responsive_paths'] = $optimized['variants'];
         }
 
         $brand->update($data);
+
+        if ($request->hasFile('logo')) {
+            $images->deleteResponsiveImage($oldLogo, $oldLogoVariants, (string) config('filesystems.uploads_disk'));
+        }
 
         return redirect()->route('admin.brands.index')
             ->with('success', 'Brand updated successfully.');
     }
 
-    public function destroy(Brand $brand)
+    public function destroy(Brand $brand, ImageOptimizationService $images)
     {
-        $disk = config('filesystems.uploads_disk');
-
-        if ($brand->logo && Storage::disk($disk)->exists($brand->logo)) {
-            Storage::disk($disk)->delete($brand->logo);
-        }
+        $images->deleteResponsiveImage(
+            $brand->logo,
+            $brand->logo_responsive_paths,
+            (string) config('filesystems.uploads_disk')
+        );
 
         $brand->delete();
 

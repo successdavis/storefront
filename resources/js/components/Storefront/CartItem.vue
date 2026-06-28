@@ -91,9 +91,12 @@ function saveForLater() {
         <img
             v-if="item.product?.image"
             :src="item.product.image"
+            :srcset="item.product.image_srcset || undefined"
+            sizes="96px"
             :alt="item.product?.name"
             class="h-24 w-24 rounded-xl object-cover"
             loading="lazy"
+            decoding="async"
         >
         <div v-else class="flex h-24 w-24 items-center justify-center rounded-xl bg-slate-100 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-300">
             No image

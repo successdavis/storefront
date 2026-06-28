@@ -19,7 +19,7 @@ class AdminProductController extends Controller
             ->with([
                 'categories:id,name',
                 'brand:id,name',
-                'images:id,product_id,path,alt,is_primary,sort_order',
+                'images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
                 'variants' => fn ($query) => $query
                     ->active()
                     ->select([

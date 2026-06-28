@@ -4,14 +4,16 @@ namespace App\Models\Admin;
 
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
 
 class ProductImage extends Model
 {
-    protected $fillable = ['product_id','path','alt','is_primary','sort_order'];
+    protected $fillable = ['product_id','path','responsive_paths','alt','is_primary','sort_order'];
 
 
-    protected $casts = [ 'is_primary' => 'boolean' ];
+    protected $casts = [
+        'is_primary' => 'boolean',
+        'responsive_paths' => 'array',
+    ];
 
 
     public function product(): \Illuminate\Database\Eloquent\Relations\BelongsTo

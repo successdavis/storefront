@@ -56,6 +56,22 @@ const transitionClasses = computed(() => {
     }
 })
 
+function imageVariantUrl(image, variant, fallback = null) {
+    return image?.variants?.[variant]?.url || fallback || image?.url || null
+}
+
+function galleryImageUrl(image) {
+    return imageVariantUrl(image, 'gallery')
+}
+
+function thumbnailImageUrl(image) {
+    return imageVariantUrl(image, 'thumbnail')
+}
+
+function zoomImageUrl(image) {
+    return imageVariantUrl(image, 'original', imageVariantUrl(image, 'gallery'))
+}
+
 function selectImage(index, direction = null) {
     const image = sortedImages.value[index]
     if (!image) {
@@ -97,7 +113,7 @@ function showNextImage() {
 }
 
 function openZoom() {
-    if (!activeImage.value?.url) {
+    if (!zoomImageUrl(activeImage.value)) {
         return
     }
 
@@ -183,7 +199,7 @@ watch(
                 @touchstart.passive="handleTouchStart"
                 @touchend.passive="handleTouchEnd"
             >
-                <template v-if="activeImage?.url">
+                <template v-if="galleryImageUrl(activeImage)">
                     <Transition
                         :enter-active-class="'absolute inset-0 transition duration-300 ease-out'"
                         :enter-from-class="transitionClasses.enterFrom"
@@ -194,9 +210,12 @@ watch(
                     >
                         <img
                             :key="activeImage.id"
-                            :src="activeImage.url"
+                            :src="galleryImageUrl(activeImage)"
+                            :srcset="activeImage.srcset || undefined"
+                            sizes="(min-width: 1024px) 50vw, 100vw"
                             :alt="activeImage.alt || fallbackAlt"
                             class="absolute inset-0 h-full w-full cursor-zoom-in object-cover select-none"
+                            decoding="async"
                             @click="openZoom"
                         >
                     </Transition>
@@ -205,7 +224,7 @@ watch(
                     No image available
                 </div>
 
-                <div v-if="activeImage?.url" class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-slate-950/60 via-slate-950/10 to-transparent px-4 pb-4 pt-10">
+                <div v-if="galleryImageUrl(activeImage)" class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-slate-950/60 via-slate-950/10 to-transparent px-4 pb-4 pt-10">
                     <span class="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-sm dark:bg-slate-900/90 dark:text-slate-200">
                         Swipe images
                     </span>
@@ -251,16 +270,19 @@ watch(
                 @click="selectImage(sortedImages.findIndex((candidate) => candidate.id === image.id))"
             >
                 <img
-                    :src="image.url"
+                    :src="thumbnailImageUrl(image)"
+                    :srcset="image.srcset || undefined"
+                    sizes="96px"
                     :alt="image.alt || fallbackAlt"
                     class="aspect-square h-full w-full object-cover"
                     loading="lazy"
+                    decoding="async"
                 >
             </button>
         </div>
 
         <div
-            v-if="isZoomOpen && activeImage?.url"
+            v-if="isZoomOpen && zoomImageUrl(activeImage)"
             class="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-sm"
         >
             <div class="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-white">
@@ -300,9 +322,10 @@ watch(
                 @touchend.passive="handleTouchEnd"
             >
                 <img
-                    :src="activeImage.url"
+                    :src="zoomImageUrl(activeImage)"
                     :alt="activeImage.alt || fallbackAlt"
                     class="mx-auto h-auto max-h-none select-none object-contain"
+                    decoding="async"
                     :style="{ width: `${zoomPercent}%`, maxWidth: `${zoomPercent}%` }"
                 >
             </div>

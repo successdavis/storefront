@@ -27,15 +27,12 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Services\SkuGenerator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
-use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Gd\Driver;
 
 class ProductService
 {
@@ -44,7 +41,7 @@ class ProductService
         private InventoryService $inventoryService,
         private DiscountService $discountService,
         private InventoryAlertEngine $alertEngine,
-        private ImageManager $imageManager = new ImageManager(new Driver())
+        private ImageOptimizationService $imageOptimizer
     ) {}
 
     public function create(array $data): Product
@@ -101,22 +98,16 @@ class ProductService
                 }
 
                 // If a new file is provided, store it and replace any previous file
-                if ($file instanceof \Illuminate\Http\UploadedFile) {
-                    // --- START MODIFICATION ---
+                $oldPath = null;
+                $oldResponsivePaths = null;
 
-                    // 1. Delete the OLD file if it exists
-                    if ($imgModel->path && Storage::disk($disk)->exists($imgModel->path)) {
-                        Storage::disk($disk)->delete($imgModel->path);
-                    }
+                if ($file instanceof UploadedFile) {
+                    $oldPath = $imgModel->path;
+                    $oldResponsivePaths = $imgModel->responsive_paths;
 
-                    // 2. Convert and store the NEW file as WebP
-                    // If the conversion fails, it will throw an exception and rollback the transaction.
-                    $imgModel->path = $this->convertToWebpAndStore($file, $dir, $disk);
-
-                    // --- END MODIFICATION ---
-
-                    // IMPORTANT: You might want to strip the file key from the input array
-                    // if you are passing the entire payload back on subsequent saves.
+                    $optimized = $this->imageOptimizer->storeResponsiveImage($file, $dir, $disk);
+                    $imgModel->path = $optimized['path'];
+                    $imgModel->responsive_paths = $optimized['variants'];
                 }
 
                 // Fill simple attributes
@@ -128,16 +119,18 @@ class ProductService
                 $imgModel->is_primary = $isPrimary;
 
                 $imgModel->save();
+
+                if ($oldPath) {
+                    $this->imageOptimizer->deleteResponsiveImage($oldPath, $oldResponsivePaths, $disk);
+                }
+
                 $seen[] = $imgModel->id;
             }
 
             // Remove images not present in the payload and delete their files
             $toDelete = $product->images()->when($seen, fn($q) => $q->whereNotIn('id', $seen))->get();
             foreach ($toDelete as $del) {
-                // The file stored on disk is now guaranteed to be a WebP file.
-                if ($del->path && Storage::disk($disk)->exists($del->path)) {
-                    Storage::disk($disk)->delete($del->path);
-                }
+                $this->imageOptimizer->deleteResponsiveImage($del->path, $del->responsive_paths, $disk);
                 $del->delete();
             }
 
@@ -681,14 +674,13 @@ class ProductService
         $dir  = "variants/{$variant->id}";
 
         foreach ($images as $img) {
-            if ($img instanceof \Illuminate\Http\UploadedFile) {
-                // Handle new uploaded file: Convert to WebP using the new method
-                // and store it in a variant-specific folder.
-                $path = $this->convertToWebpAndStore($img, $dir, $disk);
+            if ($img instanceof UploadedFile) {
+                $optimized = $this->imageOptimizer->storeResponsiveImage($img, $dir, $disk);
 
                 $imgModel = new VariantImage([
                     'product_variant_id' => $variant->id,
-                    'path' => $path, // path is now guaranteed to be webp
+                    'path' => $optimized['path'],
+                    'responsive_paths' => $optimized['variants'],
                     'is_primary' => false,
                     'sort_order' => 0,
                 ]);
@@ -702,17 +694,14 @@ class ProductService
 
                 if (!$imgModel) continue;
 
-                $imgModel->fill(Arr::only($img, ['path','alt','is_primary','sort_order']))->save();
+                $imgModel->fill(Arr::only($img, ['path','responsive_paths','alt','is_primary','sort_order']))->save();
                 $seen[] = $imgModel->id;
             }
         }
 
-        // Delete images not in seen and their corresponding files (corrected logic to include file deletion)
         $toDelete = $variant->images()->whereNotIn('id', $seen)->get();
         foreach ($toDelete as $del) {
-            if ($del->path && Storage::disk($disk)->exists($del->path)) {
-                Storage::disk($disk)->delete($del->path);
-            }
+            $this->imageOptimizer->deleteResponsiveImage($del->path, $del->responsive_paths, $disk);
             $del->delete();
         }
     }
@@ -827,12 +816,12 @@ class ProductService
         $product->load([
             'brand:id,name',
             'categories:id,name,slug',
-            'images:id,product_id,path,alt,is_primary,sort_order',
+            'images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
             'variants' => fn ($query) => $query
                 ->where('is_active', true)
                 ->with([
                     'values.type:id,name',
-                    'images:id,product_variant_id,path,alt,is_primary,sort_order',
+                    'images:id,product_variant_id,path,responsive_paths,alt,is_primary,sort_order',
                 ])
                 ->orderBy('id'),
         ]);
@@ -1413,7 +1402,7 @@ class ProductService
         $product->loadMissing([
             'brand:id,name',
             'categories:id,name,slug',
-            'images:id,product_id,path,alt,is_primary,sort_order',
+            'images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
             'faqs:id,product_id,product_variant_id,question,answer,is_active,position',
             'variants' => fn ($query) => $query
                 ->active()
@@ -1431,7 +1420,7 @@ class ProductService
                 ->with([
                     'values:id,variant_type_id,value',
                     'values.type:id,name',
-                    'images:id,product_variant_id,path,alt,is_primary,sort_order',
+                    'images:id,product_variant_id,path,responsive_paths,alt,is_primary,sort_order',
                 ])
                 ->orderBy('regular_price')
                 ->orderBy('id'),
@@ -1517,13 +1506,16 @@ class ProductService
         $stock = $this->resolveProductStock($product);
         $pricing = $this->toStorefrontPricingFromVariants($product->variants, $primaryVariant, $user, $product);
         $badges = $this->cardBadges($product, $pricing);
+        $image = $this->resolveProductImageMedia($product, $primaryVariant);
 
         return [
             'id' => (int) $product->id,
             'slug' => $product->slug,
             'name' => $product->name,
             'description' => $product->description,
-            'image' => $this->resolveProductImage($product, $primaryVariant),
+            'image' => $image['url'],
+            'image_srcset' => $image['srcset'],
+            'image_variants' => $image['variants'],
             'brand' => [
                 'name' => $product->brand?->name,
             ],
@@ -1553,19 +1545,29 @@ class ProductService
 
     public function resolveProductImage(Product $product, ?ProductVariant $variant = null): ?string
     {
+        return $this->resolveProductImageMedia($product, $variant)['url'];
+    }
+
+    public function resolveProductImageMedia(Product $product, ?ProductVariant $variant = null): array
+    {
+        return $this->toStorefrontImageMedia($this->resolveProductImageModel($product, $variant));
+    }
+
+    protected function resolveProductImageModel(Product $product, ?ProductVariant $variant = null): ?object
+    {
         $product->loadMissing('images');
 
         $primaryProductImage = $product->images->firstWhere('is_primary', true) ?? $product->images->first();
 
         if ($primaryProductImage) {
-            return $this->makeImageUrl($primaryProductImage->path);
+            return $primaryProductImage;
         }
 
         if ($variant) {
             $variant->loadMissing('images');
             $primaryVariantImage = $variant->images->firstWhere('is_primary', true) ?? $variant->images->first();
 
-            return $this->makeImageUrl($primaryVariantImage?->path);
+            return $primaryVariantImage;
         }
 
         return null;
@@ -1732,7 +1734,7 @@ class ProductService
         return [
             'brand:id,name,slug',
             'categories:id,name,slug',
-            'images:id,product_id,path,alt,is_primary,sort_order',
+            'images:id,product_id,path,responsive_paths,alt,is_primary,sort_order',
             'variants' => fn ($query) => $query
                 ->active()
                 ->select([
@@ -1797,12 +1799,39 @@ class ProductService
 
     protected function toStorefrontImagePayload($image): array
     {
+        $media = $this->toStorefrontImageMedia($image);
+
         return [
             'id' => (int) $image->id,
-            'url' => $this->makeImageUrl($image->path),
+            'url' => $media['url'],
+            'srcset' => $media['srcset'],
+            'variants' => $media['variants'],
             'alt' => $image->alt,
             'is_primary' => (bool) $image->is_primary,
             'sort_order' => (int) $image->sort_order,
+        ];
+    }
+
+    protected function toStorefrontImageMedia(?object $image): array
+    {
+        if (! $image) {
+            return [
+                'url' => null,
+                'srcset' => null,
+                'variants' => [],
+            ];
+        }
+
+        $variants = $this->imageOptimizer->toResponsiveUrls(
+            $image->responsive_paths ?? null,
+            $image->path ?? null,
+            $this->uploadsDisk()
+        );
+
+        return [
+            'url' => $this->makeImageUrl($image->path ?? null),
+            'srcset' => $this->imageOptimizer->srcset($variants),
+            'variants' => $variants,
         ];
     }
 
@@ -1952,30 +1981,5 @@ class ProductService
         return (string) config('filesystems.uploads_disk', 'public');
     }
 
-    protected function convertToWebpAndStore(UploadedFile $file, string $dir, string $disk): string
-    {
-        // Use the injected ImageManager to read the image
-        $image = $this->imageManager->read($file);
-
-        // Generate a unique filename and path (using .webp extension)
-        $filename = Str::random(40) . '.webp';
-        $fullPath = $dir . '/' . $filename;
-
-        try {
-            $stored = Storage::disk($disk)->put($fullPath, $image->toWebp(70)->toString());
-        } catch (\Throwable $e) {
-            throw new \RuntimeException(
-                "Unable to store converted image on the [{$disk}] disk: {$e->getMessage()}",
-                previous: $e
-            );
-        }
-
-        if (! $stored) {
-            throw new \RuntimeException("Unable to store converted image on the [{$disk}] disk.");
-        }
-
-        // Return the path *relative* to the disk root
-        return $fullPath; // e.g., products/{id}/abc.webp
-    }
 }
 

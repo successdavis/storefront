@@ -365,9 +365,12 @@ onBeforeUnmount(() => {
                 <img
                     v-if="item.product?.image"
                     :src="item.product.image"
+                    :srcset="item.product.image_srcset || undefined"
+                    sizes="64px"
                     :alt="item.product?.name"
                     class="h-16 w-16 rounded-lg object-cover"
                     loading="lazy"
+                    decoding="async"
                 />
 
                 <div
