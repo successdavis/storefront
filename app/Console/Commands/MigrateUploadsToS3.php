@@ -14,7 +14,7 @@ class MigrateUploadsToS3 extends Command
 {
     protected $signature = 'storage:migrate-uploads-to-s3
         {--source=public : Source filesystem disk containing current server uploads}
-        {--target= : Target filesystem disk, defaults to filesystems.uploads_disk}
+        {--target=s3 : Target filesystem disk}
         {--path=* : Optional path prefix to limit migration, for example products or brands}
         {--delete : Delete each local source file after S3 upload and verification}
         {--dry-run : Show what would be migrated without writing or deleting files}
@@ -37,12 +37,14 @@ class MigrateUploadsToS3 extends Command
     public function handle(): int
     {
         $source = (string) $this->option('source');
-        $target = (string) ($this->option('target') ?: config('filesystems.uploads_disk', 's3'));
+        $target = (string) $this->option('target');
         $delete = (bool) $this->option('delete');
         $dryRun = (bool) $this->option('dry-run');
 
         if ($source === $target) {
             $this->error('Source and target disks must be different.');
+            $this->line('For the usual local-to-S3 migration, use:');
+            $this->line('  php artisan storage:migrate-uploads-to-s3 --source=public --target=s3 --dry-run');
 
             return self::FAILURE;
         }
@@ -54,7 +56,21 @@ class MigrateUploadsToS3 extends Command
         }
 
         $sourceDisk = Storage::disk($source);
-        $targetDisk = Storage::disk($target);
+        $targetDisk = null;
+
+        if (! $dryRun) {
+            if ($target === 's3' && ! class_exists(\League\Flysystem\AwsS3V3\PortableVisibilityConverter::class)) {
+                $this->error('The S3 filesystem adapter is not installed.');
+                $this->line('Install production Composer dependencies before running the migration:');
+                $this->line('  composer install --no-dev --optimize-autoloader');
+                $this->line('If composer.lock is not deployed yet, install the adapter explicitly:');
+                $this->line('  composer require league/flysystem-aws-s3-v3:^3.30');
+
+                return self::FAILURE;
+            }
+
+            $targetDisk = Storage::disk($target);
+        }
         $paths = $this->candidatePaths($source);
         $referencedPaths = $this->referencedMediaPaths();
 

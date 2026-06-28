@@ -574,7 +574,6 @@ Route::prefix('admin')
         Route::post('/purchase-orders/{purchaseOrder}/receive-items', [ItemReceiptController::class, 'store'])->name('item-receipts.store');
 
         Route::post('/vendors/store', [VendorController::class, 'store'])->name('vendors.store');
-        Route::get('/vendors-bills/create', [VendorController::class, 'store'])->name('vendor-bills.create');
 
         Route::resource('vendor-bills', VendorBillController::class)->except('store');
         Route::post('vendor-bills/store', [VendorBillController::class, 'store'])->name('vendor-bills.store');
