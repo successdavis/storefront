@@ -5,16 +5,55 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
+use App\Support\MediaUrl;
 
 class Category extends Model
 {
     use HasFactory, Notifiable;
 
+    protected $appends = [
+        'banner_url',
+        'icon_url',
+        'cover_image_url',
+    ];
+
     protected $fillable = [
         'name',
         'description',
-        'parent_id'
+        'parent_id',
+        'order',
+        'featured',
+        'meta_title',
+        'meta_description',
+        'slug',
+        'banner',
+        'icon',
+        'cover_image',
     ];
+
+    public function getBannerUrlAttribute(): ?string
+    {
+        return $this->mediaUrl($this->banner);
+    }
+
+    public function getIconUrlAttribute(): ?string
+    {
+        return $this->mediaUrl($this->icon);
+    }
+
+    public function getCoverImageUrlAttribute(): ?string
+    {
+        return $this->mediaUrl($this->cover_image);
+    }
+
+    protected function mediaUrl(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        return MediaUrl::make($path);
+    }
 
     /**
      * 🔗 Parent category (if this is a sub-category)

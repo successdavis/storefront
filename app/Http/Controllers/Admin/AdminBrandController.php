@@ -50,7 +50,7 @@ class AdminBrandController extends Controller
 
         // Handle logo upload
         if ($request->hasFile('logo')) {
-            $data['logo'] = $request->file('logo')->store('brands', 'public');
+            $data['logo'] = $request->file('logo')->store('brands', config('filesystems.uploads_disk'));
         }
 
         Brand::create($data);
@@ -84,10 +84,11 @@ class AdminBrandController extends Controller
 
         // Logo
         if ($request->hasFile('logo')) {
-            $newPath = $request->file('logo')->store('brands', 'public');
+            $disk = config('filesystems.uploads_disk');
+            $newPath = $request->file('logo')->store('brands', $disk);
             // delete old if exists
-            if ($brand->logo && Storage::disk('public')->exists($brand->logo)) {
-                Storage::disk('public')->delete($brand->logo);
+            if ($brand->logo && Storage::disk($disk)->exists($brand->logo)) {
+                Storage::disk($disk)->delete($brand->logo);
             }
             $data['logo'] = $newPath;
         }
@@ -100,8 +101,10 @@ class AdminBrandController extends Controller
 
     public function destroy(Brand $brand)
     {
-        if ($brand->logo && Storage::disk('public')->exists($brand->logo)) {
-            Storage::disk('public')->delete($brand->logo);
+        $disk = config('filesystems.uploads_disk');
+
+        if ($brand->logo && Storage::disk($disk)->exists($brand->logo)) {
+            Storage::disk($disk)->delete($brand->logo);
         }
 
         $brand->delete();

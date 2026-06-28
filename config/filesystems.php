@@ -15,6 +15,13 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
+    'uploads_disk' => env(
+        'FILESYSTEM_UPLOADS_DISK',
+        env('FILESYSTEM_DISK', 'local') === 's3' ? 's3' : 'public'
+    ),
+
+    'temporary_url_minutes' => env('FILESYSTEM_TEMPORARY_URL_MINUTES', 1440),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks
@@ -56,8 +63,8 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
-            'report' => false,
+            'throw' => env('FILESYSTEM_S3_THROW', true),
+            'report' => env('FILESYSTEM_S3_REPORT', true),
         ],
 
     ],

@@ -149,10 +149,12 @@ class AdminCategoryController extends Controller
             'cover_image'      => ['nullable','image','max:4096'],
         ]);
 
-        // Handle files (store in storage/app/public/categories)
+        $disk = config('filesystems.uploads_disk');
+
+        // Handle files on the configured uploads disk.
         foreach (['banner','icon','cover_image'] as $key) {
             if ($request->hasFile($key)) {
-                $data[$key] = $request->file($key)->store('categories', 'public');
+                $data[$key] = $request->file($key)->store('categories', $disk);
             }
         }
 
@@ -195,9 +197,11 @@ class AdminCategoryController extends Controller
             'cover_image'      => ['nullable', 'image', 'max:4096'],
         ]);
 
+        $disk = config('filesystems.uploads_disk');
+
         foreach (['banner', 'icon', 'cover_image'] as $key) {
             if ($request->hasFile($key)) {
-                $data[$key] = $request->file($key)->store('categories', 'public');
+                $data[$key] = $request->file($key)->store('categories', $disk);
             }
         }
 
@@ -233,9 +237,11 @@ class AdminCategoryController extends Controller
         }
 
         // Optional: delete related files if you store banners/icons/covers
+        $disk = config('filesystems.uploads_disk');
+
         foreach (['banner', 'icon', 'cover_image'] as $field) {
-            if ($category->$field && \Storage::disk('public')->exists($category->$field)) {
-                \Storage::disk('public')->delete($category->$field);
+            if ($category->$field && \Storage::disk($disk)->exists($category->$field)) {
+                \Storage::disk($disk)->delete($category->$field);
             }
         }
 

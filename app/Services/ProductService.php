@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Domain\Inventory\Alerts\InventoryAlertEngine;
+use App\Support\MediaUrl;
 use App\Models\{Admin\ProductImage,
     Admin\VariantImage,
     Discount,
@@ -76,7 +77,7 @@ class ProductService
     public function syncImages(Product $product, array $images): void
     {
         DB::transaction(function () use ($product, $images) {
-            $disk = 'public';
+            $disk = $this->uploadsDisk();
             $dir  = "products/{$product->id}";
             $seen = [];
             $primaryRequested = false;
@@ -675,7 +676,7 @@ class ProductService
     protected function syncVariantImages(ProductVariant $variant, array $images): void
     {
         $seen = [];
-        $disk = 'public';
+        $disk = $this->uploadsDisk();
         // Use a variant-specific directory for better organization
         $dir  = "variants/{$variant->id}";
 
@@ -1547,11 +1548,7 @@ class ProductService
             return null;
         }
 
-        if (Str::startsWith($path, ['http://', 'https://', '/'])) {
-            return $path;
-        }
-
-        return Storage::url($path);
+        return MediaUrl::make($path, $this->uploadsDisk());
     }
 
     public function resolveProductImage(Product $product, ?ProductVariant $variant = null): ?string
@@ -1950,6 +1947,11 @@ class ProductService
         $product->categories()->sync($category_ids);
     }
 
+    protected function uploadsDisk(): string
+    {
+        return (string) config('filesystems.uploads_disk', 'public');
+    }
+
     protected function convertToWebpAndStore(UploadedFile $file, string $dir, string $disk): string
     {
         // Use the injected ImageManager to read the image
@@ -1959,12 +1961,18 @@ class ProductService
         $filename = Str::random(40) . '.webp';
         $fullPath = $dir . '/' . $filename;
 
-        // Get the full system path for saving
-        $diskPath = Storage::disk($disk)->path($fullPath);
+        try {
+            $stored = Storage::disk($disk)->put($fullPath, $image->toWebp(70)->toString());
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                "Unable to store converted image on the [{$disk}] disk: {$e->getMessage()}",
+                previous: $e
+            );
+        }
 
-        Storage::disk($disk)->makeDirectory($dir);
-
-        $image->toWebp(70)->save($diskPath);
+        if (! $stored) {
+            throw new \RuntimeException("Unable to store converted image on the [{$disk}] disk.");
+        }
 
         // Return the path *relative* to the disk root
         return $fullPath; // e.g., products/{id}/abc.webp

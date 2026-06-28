@@ -11,8 +11,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator as PaginationLengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Throwable;
 
 class CategoryPriceListReportService
 {
@@ -213,6 +215,20 @@ class CategoryPriceListReportService
                 $contents = base64_encode((string) File::get($path));
 
                 return sprintf('data:%s;base64,%s', $mime, $contents);
+            }
+        }
+
+        if ($imageUrl && Str::startsWith($imageUrl, ['http://', 'https://'])) {
+            try {
+                $response = Http::timeout(10)->get($imageUrl);
+
+                if ($response->successful()) {
+                    $mime = $response->header('Content-Type') ?: 'image/png';
+
+                    return sprintf('data:%s;base64,%s', $mime, base64_encode($response->body()));
+                }
+            } catch (Throwable) {
+                //
             }
         }
 

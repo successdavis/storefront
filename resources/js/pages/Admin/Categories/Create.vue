@@ -59,9 +59,9 @@ const coverPreview = ref(null)
 
 onMounted(() => {
     if (isEdit.value) {
-        bannerPreview.value = guessAssetUrl(props.category?.banner)
-        iconPreview.value = guessAssetUrl(props.category?.icon)
-        coverPreview.value = guessAssetUrl(props.category?.cover_image)
+        bannerPreview.value = props.category?.banner_url ?? guessAssetUrl(props.category?.banner)
+        iconPreview.value = props.category?.icon_url ?? guessAssetUrl(props.category?.icon)
+        coverPreview.value = props.category?.cover_image_url ?? guessAssetUrl(props.category?.cover_image)
     }
 })
 

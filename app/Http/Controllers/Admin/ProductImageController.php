@@ -47,7 +47,7 @@ class ProductImageController extends Controller
 
     public function destroy(Product $product, ProductImage $image): \Illuminate\Http\Response
     {
-        Storage::disk('public')->delete($image->path);
+        Storage::disk(config('filesystems.uploads_disk'))->delete($image->path);
         $image->delete();
         return response()->noContent();
     }
