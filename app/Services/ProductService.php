@@ -1416,6 +1416,8 @@ class ProductService
                     'sale_starts_at',
                     'sale_ends_at',
                     'is_active',
+                    'fulfillment_type',
+                    'show_as_available_when_dropshipping',
                 ])
                 ->with([
                     'values:id,variant_type_id,value',
@@ -1443,6 +1445,10 @@ class ProductService
         return [
             ...$card,
             'description' => $product->description,
+            'meta_title' => $product->meta_title,
+            'meta_description' => $product->meta_description,
+            'created_at' => optional($product->created_at)?->toIso8601String(),
+            'updated_at' => optional($product->updated_at)?->toIso8601String(),
             'brand' => [
                 'name' => $product->brand?->name,
             ],

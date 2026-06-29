@@ -1,8 +1,9 @@
 <script setup>
 import Pagination from '@/components/Pagination.vue'
 import ProductGrid from '@/components/Storefront/ProductGrid.vue'
+import SeoHead from '@/components/Storefront/SeoHead.vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Link, router } from '@inertiajs/vue3'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 defineOptions({ layout: StorefrontLayout })
@@ -27,6 +28,14 @@ const props = defineProps({
     infiniteScroll: {
         type: Boolean,
         default: false,
+    },
+    seo: {
+        type: Object,
+        default: () => ({}),
+    },
+    structuredData: {
+        type: Array,
+        default: () => [],
     },
 })
 
@@ -139,7 +148,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <SeoHead :seo="seo" :structured-data="structuredData" />
 
     <section class="rounded-[2rem] border border-amber-100/80 bg-white/90 p-6 shadow-xl shadow-amber-100/40 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-black/20">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

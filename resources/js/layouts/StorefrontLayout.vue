@@ -10,6 +10,7 @@ useStorefrontLocation()
 const authUser = computed(() => page.props.auth?.user ?? null)
 const cartCount = computed(() => Number(page.props.cartCount ?? 0))
 const categories = computed(() => Array.isArray(page.props.categories) ? page.props.categories : [])
+const siteName = computed(() => page.props.storefront?.siteName || 'S-Tech-Max LTD')
 const initialQuery = computed(() => {
     if (typeof window === 'undefined') {
         return ''
@@ -17,6 +18,12 @@ const initialQuery = computed(() => {
 
     return new URLSearchParams(window.location.search).get('q') || ''
 })
+
+function categoryHref(category) {
+    return category?.slug
+        ? route('store.category', category.slug)
+        : route('store.category.legacy', category.id)
+}
 </script>
 
 <template>
@@ -28,7 +35,7 @@ const initialQuery = computed(() => {
                         :href="route('store.home')"
                         class="min-w-0 truncate text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl"
                     >
-                        S-Tech-Max LTD
+                        {{ siteName }}
                     </Link>
 
                     <div class="flex shrink-0 items-center gap-2">
@@ -69,7 +76,7 @@ const initialQuery = computed(() => {
 
             <div class="mx-auto hidden w-full max-w-8xl items-center gap-4 px-4 py-4 sm:px-6 md:flex lg:px-12">
                 <Link :href="route('store.home')" class="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                    S-Tech-Max LTD
+                    {{ siteName }}
                 </Link>
 
                 <StorefrontSearchBar :initial-query="initialQuery" />
@@ -115,7 +122,7 @@ const initialQuery = computed(() => {
                     <Link
                         v-for="category in categories"
                         :key="category.id"
-                        :href="route('store.category', category.id)"
+                        :href="categoryHref(category)"
                         class="whitespace-nowrap rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-amber-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-amber-400"
                     >
                         {{ category.name }}

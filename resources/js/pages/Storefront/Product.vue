@@ -1,12 +1,13 @@
 <script setup>
 import axios from 'axios'
-import { Head, router, usePage } from '@inertiajs/vue3'
+import { router, usePage } from '@inertiajs/vue3'
 import { Heart } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import AddToCartButton from '@/components/Storefront/AddToCartButton.vue'
 import ProductGallery from '@/components/Storefront/ProductGallery.vue'
 import ProductGrid from '@/components/Storefront/ProductGrid.vue'
+import SeoHead from '@/components/Storefront/SeoHead.vue'
 
 defineOptions({ layout: StorefrontLayout })
 
@@ -16,6 +17,14 @@ const props = defineProps({
         required: true,
     },
     relatedProducts: {
+        type: Array,
+        default: () => [],
+    },
+    seo: {
+        type: Object,
+        default: () => ({}),
+    },
+    structuredData: {
         type: Array,
         default: () => [],
     },
@@ -220,7 +229,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Head :title="product.name" />
+    <SeoHead :seo="seo" :structured-data="structuredData" />
 
     <section class="grid gap-8 lg:grid-cols-2">
         <ProductGallery :images="gallery" :fallback-alt="product.name" />

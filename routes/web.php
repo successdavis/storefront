@@ -60,6 +60,7 @@ use App\Http\Controllers\PosController;
 use App\Http\Controllers\PosTerminalController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SeoController;
 use App\Http\Controllers\ShippingController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StockAdjustmentController;
@@ -81,6 +82,9 @@ use Inertia\Inertia;
 
 Route::redirect('/', '/store')->name('home');
 
+Route::get('/robots.txt', [SeoController::class, 'robots'])->name('seo.robots');
+Route::get('/sitemap.xml', [SeoController::class, 'sitemap'])->name('seo.sitemap');
+
 Route::post('/webhooks/paystack', [PaystackWebhookController::class, 'handle'])
     ->name('webhooks.paystack');
 
@@ -98,7 +102,8 @@ Route::prefix('store')->name('store.')->group(function () {
     Route::get('/search/suggestions', [StorefrontController::class, 'suggestions'])->name('search.suggestions');
     Route::get('/product/{product:slug}', [StorefrontController::class, 'product'])->name('product');
     Route::post('/product/{product:slug}/delivery-estimate', [StorefrontController::class, 'productDeliveryEstimate'])->name('product.delivery-estimate');
-    Route::get('/category/{category}', [StorefrontController::class, 'category'])->name('category');
+    Route::get('/categories/{category:slug}', [StorefrontController::class, 'category'])->name('category');
+    Route::get('/category/{category}', [StorefrontController::class, 'categoryRedirect'])->name('category.legacy');
     Route::get('/cart', [StorefrontController::class, 'cart'])->name('cart');
     Route::post('/location/browser', [StorefrontController::class, 'storeBrowserLocation'])->name('location.browser.store');
     Route::delete('/location/browser', [StorefrontController::class, 'clearBrowserLocation'])->name('location.browser.clear');

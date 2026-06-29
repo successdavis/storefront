@@ -77,8 +77,22 @@ class StorefrontController extends Controller
         ));
     }
 
+    public function categoryRedirect(Category $category): RedirectResponse
+    {
+        if (! $category->slug) {
+            abort(404);
+        }
+
+        return redirect()->route('store.category', ['category' => $category->slug], 301);
+    }
+
     public function product(Product $product): Response
     {
+        abort_unless(
+            $product->is_active && $product->variants()->active()->exists(),
+            404
+        );
+
         return Inertia::render('Storefront/Product', $this->storefrontService->productData($product));
     }
 

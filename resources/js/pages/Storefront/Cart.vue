@@ -1,8 +1,9 @@
 <script setup>
-import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import CartItem from '@/components/Storefront/CartItem.vue'
+import SeoHead from '@/components/Storefront/SeoHead.vue'
 import { route } from 'ziggy-js';
 
 defineOptions({ layout: StorefrontLayout })
@@ -39,6 +40,14 @@ const props = defineProps({
             wishlist: 0,
             saved_for_later: 0,
         }),
+    },
+    seo: {
+        type: Object,
+        default: () => ({}),
+    },
+    structuredData: {
+        type: Array,
+        default: () => [],
     },
 })
 
@@ -90,7 +99,7 @@ function removeSaved(id) {
 </script>
 
 <template>
-    <Head title="Shopping Cart" />
+    <SeoHead :seo="seo" :structured-data="structuredData" />
 
     <section class="mb-8 flex flex-wrap items-end justify-between gap-3">
         <div>

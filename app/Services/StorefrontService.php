@@ -20,6 +20,7 @@ class StorefrontService
         protected CustomerSavedItemService $savedItemService,
         protected CustomerLocationResolver $customerLocationResolver,
         protected DeliveryEstimateService $deliveryEstimateService,
+        protected SeoService $seoService,
     ) {}
 
     public function homeData(array $filters = []): array
@@ -40,6 +41,9 @@ class StorefrontService
         );
         $products = $this->enrichPaginatedCards($products, $browsingLocation);
 
+        $pageTitle = $this->resolveHomeTitle($search, $categoryId);
+        $pageDescription = $this->resolveHomeDescription($search, $categoryId);
+
         return array_merge([
             'filters' => [
                 'q' => $search,
@@ -50,8 +54,19 @@ class StorefrontService
             'featuredProducts' => $this->enrichCardPayloads($this->productService->getFeaturedProducts(8), $browsingLocation),
             'latestProducts' => $this->enrichCardPayloads($this->productService->getLatestProducts(8), $browsingLocation),
             'categoryPreviews' => $this->buildCategoryPreviews(4, 4, $browsingLocation),
-            'pageTitle' => $this->resolveHomeTitle($search, $categoryId),
+            'pageTitle' => $pageTitle,
             'browsingLocation' => $browsingLocation,
+            'seo' => $this->seoService->page(
+                title: $pageTitle === 'All Products' ? 'Shop Products Online' : $pageTitle,
+                description: $pageDescription,
+                canonical: route('store.home'),
+            ),
+            'structuredData' => $this->storefrontStructuredData([
+                $this->seoService->breadcrumbSchema([
+                    ['name' => 'Store', 'url' => route('store.home')],
+                ]),
+                $this->seoService->itemListSchema($products->getCollection()->all(), $pageTitle),
+            ]),
         ], $this->sharedData($browsingLocation));
     }
 
@@ -70,6 +85,8 @@ class StorefrontService
             description: 'Browse the full storefront catalog in one place.',
             browsingLocation: $browsingLocation,
             filters: ['per_page' => $perPage],
+            canonical: route('store.catalog'),
+            breadcrumbs: $this->collectionBreadcrumbs('Shop Catalog', route('store.catalog')),
         );
     }
 
@@ -88,6 +105,8 @@ class StorefrontService
             description: 'A curated list of highlighted products from the storefront.',
             browsingLocation: $browsingLocation,
             filters: ['per_page' => $perPage],
+            canonical: route('store.featured'),
+            breadcrumbs: $this->collectionBreadcrumbs('Featured Products', route('store.featured')),
         );
     }
 
@@ -109,6 +128,8 @@ class StorefrontService
             extra: [
                 'infiniteScroll' => true,
             ],
+            canonical: route('store.latest'),
+            breadcrumbs: $this->collectionBreadcrumbs('Latest Products', route('store.latest')),
         );
     }
 
@@ -124,7 +145,7 @@ class StorefrontService
         return $this->collectionData(
             products: $products,
             title: $category->name,
-            description: "Products available in the {$category->name} category.",
+            description: $category->meta_description ?: $category->description ?: "Products available in the {$category->name} category.",
             browsingLocation: $browsingLocation,
             filters: ['per_page' => $perPage],
             extra: [
@@ -135,6 +156,10 @@ class StorefrontService
                     'slug' => $category->slug,
                 ],
             ],
+            canonical: $this->categoryUrl($category),
+            seoTitle: $category->meta_title ?: $category->name,
+            image: $category->cover_image_url ?: $category->banner_url,
+            breadcrumbs: $this->categoryBreadcrumbs($category),
         );
     }
 
@@ -145,6 +170,21 @@ class StorefrontService
 
         if (($searchData['results'] ?? null) instanceof LengthAwarePaginator) {
             $searchData['results'] = $this->enrichPaginatedCards($searchData['results'], $browsingLocation);
+        }
+
+        if (($searchData['results'] ?? null) instanceof LengthAwarePaginator) {
+            $searchData['seo'] = $this->seoService->page(
+                title: $searchData['pageTitle'] ?? 'Search Results',
+                description: $this->searchDescription($searchData),
+                canonical: request()->fullUrl(),
+                options: [
+                    'robots' => SeoService::NOINDEX_ROBOTS,
+                    'pagination' => $this->seoService->paginationLinks($searchData['results']),
+                ],
+            );
+            $searchData['structuredData'] = $this->storefrontStructuredData([
+                $this->seoService->itemListSchema($searchData['results']->getCollection()->all(), $searchData['pageTitle'] ?? 'Search Results'),
+            ]);
         }
 
         return array_merge(
@@ -164,11 +204,40 @@ class StorefrontService
     public function productData(Product $product): array
     {
         $browsingLocation = $this->resolveBrowsingLocation();
+        $productPayload = $this->enrichProductPayload($this->productService->getProductDetails($product), $browsingLocation);
+        $canonical = route('store.product', $productPayload['slug']);
+        $primaryCategory = collect($productPayload['categories'] ?? [])->first();
+        $breadcrumbs = [
+            ['name' => 'Store', 'url' => route('store.home')],
+        ];
+
+        if (filled($primaryCategory['slug'] ?? null)) {
+            $breadcrumbs[] = [
+                'name' => $primaryCategory['name'],
+                'url' => route('store.category', ['category' => $primaryCategory['slug']]),
+            ];
+        }
+
+        $breadcrumbs[] = ['name' => $productPayload['name'], 'url' => $canonical];
 
         return array_merge([
-            'product' => $this->enrichProductPayload($this->productService->getProductDetails($product), $browsingLocation),
+            'product' => $productPayload,
             'relatedProducts' => $this->enrichCardPayloads($this->productService->getRelatedProducts($product, 8), $browsingLocation),
             'browsingLocation' => $browsingLocation,
+            'seo' => $this->seoService->page(
+                title: $productPayload['meta_title'] ?: $productPayload['name'],
+                description: $productPayload['meta_description'] ?: $productPayload['description'] ?: "Buy {$productPayload['name']} online from {$this->seoService->siteName()}.",
+                canonical: $canonical,
+                options: [
+                    'image' => $productPayload['image'] ?? data_get($productPayload, 'images.0.url'),
+                    'type' => 'product',
+                ],
+            ),
+            'structuredData' => $this->storefrontStructuredData([
+                $this->seoService->breadcrumbSchema($breadcrumbs),
+                $this->seoService->productSchema($productPayload, $canonical),
+                $this->seoService->faqSchema($productPayload['faqs'] ?? []),
+            ]),
         ], $this->sharedData($browsingLocation));
     }
 
@@ -197,6 +266,15 @@ class StorefrontService
             'savedForLater' => $savedForLater,
             'savedItemCounts' => $savedItemCounts,
             'browsingLocation' => $browsingLocation,
+            'seo' => $this->seoService->page(
+                title: 'Shopping Cart',
+                description: 'Review your cart and continue checkout.',
+                canonical: route('store.cart'),
+                options: [
+                    'robots' => SeoService::NOINDEX_ROBOTS,
+                ],
+            ),
+            'structuredData' => $this->storefrontStructuredData(),
         ], $this->sharedData($browsingLocation));
     }
 
@@ -281,6 +359,10 @@ class StorefrontService
             'cartCount' => $this->cartService->getCartCount(),
             'categories' => $this->productService->listStoreCategories(),
             'browsingLocation' => $browsingLocation,
+            'storefront' => [
+                'siteName' => $this->seoService->siteName(),
+                'tagline' => $this->seoService->tagline(),
+            ],
         ];
     }
 
@@ -291,6 +373,10 @@ class StorefrontService
         ?array $browsingLocation = null,
         array $filters = [],
         array $extra = [],
+        ?string $canonical = null,
+        ?string $seoTitle = null,
+        ?string $image = null,
+        array $breadcrumbs = [],
     ): array {
         return array_merge([
             'pageTitle' => $title,
@@ -298,6 +384,20 @@ class StorefrontService
             'products' => $products,
             'filters' => $filters,
             'browsingLocation' => $browsingLocation,
+            'seo' => $this->seoService->page(
+                title: $seoTitle ?: $title,
+                description: $description,
+                canonical: $canonical ?: url()->current(),
+                options: [
+                    'image' => $image,
+                    'robots' => $products->total() > 0 ? SeoService::INDEX_ROBOTS : SeoService::NOINDEX_ROBOTS,
+                    'pagination' => $this->seoService->paginationLinks($products),
+                ],
+            ),
+            'structuredData' => $this->storefrontStructuredData([
+                $this->seoService->breadcrumbSchema($breadcrumbs ?: $this->collectionBreadcrumbs($title, $canonical ?: url()->current())),
+                $this->seoService->itemListSchema($products->getCollection()->all(), $title),
+            ]),
         ], $this->sharedData($browsingLocation), $extra);
     }
 
@@ -313,6 +413,84 @@ class StorefrontService
         }
 
         return 'All Products';
+    }
+
+    protected function resolveHomeDescription(string $search, ?int $categoryId): string
+    {
+        if ($search !== '') {
+            return "Find products matching {$search} in the storefront catalog.";
+        }
+
+        if ($categoryId) {
+            $categoryName = Category::query()->whereKey($categoryId)->value('name');
+
+            if ($categoryName) {
+                return "Shop {$categoryName} products and compare available options.";
+            }
+        }
+
+        return 'Shop featured, latest, and category-based products from the storefront catalog.';
+    }
+
+    protected function storefrontStructuredData(array $schemas = []): array
+    {
+        return collect([
+            $this->seoService->organizationSchema(),
+            $this->seoService->websiteSchema(),
+            ...$schemas,
+        ])->filter()->values()->all();
+    }
+
+    protected function collectionBreadcrumbs(string $title, string $url): array
+    {
+        return [
+            ['name' => 'Store', 'url' => route('store.home')],
+            ['name' => $title, 'url' => $url],
+        ];
+    }
+
+    protected function categoryBreadcrumbs(Category $category): array
+    {
+        $breadcrumbs = [
+            ['name' => 'Store', 'url' => route('store.home')],
+        ];
+
+        foreach ($category->getParentTree() as $ancestor) {
+            if (filled($ancestor->slug)) {
+                $breadcrumbs[] = [
+                    'name' => $ancestor->name,
+                    'url' => $this->categoryUrl($ancestor),
+                ];
+            }
+        }
+
+        $breadcrumbs[] = [
+            'name' => $category->name,
+            'url' => $this->categoryUrl($category),
+        ];
+
+        return $breadcrumbs;
+    }
+
+    protected function categoryUrl(Category $category): string
+    {
+        if (filled($category->slug)) {
+            return route('store.category', ['category' => $category->slug]);
+        }
+
+        return route('store.category.legacy', $category);
+    }
+
+    protected function searchDescription(array $searchData): string
+    {
+        $query = trim((string) data_get($searchData, 'summary.query', ''));
+        $total = (int) data_get($searchData, 'summary.total', 0);
+
+        if ($query !== '') {
+            return "Search results for {$query}, with {$total} matching products and filters for category, brand, price, and availability.";
+        }
+
+        return 'Search the storefront catalog by product name, category, brand, price, and availability.';
     }
 
     protected function resolveBrowsingLocation(): ?array

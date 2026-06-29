@@ -1,9 +1,10 @@
 <script setup>
-import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import ProductCarousel from '@/components/Storefront/ProductCarousel.vue'
 import ProductGrid from '@/components/Storefront/ProductGrid.vue'
+import SeoHead from '@/components/Storefront/SeoHead.vue'
 
 defineOptions({ layout: StorefrontLayout })
 
@@ -32,6 +33,14 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    seo: {
+        type: Object,
+        default: () => ({}),
+    },
+    structuredData: {
+        type: Array,
+        default: () => [],
+    },
 })
 
 const page = usePage()
@@ -51,11 +60,17 @@ function applyFilters() {
     )
 }
 
+function categoryHref(category) {
+    return category?.slug
+        ? route('store.category', category.slug)
+        : route('store.category.legacy', category.id)
+}
+
 const hasProducts = computed(() => Array.isArray(props.products?.data) && props.products.data.length > 0)
 </script>
 
 <template>
-    <Head title="Storefront" />
+    <SeoHead :seo="seo" :structured-data="structuredData" />
 
 <!--    <section class="relative overflow-hidden rounded-3xl bg-slate-900 px-6 py-10 text-white shadow-2xl sm:px-10">-->
 <!--        <div class="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-400/40 blur-2xl" />-->
@@ -145,7 +160,7 @@ const hasProducts = computed(() => Array.isArray(props.products?.data) && props.
                         <p class="text-xs text-slate-500 dark:text-slate-300">{{ category.active_products_count }} active products</p>
                     </div>
                     <Link
-                        :href="route('store.category', category.id)"
+                        :href="categoryHref(category)"
                         class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400"
                     >
                         View Category

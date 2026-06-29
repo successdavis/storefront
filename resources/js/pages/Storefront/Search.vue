@@ -1,10 +1,11 @@
 <script setup>
 import SearchFilterSidebar from '@/components/Storefront/SearchFilterSidebar.vue'
 import ProductCard from '@/components/Storefront/ProductCard.vue'
+import SeoHead from '@/components/Storefront/SeoHead.vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Link, router } from '@inertiajs/vue3'
 import { FilterX, LoaderCircle, SearchX, SlidersHorizontal, X } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
@@ -44,6 +45,14 @@ const props = defineProps({
         default: () => [],
     },
     activeFilters: {
+        type: Array,
+        default: () => [],
+    },
+    seo: {
+        type: Object,
+        default: () => ({}),
+    },
+    structuredData: {
         type: Array,
         default: () => [],
     },
@@ -261,7 +270,7 @@ function visitPage(url) {
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <SeoHead :seo="seo" :structured-data="structuredData" />
 
     <section class="rounded-[2rem] border border-amber-100/80 bg-white/90 p-6 shadow-xl shadow-amber-100/40 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-black/20">
         <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">

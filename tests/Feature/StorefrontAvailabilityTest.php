@@ -245,7 +245,7 @@ class StorefrontAvailabilityTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->get(route('store.category', $laptops))
+        $this->get(route('store.category', ['category' => $laptops->slug]))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Storefront/Collection')
