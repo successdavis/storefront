@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /account
+Disallow: /checkout
+Disallow: /cart
+Disallow: /store/cart
+Disallow: /store/search
+Disallow: /login
+Disallow: /register
+Disallow: /settings
+Disallow: /payment
+Disallow: /order-success
+
+Sitemap: https://store.stechmax.com/sitemap.xml
