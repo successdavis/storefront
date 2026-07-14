@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\InventoryService;
 use App\Services\OrderService;
+use App\Services\ProductService;
 use App\Support\RoleNames;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -25,7 +26,8 @@ use Milon\Barcode\DNS1D;
 class PosController extends Controller
 {
     public function __construct(
-        protected InventoryService $inventoryService  // ✅ Inject the inventory service
+        protected InventoryService $inventoryService,  // ✅ Inject the inventory service
+        protected ProductService $productService
     ) {
     }
 
@@ -51,7 +53,7 @@ class PosController extends Controller
 
         $variantsQuery = ProductVariant::query()
             ->active()
-            ->with(['product', 'product.images', 'values.type'])
+            ->with(['product', 'product.images', 'images', 'values.type'])
             ->when($q, function ($query, $q) {
                 $query->where(function ($q2) use ($q) {
                     $q2->where('sku', 'like', "%{$q}%")
@@ -69,15 +71,7 @@ class PosController extends Controller
         $variants = $variantsQuery->paginate($perPage)->withQueryString();
 
         // append readable variant values
-        $variants->getCollection()->transform(function ($variant) {
-            $variant->variant_values = $variant->values->pluck('name')->join(' / ');
-            $variant->requires_local_stock = $variant->requiresLocalStock();
-            $variant->is_dropshipping = $variant->isDropshipping();
-            $variant->is_sellable = $variant->requiresLocalStock()
-                ? (($variant->quantity - ($variant->reserved ?? 0)) > 0)
-                : (bool) $variant->show_as_available_when_dropshipping;
-            return $variant;
-        });
+        $variants->getCollection()->transform(fn (ProductVariant $variant) => $this->decoratePosVariant($variant));
 
         $categories = Category::orderBy('name')->get(['id','name']);
         $brands = Brand::orderBy('name')->get(['id','name']);
@@ -106,7 +100,7 @@ class PosController extends Controller
 
         $variants = ProductVariant::query()
             ->active()
-            ->with(['product', 'product.images', 'values.type'])
+            ->with(['product', 'product.images', 'images', 'values.type'])
             ->when($barcode !== '', function ($query) use ($barcode) {
                 $query->where(function ($barcodeQuery) use ($barcode) {
                     $barcodeQuery
@@ -137,6 +131,9 @@ class PosController extends Controller
         $variant->is_sellable = $variant->requiresLocalStock()
             ? (($variant->quantity - ($variant->reserved ?? 0)) > 0)
             : (bool) $variant->show_as_available_when_dropshipping;
+        $variant->image_url = $variant->product
+            ? $this->productService->resolveProductImage($variant->product, $variant)
+            : null;
 
         return $variant;
     }

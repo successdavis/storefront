@@ -6,6 +6,7 @@ use App\Domain\Inventory\Barcode\BarcodeService;
 use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\ProductVariant;
 use App\Models\Setting;
+use App\Services\ProductService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -16,6 +17,7 @@ class BarcodePrintController extends Controller
     public function __construct(
         protected BarcodeService $barcodeService,
         protected VariantNameFormatter $variantNameFormatter,
+        protected ProductService $productService,
     ) {}
 
     public function index(Request $request): Response
@@ -66,6 +68,7 @@ class BarcodePrintController extends Controller
         $variants = ProductVariant::query()
             ->with([
                 'product:id,name',
+                'product.categories:id',
                 'values:id,variant_type_id,value',
                 'values.type:id,name',
             ])
@@ -79,11 +82,15 @@ class BarcodePrintController extends Controller
 
         $currency = (string) Setting::get('business_currency', 'NGN');
         $labels = $variants->map(function (ProductVariant $variant) use ($currency): array {
+            // Same effective price the storefront/POS charge: regular price with
+            // any automatic line-item discount rules applied (anonymous pricing).
+            $pricing = $this->productService->resolveVariantPricing($variant, null, $variant->product, false);
+
             return [
                 'name' => $this->variantNameFormatter->format($variant),
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,
-                'price' => $this->formatPrice((float) $variant->regular_price, $currency),
+                'price' => $this->formatPrice((float) $pricing['current'], $currency),
             ];
         })->values()->all();
 

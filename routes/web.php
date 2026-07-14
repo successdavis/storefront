@@ -606,6 +606,14 @@ Route::prefix('admin')
         Route::get('customers', [AdminCustomerController::class, 'index'])
             ->middleware('permission.any:admin.customers.view')
             ->name('customers.index');
+        // Literal customer paths must be registered before customers/{customer},
+        // otherwise the wildcard route captures them (e.g. POS customer search).
+        Route::get('customers/list', [CustomerController::class, 'list'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('customers.list');
+        Route::post('customers/store', [CustomerController::class, 'store'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('customers.store');
         Route::get('customers/export', [AdminCustomerController::class, 'export'])
             ->middleware('permission.any:admin.customers.export')
             ->name('customers.export');
@@ -682,10 +690,6 @@ Route::prefix('admin')
         // Sales and POS flow
         Route::resource('sales', SaleController::class)->only(['index', 'create', 'store', 'show']);
         Route::post('sales/{sale}/finalize', [SaleController::class, 'finalize'])->name('sales.finalize');
-
-        Route::get('/customers/list', [CustomerController::class, 'list'])->name('customers.list');
-        Route::post('/customers/store', [CustomerController::class, 'store'])->name('customers.store');
-
 
         // Nested under a sale
 //        Route::resource('sales.items', SaleItemController::class)->shallow()->only(['store', 'update', 'destroy']);

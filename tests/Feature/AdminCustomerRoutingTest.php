@@ -48,4 +48,17 @@ class AdminCustomerRoutingTest extends TestCase
             ->get('/admin/customers/'.$customer->id)
             ->assertOk();
     }
+
+    public function test_pos_customer_list_route_is_not_shadowed_by_customer_show_wildcard(): void
+    {
+        $route = app('router')->getRoutes()->match(
+            \Illuminate\Http\Request::create('/admin/customers/list', 'GET')
+        );
+
+        $this->assertSame('admin.customers.list', $route->getName());
+        $this->assertSame(
+            \App\Http\Controllers\CustomerController::class.'@list',
+            ltrim($route->getActionName(), '\\')
+        );
+    }
 }

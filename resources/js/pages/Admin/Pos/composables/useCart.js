@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { usePage } from '@inertiajs/vue3';
 import axios from 'axios'
+import { variantImageUrl } from './variantImage.js';
 
 // module-level shared cart state (singleton)
 const cartItems = ref([])
@@ -107,7 +108,7 @@ export function useCart() {
                 name: variant.product?.name || variant.sku || 'Unnamed',
                 price: Number(variant.regular_price ?? 0),
                 quantity: 1,
-                image: '/storage/' + (variant.product?.images?.[0]?.path || 'images/placeholder.png'),
+                image: variantImageUrl(variant),
                 variant_label: variant.values?.map((v) => v.value).join(', ') ?? '',
                 stock_status: null,
             })

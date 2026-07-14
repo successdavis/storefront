@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
 import { eventBus } from '@/eventBus.js';
+import { variantImageUrl } from './variantImage.js';
 
 export function useProducts() {
     const page = usePage()
@@ -152,7 +153,7 @@ export function useProducts() {
             : 'bg-red-100 text-red-700'
     }
 
-    const imageUrl = (variant) => '/storage/' + (variant.product?.images?.[0]?.path || 'placeholder.png')
+    const imageUrl = (variant) => variantImageUrl(variant)
 
     return { variants, filters, categories, brands, reload, price, stockLabel, availableClass, imageUrl }
 }
