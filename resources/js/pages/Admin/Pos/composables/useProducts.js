@@ -43,7 +43,16 @@ export function useProducts() {
     watch(
         () => page.props.filters,
         (nextFilters) => {
-            filters.value = { ...(nextFilters ?? {}) }
+            const incoming = { ...(nextFilters ?? {}) }
+
+            // Never let a server echo overwrite the search box: responses lag
+            // behind keystrokes, so the echoed q can be older than what the
+            // user has typed by the time it arrives (it would truncate their
+            // input mid-type). The debounced q watcher below re-queries with
+            // the latest text anyway.
+            incoming.q = filters.value?.q ?? incoming.q
+
+            filters.value = incoming
         },
         { deep: true },
     )
