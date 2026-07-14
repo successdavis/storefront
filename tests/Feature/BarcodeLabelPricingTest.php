@@ -6,6 +6,7 @@ use App\Models\Discount;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Support\RoleNames;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
@@ -53,6 +54,30 @@ class BarcodeLabelPricingTest extends TestCase
         $this->assertStringContainsString('100.00', $labels[0]['price']);
     }
 
+    public function test_sales_representative_can_print_barcode_labels(): void
+    {
+        $variant = $this->makeVariant(100);
+
+        $rep = User::factory()->create();
+        $rep->syncRoles([RoleNames::SALES_REPRESENTATIVE]);
+
+        $labels = $this->printAndCaptureLabels($variant, $rep);
+
+        $this->assertCount(1, $labels);
+    }
+
+    public function test_customer_cannot_print_barcode_labels(): void
+    {
+        $variant = $this->makeVariant(100);
+
+        $customer = User::factory()->create();
+        $customer->syncRoles([RoleNames::CUSTOMER]);
+
+        $this->actingAs($customer)
+            ->post(route('barcodes.print'), ['variant_ids' => [$variant->id]])
+            ->assertForbidden();
+    }
+
     protected function makeVariant(float $regularPrice): ProductVariant
     {
         $product = Product::factory()->create(['name' => 'Labelled Product']);
@@ -66,8 +91,13 @@ class BarcodeLabelPricingTest extends TestCase
         ]);
     }
 
-    protected function printAndCaptureLabels(ProductVariant $variant): array
+    protected function printAndCaptureLabels(ProductVariant $variant, ?User $actor = null): array
     {
+        if (!$actor) {
+            $actor = User::factory()->create();
+            $actor->syncRoles([RoleNames::DIRECTOR]);
+        }
+
         $captured = null;
 
         $pdf = Mockery::mock(\Barryvdh\DomPDF\PDF::class);
@@ -83,7 +113,7 @@ class BarcodeLabelPricingTest extends TestCase
             })
             ->andReturn($pdf);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs($actor)
             ->post(route('barcodes.print'), ['variant_ids' => [$variant->id]])
             ->assertOk();
 

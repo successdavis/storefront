@@ -53,7 +53,7 @@ class PosController extends Controller
 
         $variantsQuery = ProductVariant::query()
             ->active()
-            ->with(['product', 'product.images', 'images', 'values.type'])
+            ->with(['product', 'product.images', 'product.categories:id', 'images', 'values.type'])
             ->when($q, function ($query, $q) {
                 $query->where(function ($q2) use ($q) {
                     $q2->where('sku', 'like', "%{$q}%")
@@ -100,7 +100,7 @@ class PosController extends Controller
 
         $variants = ProductVariant::query()
             ->active()
-            ->with(['product', 'product.images', 'images', 'values.type'])
+            ->with(['product', 'product.images', 'product.categories:id', 'images', 'values.type'])
             ->when($barcode !== '', function ($query) use ($barcode) {
                 $query->where(function ($barcodeQuery) use ($barcode) {
                     $barcodeQuery
@@ -134,6 +134,9 @@ class PosController extends Controller
         $variant->image_url = $variant->product
             ? $this->productService->resolveProductImage($variant->product, $variant)
             : null;
+        // Anonymous effective pricing (automatic discount rules applied); the
+        // checkout preview re-prices per selected customer before charging.
+        $variant->pricing = $this->productService->resolveVariantPricing($variant, null, $variant->product, false);
 
         return $variant;
     }

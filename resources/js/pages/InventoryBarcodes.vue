@@ -65,7 +65,7 @@ function toggleAllOnPage() {
 
 function applySearch() {
     router.get(
-        '/admin/barcodes',
+        window.location.pathname,
         {
             search: search.value || undefined,
         },

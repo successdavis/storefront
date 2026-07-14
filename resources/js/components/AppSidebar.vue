@@ -204,9 +204,10 @@ const salesNavItems: MainNavItem[] = [
         icon: Users,
     },
     {
-        title: 'Inventory Audit',
+        title: 'Inventory',
         icon: Boxes,
         subItems: [
+            { title: 'Barcode Labels', href: '/sales/inventory/barcodes' },
             { title: 'Stock Audit', href: '/sales/inventory/stock-audit' },
             { title: 'Mobile Audit', href: '/sales/inventory/stock-audit/mobile' },
             { title: 'Audit History', href: '/sales/inventory/stock-audit/history' },

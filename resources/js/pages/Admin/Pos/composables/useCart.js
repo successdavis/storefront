@@ -106,7 +106,10 @@ export function useCart() {
             cartItems.value.push({
                 variant_id: variant.id,
                 name: variant.product?.name || variant.sku || 'Unnamed',
-                price: Number(variant.regular_price ?? 0),
+                // Effective unit price (discount rules applied); server re-prices on preview/order.
+                price: Number(variant.pricing?.current ?? variant.regular_price ?? 0),
+                regular_price: Number(variant.pricing?.regular ?? variant.regular_price ?? 0),
+                discount_label: variant.pricing?.has_discount ? (variant.pricing?.discount_display_label ?? null) : null,
                 quantity: 1,
                 image: variantImageUrl(variant),
                 variant_label: variant.values?.map((v) => v.value).join(', ') ?? '',

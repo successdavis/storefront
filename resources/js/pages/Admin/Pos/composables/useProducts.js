@@ -13,7 +13,29 @@ export function useProducts() {
     watch(
         () => page.props.variants,
         (nextVariants) => {
-            variants.value = nextVariants ?? { data: [] }
+            const incoming = nextVariants ?? { data: [] }
+
+            // Pages beyond the first arrive via loadMore(): append instead of
+            // replacing so previously loaded products stay on screen.
+            if (
+                Number(incoming.current_page ?? 1) > 1
+                && Array.isArray(variants.value?.data)
+                && Array.isArray(incoming.data)
+            ) {
+                const seen = new Set(variants.value.data.map((variant) => Number(variant.id)))
+
+                variants.value = {
+                    ...incoming,
+                    data: [
+                        ...variants.value.data,
+                        ...incoming.data.filter((variant) => !seen.has(Number(variant.id))),
+                    ],
+                }
+
+                return
+            }
+
+            variants.value = incoming
         },
         { deep: true },
     )
@@ -31,6 +53,30 @@ export function useProducts() {
             preserveState: true,
             replace: true,
         })
+    }
+
+    const loadingMore = ref(false)
+
+    const loadMore = () => {
+        if (!variants.value?.next_page_url || loadingMore.value) {
+            return
+        }
+
+        loadingMore.value = true
+
+        router.get(
+            page.props.pos_routes.index,
+            { ...filters.value, page: Number(variants.value.current_page ?? 1) + 1 },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+                only: ['variants'],
+                onFinish: () => {
+                    loadingMore.value = false
+                },
+            },
+        )
     }
 
     const applyStockUpdates = (updates = []) => {
@@ -131,7 +177,12 @@ export function useProducts() {
     const debouncedReload = debounce(reload, 500)
     watch(() => filters.value.q, () => debouncedReload())
 
-    const price = (variant) => Number(variant.regular_price ?? 0).toFixed(2)
+    const price = (variant) => Number(variant.pricing?.current ?? variant.regular_price ?? 0).toFixed(2)
+    const regularPrice = (variant) => Number(variant.pricing?.regular ?? variant.regular_price ?? 0).toFixed(2)
+    const hasDiscount = (variant) => Boolean(variant.pricing?.has_discount)
+    const discountBadge = (variant) =>
+        variant.pricing?.discount_display_label
+        || (variant.pricing?.discount_percentage ? `-${variant.pricing.discount_percentage}%` : null)
     const stockLabel = (variant) => {
         if (variant.is_dropshipping) {
             return variant.is_sellable ? 'Dropshipping' : 'Supplier unavailable'
@@ -155,5 +206,5 @@ export function useProducts() {
 
     const imageUrl = (variant) => variantImageUrl(variant)
 
-    return { variants, filters, categories, brands, reload, price, stockLabel, availableClass, imageUrl }
+    return { variants, filters, categories, brands, reload, loadMore, loadingMore, price, regularPrice, hasDiscount, discountBadge, stockLabel, availableClass, imageUrl }
 }

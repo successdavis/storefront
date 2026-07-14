@@ -26,11 +26,17 @@
             <div class="absolute top-1 left-1 p-1 opacity-85">
               <span :class="availableClass(variant)" class="rounded px-2 py-1 text-xs font-medium">{{ stockLabel(variant) }}</span>
             </div>
+            <div v-if="hasDiscount(variant) && discountBadge(variant)" class="absolute top-1 right-1 p-1">
+              <span class="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white">{{ discountBadge(variant) }}</span>
+            </div>
           </div>
 
           <div class="mt-2 flex-1 px-3">
             <div class="truncate text-sm font-medium">{{ variant.product?.name || variant.sku }}</div>
-            <div class="mt-2 text-sm font-semibold text-blue-600 dark:text-blue-400">{{ formatCurrency(price(variant)) }}</div>
+            <div class="mt-2 flex flex-wrap items-baseline gap-x-2">
+              <span class="text-sm font-semibold text-blue-600 dark:text-blue-400">{{ formatCurrency(price(variant)) }}</span>
+              <span v-if="hasDiscount(variant)" class="text-xs text-gray-400 line-through dark:text-gray-500">{{ formatCurrency(regularPrice(variant)) }}</span>
+            </div>
             <div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ variant.values?.map(v => v.value).join(', ') }}</div>
           </div>
 
@@ -44,7 +50,14 @@
       </div>
 
       <div class="mt-6 text-center">
-        <button v-if="variants.next_page_url" @click="loadMore" class="rounded bg-blue-100 px-4 py-2 text-blue-700">Load More</button>
+        <button
+          v-if="variants.next_page_url"
+          @click="loadMore"
+          :disabled="loadingMore"
+          class="rounded bg-blue-100 px-4 py-2 text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {{ loadingMore ? 'Loading…' : 'Load More' }}
+        </button>
       </div>
     </div>
   </div>
@@ -56,7 +69,7 @@ import { useCart } from '../composables/useCart'
 import { useCurrencyFormatter } from '@/pages/Admin/Pos/composables/useCurrencyFormatter.js';
 
 
-const { variants, filters, categories, brands, reload, price, stockLabel, availableClass, imageUrl, loadMore } = useProducts()
+const { variants, filters, categories, brands, reload, price, regularPrice, hasDiscount, discountBadge, stockLabel, availableClass, imageUrl, loadMore, loadingMore } = useProducts()
 const { addToCart } = useCart()
 const { formatCurrency } = useCurrencyFormatter();
 

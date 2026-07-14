@@ -101,8 +101,20 @@
                 </div>
 
                 <div class="text-right">
+                    <div
+                        v-if="Number(item.regular_price || 0) > Number(item.price || 0)"
+                        class="text-xs text-gray-400 line-through dark:text-gray-500"
+                    >
+                        {{ formatCurrency(item.regular_price * item.quantity) }}
+                    </div>
                     <div class="font-semibold text-blue-600 dark:text-blue-400">
                         {{ formatCurrency(item.price * item.quantity) }}
+                    </div>
+                    <div
+                        v-if="item.discount_label && Number(item.regular_price || 0) > Number(item.price || 0)"
+                        class="mt-0.5 text-[11px] font-medium text-red-600 dark:text-red-400"
+                    >
+                        {{ item.discount_label }}
                     </div>
                     <button
                         @click="removeItem(item)"

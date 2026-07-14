@@ -89,8 +89,10 @@ Route::post('/webhooks/paystack', [PaystackWebhookController::class, 'handle'])
     ->name('webhooks.paystack');
 
 Route::get('dashboard', DashboardRedirectController::class)->middleware(['auth', 'verified'])->name('dashboard');
+// Shared by the admin (/admin/barcodes) and sales (/sales/inventory/barcodes)
+// label pages — allow exactly the audiences that can reach those pages.
 Route::post('/barcodes/print', [BarcodePrintController::class, 'print'])
-    ->middleware(['auth', 'verified'])
+    ->middleware(['auth', 'verified', 'permission.any:admin.access,sales.pos.use'])
     ->name('barcodes.print');
 
 Route::prefix('store')->name('store.')->group(function () {
@@ -236,6 +238,9 @@ Route::prefix('sales')
         Route::get('/pos/sales/{sale}/print', [PosController::class, 'printSaleOrder'])->middleware('permission.any:sales.pos.use')->name('pos.print');
         Route::get('/pos/products', [PosController::class, 'productsApi'])->middleware('permission.any:sales.pos.use')->name('pos.products.api');
 
+        Route::get('inventory/barcodes', [BarcodePrintController::class, 'index'])
+            ->middleware('permission.any:sales.pos.use')
+            ->name('barcodes.index');
         Route::get('inventory/stock-audit', [StockAuditController::class, 'index'])
             ->middleware('permission.any:sales.pos.use')
             ->name('inventory.stock-audit.index');

@@ -87,7 +87,7 @@ const quickLinks = computed(() =>
     >
         <div class="flex items-center gap-2">
             <SidebarTrigger class="-ml-1" />
-            <div class="flex items-center gap-1">
+            <div class="ml-6 flex items-center gap-3">
                 <TooltipProvider :delay-duration="0">
                     <Tooltip v-for="link in quickLinks" :key="link.title">
                         <TooltipTrigger>
