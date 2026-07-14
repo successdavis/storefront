@@ -1,6 +1,8 @@
 <script setup>
+import ImagePreviewModal from '@/components/ImagePreviewModal.vue'
 import Pagination from '@/components/Pagination.vue'
 import { Head, Link, router, useForm } from '@inertiajs/vue3'
+import { ImageOff } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -12,6 +14,23 @@ const props = defineProps({
 
 const selectedIds = ref([])
 const rowActionState = ref({})
+const imagePreview = ref(null)
+
+function openImagePreview(item) {
+    if (!item.image_url) {
+        return
+    }
+
+    imagePreview.value = {
+        url: item.image_url,
+        label: item.variant_label,
+        subtitle: item.variant_sku,
+    }
+}
+
+function closeImagePreview() {
+    imagePreview.value = null
+}
 const filters = ref({
     status: props.filters?.status || '',
 })
@@ -196,6 +215,7 @@ function iconButtonClass(tone = 'neutral') {
                             <th class="px-5 py-4">
                                 <input type="checkbox" :checked="allVisibleSelected" @change="toggleAll">
                             </th>
+                            <th class="px-5 py-4">Image</th>
                             <th class="px-5 py-4">Product Variant</th>
                             <th class="px-5 py-4 text-right">Previous</th>
                             <th class="px-5 py-4 text-right">Adjusted</th>
@@ -217,6 +237,25 @@ function iconButtonClass(tone = 'neutral') {
                                     :value="item.id"
                                     :disabled="!item.can_review"
                                 >
+                            </td>
+                            <td class="px-5 py-4">
+                                <button
+                                    v-if="item.image_url"
+                                    type="button"
+                                    class="block h-12 w-12 overflow-hidden rounded-xl border border-slate-200 transition hover:ring-2 hover:ring-slate-400 dark:border-slate-700 dark:hover:ring-slate-500"
+                                    title="View image"
+                                    :aria-label="`View image of ${item.variant_label}`"
+                                    @click="openImagePreview(item)"
+                                >
+                                    <img :src="item.image_url" :alt="item.variant_label" class="h-full w-full object-cover">
+                                </button>
+                                <div
+                                    v-else
+                                    class="flex h-12 w-12 items-center justify-center rounded-xl border border-dashed border-slate-200 text-slate-300 dark:border-slate-700 dark:text-slate-600"
+                                    title="No image"
+                                >
+                                    <ImageOff class="h-5 w-5" aria-hidden="true" />
+                                </div>
                             </td>
                             <td class="px-5 py-4">
                                 <p class="font-semibold text-slate-900 dark:text-slate-100">{{ item.variant_label }}</p>
@@ -290,7 +329,7 @@ function iconButtonClass(tone = 'neutral') {
                         </tr>
 
                         <tr v-if="!adjustments.data.length">
-                            <td colspan="10" class="px-5 py-14 text-center text-sm text-slate-500 dark:text-slate-400">
+                            <td colspan="11" class="px-5 py-14 text-center text-sm text-slate-500 dark:text-slate-400">
                                 No stock adjustments recorded yet.
                             </td>
                         </tr>
@@ -300,5 +339,7 @@ function iconButtonClass(tone = 'neutral') {
         </section>
 
         <Pagination :links="adjustments.links" />
+
+        <ImagePreviewModal :preview="imagePreview" @close="closeImagePreview" />
     </div>
 </template>

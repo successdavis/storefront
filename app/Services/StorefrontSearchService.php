@@ -44,7 +44,16 @@ class StorefrontSearchService
             ->with($this->searchRelations())
             ->get();
 
-        $items = $this->buildSearchItems($contextProducts, $user);
+        // Amazon-style relaxation: results normally require every search word
+        // to match somewhere; when that yields nothing, fall back to partial
+        // matches ranked by how many words they cover.
+        if ($contextProducts->isEmpty() && $filters['q'] !== '' && count($this->parseSearchTerms($filters['q'])) > 1) {
+            $contextProducts = $this->buildContextQuery($filters, false)
+                ->with($this->searchRelations())
+                ->get();
+        }
+
+        $items = $this->buildSearchItems($contextProducts, $user, $filters['q']);
         $facetedItems = $this->applyCollectionFilters($items, $filters, false);
         $filterData = $this->buildFilterData($facetedItems, $filters);
         $resultItems = $this->applyCollectionFilters($facetedItems, $filters, true);
@@ -81,10 +90,21 @@ class StorefrontSearchService
             ];
         }
 
-        $products = $this->buildSearchQuery($query)
+        $candidates = $this->buildSearchQuery($query)
             ->with($this->searchRelations())
-            ->limit(5)
-            ->get()
+            ->limit(40)
+            ->get();
+
+        if ($candidates->isEmpty() && count($this->parseSearchTerms($query)) > 1) {
+            $candidates = $this->buildSearchQuery($query, false)
+                ->with($this->searchRelations())
+                ->limit(40)
+                ->get();
+        }
+
+        $products = $candidates
+            ->sortByDesc(fn (Product $product) => $this->scoreProduct($product, $query))
+            ->take(5)
             ->map(function (Product $product) use ($user) {
                 $card = $this->productService->toStorefrontCard($product, $user, true);
 
@@ -102,12 +122,23 @@ class StorefrontSearchService
             })
             ->values();
 
+        $termPatterns = collect($this->parseSearchTerms($query))
+            ->flatten()
+            ->map(fn (string $term) => '%' . $term . '%')
+            ->values()
+            ->all();
+        if (empty($termPatterns)) {
+            $termPatterns = ['%' . $query . '%'];
+        }
+
         $categories = Category::query()
             ->select(['id', 'name', 'slug'])
-            ->where(function (Builder $queryBuilder) use ($query) {
-                $queryBuilder
-                    ->where('name', 'like', '%' . $query . '%')
-                    ->orWhere('slug', 'like', '%' . $query . '%');
+            ->where(function (Builder $queryBuilder) use ($termPatterns) {
+                foreach ($termPatterns as $pattern) {
+                    $queryBuilder
+                        ->orWhere('name', 'like', $pattern)
+                        ->orWhere('slug', 'like', $pattern);
+                }
             })
             ->whereHas('products', fn (Builder $productQuery) => $productQuery
                 ->where('is_active', true)
@@ -135,7 +166,11 @@ class StorefrontSearchService
 
         $brands = Brand::query()
             ->select(['id', 'name', 'slug'])
-            ->where('name', 'like', '%' . $query . '%')
+            ->where(function (Builder $queryBuilder) use ($termPatterns) {
+                foreach ($termPatterns as $pattern) {
+                    $queryBuilder->orWhere('name', 'like', $pattern);
+                }
+            })
             ->whereHas('products', fn (Builder $productQuery) => $productQuery
                 ->where('is_active', true)
                 ->whereHas('variants', fn (Builder $variantQuery) => $variantQuery->where('is_active', true)))
@@ -260,9 +295,9 @@ class StorefrontSearchService
         return $filters;
     }
 
-    protected function buildContextQuery(array $filters): Builder
+    protected function buildContextQuery(array $filters, bool $requireAllTerms = true): Builder
     {
-        return $this->buildSearchQuery($filters['q'])
+        return $this->buildSearchQuery($filters['q'], $requireAllTerms)
             ->when(!empty($filters['category']), function (Builder $query) use ($filters) {
                 $tokens = $filters['category'];
 
@@ -302,7 +337,7 @@ class StorefrontSearchService
             });
     }
 
-    protected function buildSearchQuery(?string $query): Builder
+    protected function buildSearchQuery(?string $query, bool $requireAllTerms = true): Builder
     {
         $search = trim((string) $query);
         $builder = Product::query()
@@ -316,103 +351,255 @@ class StorefrontSearchService
                 ->latest('products.created_at');
         }
 
-        $like = '%' . $search . '%';
-        $lower = mb_strtolower($search);
-        $prefix = $lower . '%';
-        $contains = '%' . $lower . '%';
+        $termGroups = $this->parseSearchTerms($search);
+        if (empty($termGroups)) {
+            $termGroups = [[mb_strtolower($search)]];
+        }
+
+        // Each word must match at least one field (name, brand, category,
+        // variant data, description). Relevance itself is scored in PHP —
+        // see scoreProduct() — so ordering here is only a candidate tiebreak.
+        $builder->where(function (Builder $queryBuilder) use ($termGroups, $requireAllTerms) {
+            foreach ($termGroups as $index => $expansions) {
+                $method = ($requireAllTerms || $index === 0) ? 'where' : 'orWhere';
+
+                $queryBuilder->{$method}(function (Builder $termQuery) use ($expansions) {
+                    $this->applyTermConstraint($termQuery, $expansions);
+                });
+            }
+        });
 
         return $builder
-            ->where(function (Builder $queryBuilder) use ($like) {
-                $queryBuilder
-                    ->where('products.name', 'like', $like)
-                    ->orWhere('products.slug', 'like', $like)
-                    ->orWhere('products.description', 'like', $like)
-                    ->orWhereHas('brand', fn (Builder $brandQuery) => $brandQuery->where('name', 'like', $like))
-                    ->orWhereHas('categories', function (Builder $categoryQuery) use ($like) {
-                        $categoryQuery
-                            ->where('name', 'like', $like)
-                            ->orWhere('slug', 'like', $like);
-                    })
-                    ->orWhereHas('variants', function (Builder $variantQuery) use ($like) {
-                        $variantQuery
-                            ->where('is_active', true)
-                            ->where(function (Builder $nested) use ($like) {
-                                $nested
-                                    ->where('sku', 'like', $like)
-                                    ->orWhere('barcode', 'like', $like)
-                                    ->orWhereHas('values', function (Builder $valueQuery) use ($like) {
-                                        $valueQuery
-                                            ->where('variant_values.value', 'like', $like)
-                                            ->orWhereHas('type', fn (Builder $typeQuery) => $typeQuery->where('name', 'like', $like));
-                                    });
-                            });
-                    });
-            })
-            ->selectRaw(
-                "(
-                    CASE WHEN LOWER(products.name) = ? THEN 400 ELSE 0 END +
-                    CASE WHEN LOWER(products.name) LIKE ? THEN 250 ELSE 0 END +
-                    CASE WHEN LOWER(products.slug) LIKE ? THEN 170 ELSE 0 END +
-                    CASE WHEN LOWER(products.name) LIKE ? THEN 120 ELSE 0 END +
-                    CASE WHEN LOWER(COALESCE(products.description, '')) LIKE ? THEN 40 ELSE 0 END +
-                    CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM brands
-                        WHERE brands.id = products.brand_id
-                          AND LOWER(brands.name) LIKE ?
-                    ) THEN 90 ELSE 0 END +
-                    CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM category_product
-                        INNER JOIN categories ON categories.id = category_product.category_id
-                        WHERE category_product.product_id = products.id
-                          AND (
-                            LOWER(categories.name) LIKE ?
-                            OR LOWER(COALESCE(categories.slug, '')) LIKE ?
-                          )
-                    ) THEN 80 ELSE 0 END +
-                    CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM product_variants
-                        WHERE product_variants.product_id = products.id
-                          AND product_variants.is_active = 1
-                          AND (
-                            LOWER(product_variants.sku) LIKE ?
-                            OR LOWER(COALESCE(product_variants.barcode, '')) LIKE ?
-                          )
-                    ) THEN 110 ELSE 0 END +
-                    CASE WHEN EXISTS (
-                        SELECT 1
-                        FROM product_variants
-                        INNER JOIN product_variant_values ON product_variant_values.product_variant_id = product_variants.id
-                        INNER JOIN variant_values ON variant_values.id = product_variant_values.variant_value_id
-                        INNER JOIN variant_types ON variant_types.id = variant_values.variant_type_id
-                        WHERE product_variants.product_id = products.id
-                          AND product_variants.is_active = 1
-                          AND (
-                            LOWER(variant_values.value) LIKE ?
-                            OR LOWER(variant_types.name) LIKE ?
-                          )
-                    ) THEN 70 ELSE 0 END
-                ) as relevance_score",
-                [
-                    $lower,
-                    $prefix,
-                    $prefix,
-                    $contains,
-                    $contains,
-                    $contains,
-                    $contains,
-                    $contains,
-                    $contains,
-                    $contains,
-                    $contains,
-                    $contains,
-                ]
-            )
-            ->orderByDesc('relevance_score')
             ->orderByDesc('products.featured')
             ->latest('products.created_at');
+    }
+
+    /**
+     * Split a query into lowercase word groups, each with its singular form
+     * so "laptops" also matches "laptop" (and vice versa via substring).
+     * Stopwords and one-character noise are dropped.
+     *
+     * @return array<int, array<int, string>>
+     */
+    protected function parseSearchTerms(string $search): array
+    {
+        $stopwords = ['the', 'a', 'an', 'and', 'or', 'for', 'with', 'of', 'in', 'on', 'to', 'by', 'from'];
+
+        $tokens = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(trim($search)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return collect($tokens)
+            ->filter(fn (string $token) => mb_strlen($token) >= 2 && !in_array($token, $stopwords, true))
+            ->unique()
+            ->take(6)
+            ->map(fn (string $token) => collect([$token, Str::singular($token)])
+                ->filter(fn (string $term) => mb_strlen($term) >= 2)
+                ->unique()
+                ->values()
+                ->all())
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    protected function applyTermConstraint(Builder $query, array $expansions): void
+    {
+        $patterns = array_map(fn (string $term) => '%' . $term . '%', $expansions);
+
+        $query->where(function (Builder $fieldQuery) use ($patterns) {
+            foreach ($patterns as $pattern) {
+                $fieldQuery
+                    ->orWhere('products.name', 'like', $pattern)
+                    ->orWhere('products.slug', 'like', $pattern)
+                    ->orWhere('products.description', 'like', $pattern);
+            }
+
+            $fieldQuery
+                ->orWhereHas('brand', function (Builder $brandQuery) use ($patterns) {
+                    $brandQuery->where(function (Builder $nested) use ($patterns) {
+                        foreach ($patterns as $pattern) {
+                            $nested->orWhere('name', 'like', $pattern);
+                        }
+                    });
+                })
+                ->orWhereHas('categories', function (Builder $categoryQuery) use ($patterns) {
+                    $categoryQuery->where(function (Builder $nested) use ($patterns) {
+                        foreach ($patterns as $pattern) {
+                            $nested
+                                ->orWhere('name', 'like', $pattern)
+                                ->orWhere('slug', 'like', $pattern);
+                        }
+                    });
+                })
+                ->orWhereHas('variants', function (Builder $variantQuery) use ($patterns) {
+                    $variantQuery
+                        ->where('is_active', true)
+                        ->where(function (Builder $nested) use ($patterns) {
+                            foreach ($patterns as $pattern) {
+                                $nested
+                                    ->orWhere('sku', 'like', $pattern)
+                                    ->orWhere('barcode', 'like', $pattern);
+                            }
+
+                            $nested->orWhereHas('values', function (Builder $valueQuery) use ($patterns) {
+                                $valueQuery->where(function (Builder $valueNested) use ($patterns) {
+                                    foreach ($patterns as $pattern) {
+                                        $valueNested
+                                            ->orWhere('variant_values.value', 'like', $pattern)
+                                            ->orWhereHas('type', fn (Builder $typeQuery) => $typeQuery->where('name', 'like', $pattern));
+                                    }
+                                });
+                            });
+                        });
+                });
+        });
+    }
+
+    /**
+     * Field-weighted relevance with phrase, coverage, and brand+category
+     * bonuses. Runs against eager-loaded relations, so no extra queries.
+     */
+    protected function scoreProduct(Product $product, string $search): float
+    {
+        $phrase = mb_strtolower(trim($search));
+        if ($phrase === '') {
+            return 0.0;
+        }
+
+        $termGroups = $this->parseSearchTerms($search);
+        if (empty($termGroups)) {
+            $termGroups = [[$phrase]];
+        }
+
+        $name = mb_strtolower((string) $product->name);
+        $slug = mb_strtolower((string) $product->slug);
+        $description = mb_strtolower((string) ($product->description ?? ''));
+        $brand = mb_strtolower((string) ($product->brand?->name ?? ''));
+
+        $categoryHaystacks = $product->categories
+            ->flatMap(fn (Category $category) => [$category->name, $category->slug])
+            ->filter()
+            ->map(fn ($value) => mb_strtolower((string) $value))
+            ->all();
+
+        $skuHaystacks = [];
+        $attributeHaystacks = [];
+        foreach ($product->variants->where('is_active', true) as $variant) {
+            foreach ([$variant->sku, $variant->barcode] as $code) {
+                if (filled($code)) {
+                    $skuHaystacks[] = mb_strtolower((string) $code);
+                }
+            }
+
+            foreach ($variant->values as $value) {
+                foreach ([$value->value, $value->type?->name] as $attribute) {
+                    if (filled($attribute)) {
+                        $attributeHaystacks[] = mb_strtolower((string) $attribute);
+                    }
+                }
+            }
+        }
+
+        $score = 0.0;
+
+        if ($name === $phrase) {
+            $score += 500;
+        } elseif (str_starts_with($name, $phrase)) {
+            $score += 300;
+        } elseif (str_contains($name, $phrase)) {
+            $score += 200;
+        }
+
+        $matchedTerms = 0;
+        $brandTermHit = false;
+        $categoryTermHit = false;
+
+        foreach ($termGroups as $expansions) {
+            $termMatched = false;
+
+            if ($this->haystackMatches($name, $expansions)) {
+                $score += 60;
+                $termMatched = true;
+
+                foreach ($expansions as $term) {
+                    if (str_starts_with($name, $term)) {
+                        $score += 20;
+                        break;
+                    }
+                }
+            }
+
+            if ($brand !== '' && $this->haystackMatches($brand, $expansions)) {
+                $score += 50;
+                $termMatched = true;
+                $brandTermHit = true;
+            }
+
+            if ($this->anyHaystackMatches($categoryHaystacks, $expansions)) {
+                $score += 45;
+                $termMatched = true;
+                $categoryTermHit = true;
+            }
+
+            if ($this->anyHaystackMatches($skuHaystacks, $expansions)) {
+                $score += 40;
+                $termMatched = true;
+            }
+
+            if ($this->anyHaystackMatches($attributeHaystacks, $expansions)) {
+                $score += 30;
+                $termMatched = true;
+            }
+
+            if ($slug !== '' && $this->haystackMatches($slug, $expansions)) {
+                $score += 25;
+                $termMatched = true;
+            }
+
+            if ($description !== '' && $this->haystackMatches($description, $expansions)) {
+                $score += 10;
+                $termMatched = true;
+            }
+
+            if ($termMatched) {
+                $matchedTerms++;
+            }
+        }
+
+        $termCount = count($termGroups);
+        if ($termCount > 0) {
+            $score += ($matchedTerms / $termCount) * 120;
+        }
+
+        // Query understanding: when one word names the brand and another the
+        // category ("dell laptops"), products actually in that brand AND
+        // category outrank ones that merely mention the words in text.
+        if ($termCount >= 2 && $brandTermHit && $categoryTermHit) {
+            $score += 150;
+        }
+
+        return round($score, 2);
+    }
+
+    protected function haystackMatches(string $haystack, array $terms): bool
+    {
+        foreach ($terms as $term) {
+            if ($term !== '' && str_contains($haystack, $term)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function anyHaystackMatches(array $haystacks, array $terms): bool
+    {
+        foreach ($haystacks as $haystack) {
+            if ($this->haystackMatches($haystack, $terms)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function searchRelations(): array
@@ -444,13 +631,13 @@ class StorefrontSearchService
         ];
     }
 
-    protected function buildSearchItems(Collection $products, ?User $user = null): Collection
+    protected function buildSearchItems(Collection $products, ?User $user = null, string $query = ''): Collection
     {
-        return $products->map(function (Product $product) use ($user) {
+        return $products->map(function (Product $product) use ($user, $query) {
             return [
                 'product' => $product,
                 'card' => $this->productService->toStorefrontCard($product, $user, true),
-                'relevance' => (float) ($product->relevance_score ?? 0),
+                'relevance' => $query !== '' ? $this->scoreProduct($product, $query) : 0.0,
                 'created_at' => $product->created_at?->getTimestamp() ?? 0,
             ];
         })->values();

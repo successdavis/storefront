@@ -1,4 +1,5 @@
 <script setup>
+import ImagePreviewModal from '@/components/ImagePreviewModal.vue'
 import Pagination from '@/components/Pagination.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -9,7 +10,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { Head, router } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
+import { AlarmClock, BellOff, Check, CheckCheck, ImageOff, RotateCcw } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -60,6 +62,39 @@ const selectedIds = ref([])
 const batchAction = ref('')
 const batchDialogOpen = ref(false)
 const batchReason = ref('')
+
+const imagePreview = ref(null)
+
+function openImagePreview(alert) {
+    if (!alert.image_url) {
+        return
+    }
+
+    imagePreview.value = {
+        url: alert.image_url,
+        label: alert.product,
+        subtitle: alert.sku ? `SKU: ${alert.sku}` : null,
+    }
+}
+
+function closeImagePreview() {
+    imagePreview.value = null
+}
+
+function actionIconClass(tone = 'neutral') {
+    const palette = {
+        neutral: 'border-gray-300 text-gray-700 hover:border-gray-500 dark:border-gray-600 dark:text-gray-200 dark:hover:border-gray-400',
+        snooze: 'border-amber-300 text-amber-700 hover:border-amber-500 dark:border-amber-700 dark:text-amber-300 dark:hover:border-amber-500',
+        suppress: 'border-rose-300 text-rose-700 hover:border-rose-500 dark:border-rose-700 dark:text-rose-300 dark:hover:border-rose-500',
+        reactivate: 'border-sky-300 text-sky-700 hover:border-sky-500 dark:border-sky-700 dark:text-sky-300 dark:hover:border-sky-500',
+        resolve: 'border-emerald-300 text-emerald-700 hover:border-emerald-500 dark:border-emerald-700 dark:text-emerald-300 dark:hover:border-emerald-500',
+    }
+
+    return [
+        'inline-flex h-9 w-9 items-center justify-center rounded-xl border transition disabled:opacity-50',
+        palette[tone] || palette.neutral,
+    ]
+}
 const batchSnoozeDays = ref('7')
 const batchSubmitting = ref(false)
 
@@ -549,6 +584,7 @@ function submitBatchAction() {
                                 />
                             </th>
                             <th class="px-4 py-3">Alert</th>
+                            <th class="px-4 py-3">Image</th>
                             <th class="px-4 py-3">Product</th>
                             <th class="px-4 py-3">Stock</th>
                             <th class="px-4 py-3">Timeline</th>
@@ -588,7 +624,34 @@ function submitBatchAction() {
                             </td>
 
                             <td class="px-4 py-4">
-                                <p class="max-w-md font-medium leading-snug text-gray-900 dark:text-gray-100">{{ alert.product }}</p>
+                                <button
+                                    v-if="alert.image_url"
+                                    type="button"
+                                    class="block h-12 w-12 overflow-hidden rounded-xl border border-gray-200 transition hover:ring-2 hover:ring-gray-400 dark:border-gray-700 dark:hover:ring-gray-500"
+                                    title="View image"
+                                    :aria-label="`View image of ${alert.product}`"
+                                    @click="openImagePreview(alert)"
+                                >
+                                    <img :src="alert.image_url" :alt="alert.product" class="h-full w-full object-cover">
+                                </button>
+                                <div
+                                    v-else
+                                    class="flex h-12 w-12 items-center justify-center rounded-xl border border-dashed border-gray-200 text-gray-300 dark:border-gray-700 dark:text-gray-600"
+                                    title="No image"
+                                >
+                                    <ImageOff class="h-5 w-5" aria-hidden="true" />
+                                </div>
+                            </td>
+
+                            <td class="px-4 py-4">
+                                <Link
+                                    v-if="alert.product_id"
+                                    :href="route('admin.products.show', alert.product_id)"
+                                    class="block max-w-md font-medium leading-snug text-gray-900 transition hover:text-blue-600 hover:underline dark:text-gray-100 dark:hover:text-blue-400"
+                                >
+                                    {{ alert.product }}
+                                </Link>
+                                <p v-else class="max-w-md font-medium leading-snug text-gray-900 dark:text-gray-100">{{ alert.product }}</p>
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">SKU: {{ alert.sku || 'N/A' }}</p>
                                 <span :class="['mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium', replenishmentClass(alert.replenishment_status)]">
                                     {{ replenishmentLabel(alert.replenishment_status) }}
@@ -623,55 +686,61 @@ function submitBatchAction() {
 
                             <td class="px-4 py-4">
                                 <div v-if="alert.status !== 'resolved'" class="flex flex-wrap justify-end gap-2">
-                                    <Button
+                                    <button
                                         v-if="!alert.acknowledged_at && alert.state === 'active'"
                                         type="button"
-                                        variant="outline"
-                                        size="sm"
+                                        :class="actionIconClass('neutral')"
+                                        title="Acknowledge"
+                                        aria-label="Acknowledge alert"
                                         @click="acknowledge(alert)"
                                     >
-                                        Acknowledge
-                                    </Button>
-                                    <Button
+                                        <Check class="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                    <button
                                         v-if="alert.state === 'active'"
                                         type="button"
-                                        variant="outline"
-                                        size="sm"
+                                        :class="actionIconClass('snooze')"
+                                        title="Snooze"
+                                        aria-label="Snooze alert"
                                         @click="openSnoozeDialog(alert)"
                                     >
-                                        Snooze
-                                    </Button>
-                                    <Button
+                                        <AlarmClock class="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                    <button
                                         v-if="alert.state !== 'suppressed'"
                                         type="button"
-                                        variant="outline"
-                                        size="sm"
+                                        :class="actionIconClass('suppress')"
+                                        title="Suppress"
+                                        aria-label="Suppress alert"
                                         @click="openReasonDialog(alert, 'suppress')"
                                     >
-                                        Suppress
-                                    </Button>
-                                    <Button
+                                        <BellOff class="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                    <button
                                         v-if="alert.state !== 'active'"
                                         type="button"
-                                        variant="outline"
-                                        size="sm"
+                                        :class="actionIconClass('reactivate')"
+                                        title="Reactivate"
+                                        aria-label="Reactivate alert"
                                         @click="reactivate(alert)"
                                     >
-                                        Reactivate
-                                    </Button>
-                                    <Button
+                                        <RotateCcw class="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                    <button
                                         type="button"
-                                        size="sm"
+                                        :class="actionIconClass('resolve')"
+                                        title="Resolve"
+                                        aria-label="Resolve alert"
                                         @click="openReasonDialog(alert, 'resolve')"
                                     >
-                                        Resolve
-                                    </Button>
+                                        <CheckCheck class="h-4 w-4" aria-hidden="true" />
+                                    </button>
                                 </div>
                                 <p v-else class="text-right text-xs text-gray-500 dark:text-gray-400">No open actions</p>
                             </td>
                         </tr>
                         <tr v-if="alerts.data.length === 0">
-                            <td colspan="7" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                            <td colspan="8" class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                                 No inventory alerts matched these filters.
                             </td>
                         </tr>
@@ -802,5 +871,7 @@ function submitBatchAction() {
                 </form>
             </DialogContent>
         </Dialog>
+
+        <ImagePreviewModal :preview="imagePreview" @close="closeImagePreview" />
     </div>
 </template>

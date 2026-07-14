@@ -6,6 +6,7 @@ use App\Enums\StockAdjustmentType;
 use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\ProductVariant;
 use App\Models\StockAdjustment;
+use App\Services\ProductService;
 use App\Services\StockAdjustmentApprovalService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +18,7 @@ class StockAdjustmentController extends Controller
     public function __construct(
         protected StockAdjustmentApprovalService $approvalService,
         protected VariantNameFormatter $variantNameFormatter,
+        protected ProductService $productService,
     ) {}
 
     public function index(Request $request)
@@ -31,6 +33,8 @@ class StockAdjustmentController extends Controller
         $adjustments = StockAdjustment::with([
             'variant:id,product_id,sku',
             'variant.product:id,name',
+            'variant.product.images',
+            'variant.images',
             'variant.values:id,variant_type_id,value',
             'variant.values.type:id,name',
             'warehouse:id,name',
@@ -58,6 +62,9 @@ class StockAdjustmentController extends Controller
                     'id' => $item->id,
                     'variant_label' => $item->variant ? $this->variantNameFormatter->format($item->variant) : 'N/A',
                     'variant_sku' => $item->variant?->sku,
+                    'image_url' => $item->variant?->product
+                        ? $this->productService->resolveProductImage($item->variant->product, $item->variant)
+                        : null,
                     'warehouse' => $item->warehouse?->name,
                     'employee' => $item->employee?->name,
                     'previous_quantity' => $item->previous_quantity,

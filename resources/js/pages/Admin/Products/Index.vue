@@ -1,5 +1,6 @@
 <!-- resources/js/Pages/Products/Index.vue -->
 <script setup>
+import ImagePreviewModal from '@/components/ImagePreviewModal.vue'
 import { router } from '@inertiajs/vue3'
 import { ref, watch, computed, nextTick } from 'vue'
 import {
@@ -13,6 +14,24 @@ const props = defineProps({
     products: Object,
     filters: Object,
 })
+
+const imagePreview = ref(null)
+
+function openImagePreview(product) {
+    if (!product.thumb) {
+        return
+    }
+
+    imagePreview.value = {
+        url: product.thumb,
+        label: product.name,
+        subtitle: [product.category, product.brand].filter(Boolean).join(' - '),
+    }
+}
+
+function closeImagePreview() {
+    imagePreview.value = null
+}
 
 const search = ref(props.filters?.search ?? '')
 watch(search, s => {
@@ -164,7 +183,16 @@ function applyBulk() {
 
                         <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                             <div class="flex items-center gap-3">
-                                <img v-if="p.thumb" :src="p.thumb" alt="" class="h-10 w-10 object-cover rounded" />
+                                <button
+                                    v-if="p.thumb"
+                                    type="button"
+                                    class="block h-10 w-10 shrink-0 overflow-hidden rounded transition hover:ring-2 hover:ring-gray-400 dark:hover:ring-gray-500"
+                                    title="View image"
+                                    :aria-label="`View image of ${p.name}`"
+                                    @click="openImagePreview(p)"
+                                >
+                                    <img :src="p.thumb" alt="" class="h-full w-full object-cover" />
+                                </button>
                                 <div>
                                     <div class="font-medium">{{ p.name }}</div>
                                     <div class="text-xs text-gray-500">{{ p.category || '-' }} - {{ p.brand || '-' }}</div>
@@ -241,5 +269,7 @@ function applyBulk() {
                 @click.prevent="l.url && router.visit(l.url, { preserveState: true })"
             />
         </div>
+
+        <ImagePreviewModal :preview="imagePreview" @close="closeImagePreview" />
     </div>
 </template>

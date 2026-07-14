@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\InventoryAlert;
+use App\Services\ProductService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -11,6 +12,10 @@ use Inertia\Inertia;
 
 class InventoryAlertController extends Controller
 {
+    public function __construct(
+        protected ProductService $productService,
+    ) {}
+
     /**
      * Display a listing of the resource.
      */
@@ -28,6 +33,8 @@ class InventoryAlertController extends Controller
             ->with([
                 'variant:id,product_id,sku,quantity,reserved,replenishment_status,replenishment_note',
                 'variant.product:id,name,is_active,deleted_at',
+                'variant.product.images',
+                'variant.images',
                 'variant.values:id,variant_type_id,value',
                 'variant.values.type:id,name',
                 'acknowledgedBy:id,name',
@@ -313,6 +320,10 @@ class InventoryAlertController extends Controller
             'product' => $variant ? $variantNameFormatter->format($variant) : 'Unknown variant',
             'sku' => $variant?->sku,
             'variant_id' => $variant?->id ? (int) $variant->id : null,
+            'product_id' => $variant?->product_id ? (int) $variant->product_id : null,
+            'image_url' => $variant?->product
+                ? $this->productService->resolveProductImage($variant->product, $variant)
+                : null,
             'quantity' => $variant?->quantity !== null ? (int) $variant->quantity : null,
             'reserved' => $variant?->reserved !== null ? (int) $variant->reserved : null,
             'available' => $variant ? max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0) : null,
