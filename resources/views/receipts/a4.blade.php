@@ -42,7 +42,7 @@
 
 <div class="section">
     <div class="line"></div>
-    <div class="flex" style="text-align: center; font-size: 13px; font-weight: bolder; "><span>CASH RECEIPT</span></div>
+    <div class="flex" style="text-align: center; font-size: 13px; font-weight: bolder; "><span>CASH RECEIPT{{ ($balance_due ?? 0) > 0 ? ' (PARTIAL PAYMENT)' : '' }}</span></div>
     <div class="line"></div>
     <div class="flex"><strong>Order Number:</strong> <span>{{ $order->order_number }}</span></div>
     <div class="flex"><strong>Date:</strong> <span>{{ $date }}</span></div>
@@ -102,6 +102,57 @@
         <td class="value">{{ number_format((float) ($order->total_amount ?? 0), 2) }} {{ $order->currency }}</td>
     </tr>
 </table>
+
+@if(!empty($payments) || ($balance_due ?? 0) > 0)
+    <div class="section" style="margin-top: 25px;">
+        <div class="line"></div>
+        <div class="flex" style="font-weight: bold;">
+            <span>PAYMENT DETAILS</span>
+            <span>{{ ($balance_due ?? 0) > 0 ? 'PARTIAL PAYMENT' : 'PAID IN FULL' }}</span>
+        </div>
+        <div class="line"></div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 10%">#</th>
+                    <th style="width: 30%; text-align: left;">Date</th>
+                    <th style="width: 30%; text-align: left;">Method</th>
+                    <th style="width: 30%; text-align: right;">Amount ({{ $order->currency }})</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($payments ?? [] as $payment)
+                    <tr>
+                        <td>{{ $loop->iteration }}</td>
+                        <td style="text-align: left;">{{ $payment['date'] }}</td>
+                        <td style="text-align: left;">{{ $payment['method'] }}</td>
+                        <td style="text-align: right;">{{ number_format($payment['amount'], 2) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+
+        <table class="totals" style="margin-top: 10px;">
+            <tr>
+                <td class="label">Amount Paid:</td>
+                <td class="value">{{ number_format($amount_paid ?? 0, 2) }}</td>
+            </tr>
+            @if(($balance_due ?? 0) > 0)
+                <tr class="grand-total">
+                    <td class="label">BALANCE DUE:</td>
+                    <td class="value">{{ number_format($balance_due, 2) }} {{ $order->currency }}</td>
+                </tr>
+                @if(!empty($invoice_due_date))
+                    <tr>
+                        <td class="label">Payment Due Date:</td>
+                        <td class="value">{{ $invoice_due_date }}</td>
+                    </tr>
+                @endif
+            @endif
+        </table>
+    </div>
+@endif
 
 <div class="barcode" style="display: flex; justify-content: center">
     <p>Receipt ID: {{ $order->order_number }}</p>

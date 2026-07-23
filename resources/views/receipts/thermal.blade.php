@@ -41,6 +41,9 @@
 </div>
 <div class="line"></div>
 <div class="center mt">CASH RECEIPT</div>
+@if(($balance_due ?? 0) > 0)
+    <div class="center bold">*** PARTIAL PAYMENT ***</div>
+@endif
 <div class="line"></div>
 
 <div class="flex"><span>Order #:</span><span>{{ $order->order_number }}</span></div>
@@ -100,6 +103,38 @@
 </div>
 
 <div class="line"></div>
+
+@if(!empty($payments) || ($balance_due ?? 0) > 0)
+    <div class="center bold">PAYMENT DETAILS</div>
+    @foreach($payments ?? [] as $payment)
+        <div class="flex">
+            <span>{{ $loop->iteration }}. {{ $payment['date'] }} {{ $payment['method'] }}</span>
+            <span>{{ number_format($payment['amount'], 2) }}</span>
+        </div>
+    @endforeach
+
+    <div class="flex bold">
+        <span>Amount Paid:</span>
+        <span>{{ number_format($amount_paid ?? 0, 2) }}</span>
+    </div>
+
+    @if(($balance_due ?? 0) > 0)
+        <div class="flex bold">
+            <span>BALANCE DUE:</span>
+            <span>{{ number_format($balance_due, 2) }} {{ $order->currency }}</span>
+        </div>
+        @if(!empty($invoice_due_date))
+            <div class="flex">
+                <span>Due Date:</span>
+                <span>{{ $invoice_due_date }}</span>
+            </div>
+        @endif
+    @else
+        <div class="center bold">** PAID IN FULL **</div>
+    @endif
+
+    <div class="line"></div>
+@endif
 
 <div class="center mt">
     <p>{{$business_receipt_footer}}</p>

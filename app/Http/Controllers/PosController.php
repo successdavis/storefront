@@ -439,9 +439,32 @@ class PosController extends Controller
             'order.user',
             'order.items.variant.product',
             'order.items.variant.values.type',
+            'order.payments' => fn ($query) => $query->where('status', 'paid'),
+            'order.invoice.payments' => fn ($query) => $query->where('status', 'paid'),
         ])->findOrFail($id);
 
         $order = $sale->order;
+
+        // Payment history: checkout payment lines live on the order, later
+        // installments (credit repayments) live on the customer invoice.
+        $installments = collect();
+        if ($order) {
+            $installments = $order->payments
+                ->concat($order->invoice?->payments ?? collect())
+                ->sortBy(fn ($payment) => [
+                    ($payment->paid_at ?? $payment->created_at)?->getTimestamp() ?? 0,
+                    $payment->id,
+                ])
+                ->values()
+                ->map(fn ($payment) => [
+                    'date' => Carbon::parse($payment->paid_at ?? $payment->created_at)->format('d/m/y'),
+                    'method' => ucfirst((string) $payment->method),
+                    'amount' => (float) $payment->amount,
+                ]);
+        }
+
+        $amountPaid = round((float) $installments->sum('amount'), 2);
+        $balanceDue = round(max(0, (float) ($order->total_amount ?? $sale->total_amount ?? 0) - $amountPaid), 2);
 
         // 🧠 Load paper size setting from settings table
         $paperSize = strtoupper(str_replace(' ', '', (string) Setting::get('receipt_paper_size', '80mm')));
@@ -475,6 +498,12 @@ class PosController extends Controller
             'business_logo' => Setting::get('business_logo'),
             'business_receipt_footer' => Setting::get('business_receipt_footer'),
             'business_receipt_footer_refund' => Setting::get('business_receipt_footer_refund'),
+            'payments' => $installments->all(),
+            'amount_paid' => $amountPaid,
+            'balance_due' => $balanceDue,
+            'invoice_due_date' => $balanceDue > 0 && $order?->invoice?->due_date
+                ? $order->invoice->due_date->format('d/m/Y')
+                : null,
         ];
 
         $pdf = Pdf::loadView($paperConfig['view'], $data)
