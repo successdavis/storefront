@@ -13,6 +13,8 @@ import {
 const props = defineProps({
     products: Object,
     filters: Object,
+    brands: { type: Array, default: () => [] },
+    categories: { type: Array, default: () => [] },
 })
 
 const imagePreview = ref(null)
@@ -34,8 +36,48 @@ function closeImagePreview() {
 }
 
 const search = ref(props.filters?.search ?? '')
-watch(search, s => {
-    router.get(route('admin.products.index'), { search: s }, { preserveState: true, replace: true })
+
+const advancedFilters = ref({
+    status: props.filters?.status ?? '',
+    featured: props.filters?.featured ?? '',
+    stock: props.filters?.stock ?? '',
+    on_sale: props.filters?.on_sale ?? '',
+    fulfillment: props.filters?.fulfillment ?? '',
+    brand_id: props.filters?.brand_id ?? '',
+    category_id: props.filters?.category_id ?? '',
+})
+
+const activeFilterCount = computed(() =>
+    Object.values(advancedFilters.value).filter(v => v !== '' && v !== null).length,
+)
+
+function currentParams() {
+    const params = { search: search.value || undefined }
+
+    Object.entries(advancedFilters.value).forEach(([key, value]) => {
+        if (value !== '' && value !== null) {
+            params[key] = value
+        }
+    })
+
+    return params
+}
+
+function applyFilters() {
+    router.get(route('admin.products.index'), currentParams(), { preserveState: true, replace: true })
+}
+
+function clearFilters() {
+    search.value = ''
+    Object.keys(advancedFilters.value).forEach(key => (advancedFilters.value[key] = ''))
+}
+
+watch(advancedFilters, applyFilters, { deep: true })
+
+let searchTimeout
+watch(search, () => {
+    clearTimeout(searchTimeout)
+    searchTimeout = setTimeout(applyFilters, 350)
 })
 
 function togglePublished(id) {
@@ -130,6 +172,61 @@ function applyBulk() {
                     class="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Apply
+                </button>
+            </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Filters</span>
+
+                <select v-model="advancedFilters.status" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Status: All</option>
+                    <option value="published">Published</option>
+                    <option value="draft">Unpublished</option>
+                </select>
+
+                <select v-model="advancedFilters.featured" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Featured: All</option>
+                    <option value="1">Featured</option>
+                    <option value="0">Not featured</option>
+                </select>
+
+                <select v-model="advancedFilters.stock" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Stock: All</option>
+                    <option value="in">In stock</option>
+                    <option value="out">Out of stock</option>
+                </select>
+
+                <select v-model="advancedFilters.on_sale" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Sale: All</option>
+                    <option value="1">On sale</option>
+                    <option value="0">Not on sale</option>
+                </select>
+
+                <select v-model="advancedFilters.fulfillment" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Fulfillment: All</option>
+                    <option value="dropshipping">Dropshipping</option>
+                    <option value="stocked">Stocked only</option>
+                </select>
+
+                <select v-model="advancedFilters.brand_id" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Brand: All</option>
+                    <option v-for="b in props.brands" :key="b.id" :value="String(b.id)">{{ b.name }}</option>
+                </select>
+
+                <select v-model="advancedFilters.category_id" class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                    <option value="">Category: All</option>
+                    <option v-for="c in props.categories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+                </select>
+
+                <button
+                    v-if="activeFilterCount > 0 || search"
+                    type="button"
+                    class="ml-auto rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                    @click="clearFilters"
+                >
+                    Clear filters<span v-if="activeFilterCount"> ({{ activeFilterCount }})</span>
                 </button>
             </div>
         </div>
@@ -252,6 +349,11 @@ function applyBulk() {
                             <button @click="destroyProduct(p.id)" class="p-2 rounded-full bg-rose-50 hover:bg-rose-100">
                                 <TrashIcon class="h-5 w-5 text-rose-700" />
                             </button>
+                        </td>
+                    </tr>
+                    <tr v-if="!props.products.data.length">
+                        <td colspan="8" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                            No products match the current filters.
                         </td>
                     </tr>
                     </tbody>

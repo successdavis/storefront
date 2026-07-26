@@ -15,6 +15,8 @@ class AdminProductController extends Controller
 {
     public function index(Request $request, ProductService $productService)
     {
+        $filters = $this->normalizeIndexFilters($request);
+
         $q = Product::query()
             ->with([
                 'categories:id,name',
@@ -39,44 +41,137 @@ class AdminProductController extends Controller
                     ->orderBy('id'),
             ])
             ->withSum(['variants as total_stock' => fn ($query) => $query->where('is_active', true)], 'quantity')
-            ->when($request->get('search'), function ($query, $search) {
+            ->when($filters['search'] !== '', function ($query) use ($filters) {
+                $search = $filters['search'];
                 $query->where(function ($q) use ($search) {
                     $q->where('name','like',"%{$search}%")
                         ->orWhere('slug','like',"%{$search}%");
                 });
             })
+            ->when($filters['status'] !== '', fn ($query) => $query
+                ->where('is_active', $filters['status'] === 'published'))
+            ->when($filters['featured'] !== '', fn ($query) => $query
+                ->where('featured', $filters['featured'] === '1'))
+            ->when($filters['stock'] === 'in', fn ($query) => $query
+                ->whereHas('variants', fn ($variantQuery) => $variantQuery
+                    ->where('is_active', true)
+                    ->where('quantity', '>', 0)))
+            ->when($filters['stock'] === 'out', fn ($query) => $query
+                ->whereDoesntHave('variants', fn ($variantQuery) => $variantQuery
+                    ->where('is_active', true)
+                    ->where('quantity', '>', 0)))
+            ->when($filters['fulfillment'] === 'dropshipping', fn ($query) => $query
+                ->whereHas('variants', fn ($variantQuery) => $variantQuery
+                    ->where('is_active', true)
+                    ->where('fulfillment_type', \App\Models\ProductVariant::FULFILLMENT_DROPSHIPPING)))
+            ->when($filters['fulfillment'] === 'stocked', fn ($query) => $query
+                ->whereDoesntHave('variants', fn ($variantQuery) => $variantQuery
+                    ->where('is_active', true)
+                    ->where('fulfillment_type', \App\Models\ProductVariant::FULFILLMENT_DROPSHIPPING)))
+            ->when($filters['brand_id'] !== null, fn ($query) => $query
+                ->where('brand_id', $filters['brand_id']))
+            ->when($filters['category_id'] !== null, fn ($query) => $query
+                ->whereHas('categories', fn ($categoryQuery) => $categoryQuery
+                    ->where('categories.id', $filters['category_id'])))
             ->orderByDesc('id');
 
-        $products = $q->paginate(20)->withQueryString();
+        $toRow = function (Product $p) use ($productService): array {
+            $card = $productService->toStorefrontCard($p, null, false);
+            $onSale = $p->variants->contains(
+                fn ($variant) => (bool) data_get(
+                    $productService->resolveVariantPricing($variant, null, $p, false),
+                    'has_discount',
+                    false
+                )
+            );
+
+            return [
+                'id'          => $p->id,
+                'name'        => $p->name,
+                'slug'        => $p->slug,
+                'thumb'       => $card['image'],
+                'category'    => $p->categories->pluck('name')->filter()->implode(', '),
+                'brand'       => optional($p->brand)->name,
+                'total_stock' => (int) ($p->total_stock ?? 0),
+                'published'   => (bool) $p->is_active,
+                'featured'    => (bool) $p->featured,
+                'on_sale'     => $onSale,
+                'has_dropshipping' => $p->variants->contains(fn ($variant) => $variant->isDropshipping()),
+                'updated_at'  => $p->updated_at->toDateTimeString(),
+            ];
+        };
+
+        if ($filters['on_sale'] !== '') {
+            // Sale status comes from dynamic discount rules, so it cannot be
+            // filtered in SQL: map every match, filter, then paginate manually.
+            $wantOnSale = $filters['on_sale'] === '1';
+            $rows = $q->get()
+                ->map($toRow)
+                ->filter(fn (array $row) => $row['on_sale'] === $wantOnSale)
+                ->values();
+
+            $page = max(1, (int) $request->get('page', 1));
+            $perPage = 20;
+            $products = new \Illuminate\Pagination\LengthAwarePaginator(
+                items: $rows->slice(($page - 1) * $perPage, $perPage)->values(),
+                total: $rows->count(),
+                perPage: $perPage,
+                currentPage: $page,
+                options: [
+                    'path' => route('admin.products.index'),
+                    'query' => array_filter($this->serializeIndexFilters($filters), fn ($value) => $value !== '' && $value !== null),
+                ],
+            );
+        } else {
+            $products = $q->paginate(20)->withQueryString()->through($toRow);
+        }
 
         return Inertia::render('Admin/Products/Index', [
-            'filters'  => $request->only('search'),
-            'products' => $products->through(function ($p) use ($productService) {
-                $card = $productService->toStorefrontCard($p, null, false);
-                $onSale = $p->variants->contains(
-                    fn ($variant) => (bool) data_get(
-                        $productService->resolveVariantPricing($variant, null, $p, false),
-                        'has_discount',
-                        false
-                    )
-                );
-
-                return [
-                    'id'          => $p->id,
-                    'name'        => $p->name,
-                    'slug'        => $p->slug,
-                    'thumb'       => $card['image'],
-                    'category'    => $p->categories->pluck('name')->filter()->implode(', '),
-                    'brand'       => optional($p->brand)->name,
-                    'total_stock' => (int) ($p->total_stock ?? 0),
-                    'published'   => (bool) $p->is_active,
-                    'featured'    => (bool) $p->featured,
-                    'on_sale'     => $onSale,
-                    'has_dropshipping' => $p->variants->contains(fn ($variant) => $variant->isDropshipping()),
-                    'updated_at'  => $p->updated_at->toDateTimeString(),
-                ];
-            }),
+            'filters'  => $this->serializeIndexFilters($filters),
+            'products' => $products,
+            'brands'   => Brand::select('id', 'name')->orderBy('name')->get(),
+            'categories' => Category::select('id', 'name')->orderBy('name')->get(),
         ]);
+    }
+
+    protected function normalizeIndexFilters(Request $request): array
+    {
+        $enum = function (string $key, array $allowed) use ($request): string {
+            $value = trim((string) $request->get($key, ''));
+
+            return in_array($value, $allowed, true) ? $value : '';
+        };
+
+        $id = function (string $key) use ($request): ?int {
+            $value = (int) $request->get($key, 0);
+
+            return $value > 0 ? $value : null;
+        };
+
+        return [
+            'search' => trim((string) $request->get('search', '')),
+            'status' => $enum('status', ['published', 'draft']),
+            'featured' => $enum('featured', ['1', '0']),
+            'stock' => $enum('stock', ['in', 'out']),
+            'on_sale' => $enum('on_sale', ['1', '0']),
+            'fulfillment' => $enum('fulfillment', ['dropshipping', 'stocked']),
+            'brand_id' => $id('brand_id'),
+            'category_id' => $id('category_id'),
+        ];
+    }
+
+    protected function serializeIndexFilters(array $filters): array
+    {
+        return [
+            'search' => $filters['search'],
+            'status' => $filters['status'],
+            'featured' => $filters['featured'],
+            'stock' => $filters['stock'],
+            'on_sale' => $filters['on_sale'],
+            'fulfillment' => $filters['fulfillment'],
+            'brand_id' => $filters['brand_id'] !== null ? (string) $filters['brand_id'] : '',
+            'category_id' => $filters['category_id'] !== null ? (string) $filters['category_id'] : '',
+        ];
     }
 
     public function show(Product $product, ProductService $productService)
