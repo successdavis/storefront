@@ -122,6 +122,7 @@ const adminNavItems: SidebarNavItem[] = [
         subItems: [
             { title: 'Shipping Methods', href: '/admin/shipping-methods' },
             { title: 'Shipping Rates', href: '/admin/shipping-rates' },
+            { title: 'Pickup Locations', href: '/admin/pickup-locations' },
         ],
     },
     {

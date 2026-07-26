@@ -11,6 +11,7 @@ interface ShippingRatePayload {
     shipping_zone_id?: number | null
     state_id?: number | null
     lga_id?: number | null
+    pickup_location_id?: number | null
     rate_type?: string | null
     base_rate?: number | null
     per_kg?: number | null
@@ -41,6 +42,7 @@ const props = defineProps<{
     zones: Array<{ id: number; name: string; state_count: number }>
     states: Array<{ id: number; name: string }>
     lgas: Array<{ id: number; name: string }>
+    pickupLocations?: Array<{ id: number; name: string; shipping_method_id: number; state: string | null; is_active: boolean }>
     scopeTypes: Array<{ value: string; label: string }>
     rateTypes: Array<{ value: string; label: string }>
 }>()
@@ -54,6 +56,7 @@ const form = useForm({
     shipping_zone_id: props.shippingRate?.shipping_zone_id ?? null,
     state_id: props.shippingRate?.state_id ?? null,
     lga_id: props.shippingRate?.lga_id ?? null,
+    pickup_location_id: props.shippingRate?.pickup_location_id ?? null,
     rate_type: props.shippingRate?.rate_type ?? 'flat',
     base_rate: props.shippingRate?.base_rate ?? 0,
     per_kg: props.shippingRate?.per_kg ?? 0,
@@ -84,6 +87,16 @@ const currentMethod = computed(() => {
 const isPickupMethod = computed(() => currentMethod.value?.method_type === 'pickup')
 const pageTitle = computed(() => isEdit.value ? 'Edit Shipping Rate' : 'Create Shipping Rate')
 
+const methodPickupLocations = computed(() => {
+    if (!isPickupMethod.value) {
+        return []
+    }
+
+    return (props.pickupLocations ?? []).filter(
+        location => location.shipping_method_id === Number(form.shipping_method_id || 0),
+    )
+})
+
 watch(() => form.scope_type, (scopeType) => {
     if (scopeType === 'global') {
         form.shipping_zone_id = null
@@ -111,11 +124,14 @@ watch(() => form.scope_type, (scopeType) => {
 
 watch(() => form.shipping_method_id, () => {
     if (isPickupMethod.value) {
+        // Pickup rates are flat fees: no weight component, but the flat
+        // amount itself is chargeable (free pickup = base rate 0).
         form.rate_type = 'flat'
-        form.base_rate = 0
         form.per_kg = 0
-        form.surcharge = 0
-        form.free_shipping_threshold = null
+        form.min_weight = null
+        form.max_weight = null
+    } else {
+        form.pickup_location_id = null
     }
 })
 
@@ -193,6 +209,20 @@ function submit() {
                                 </option>
                             </select>
                             <InputError :message="form.errors.scope_type" class="mt-2" />
+                        </div>
+
+                        <div v-if="isPickupMethod" class="md:col-span-2">
+                            <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Pickup location</label>
+                            <select v-model="form.pickup_location_id" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                                <option :value="null">All pickup locations (use scope above)</option>
+                                <option v-for="location in methodPickupLocations" :key="location.id" :value="location.id">
+                                    {{ location.name }}{{ location.state ? ` — ${location.state}` : '' }}{{ !location.is_active ? ' (Inactive)' : '' }}
+                                </option>
+                            </select>
+                            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                Charge a fee for a specific pickup point (e.g. stock in Ikom picked up at Obudu). A location-specific rate overrides broader pickup rates.
+                            </p>
+                            <InputError :message="form.errors.pickup_location_id" class="mt-2" />
                         </div>
 
                         <div v-if="form.scope_type === 'zone'">
@@ -294,7 +324,7 @@ function submit() {
                     <div class="mt-5 grid gap-5 md:grid-cols-2">
                         <div>
                             <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Base rate (NGN)</label>
-                            <input v-model="form.base_rate" type="number" min="0" step="0.01" :readonly="isPickupMethod" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 read-only:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:read-only:bg-slate-900">
+                            <input v-model="form.base_rate" type="number" min="0" step="0.01" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 read-only:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:read-only:bg-slate-900">
                             <InputError :message="form.errors.base_rate" class="mt-2" />
                         </div>
 
@@ -306,13 +336,13 @@ function submit() {
 
                         <div>
                             <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Surcharge (NGN)</label>
-                            <input v-model="form.surcharge" type="number" min="0" step="0.01" :readonly="isPickupMethod" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 read-only:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:read-only:bg-slate-900">
+                            <input v-model="form.surcharge" type="number" min="0" step="0.01" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 read-only:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:read-only:bg-slate-900">
                             <InputError :message="form.errors.surcharge" class="mt-2" />
                         </div>
 
                         <div>
                             <label class="text-sm font-medium text-slate-700 dark:text-slate-200">Free shipping threshold (NGN)</label>
-                            <input v-model="form.free_shipping_threshold" type="number" min="0" step="0.01" :readonly="isPickupMethod" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 read-only:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:read-only:bg-slate-900">
+                            <input v-model="form.free_shipping_threshold" type="number" min="0" step="0.01" class="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 read-only:bg-slate-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:read-only:bg-slate-900">
                             <InputError :message="form.errors.free_shipping_threshold" class="mt-2" />
                         </div>
 
@@ -390,7 +420,7 @@ function submit() {
                         </div>
                         <div class="flex justify-between gap-4">
                             <dt>Pricing</dt>
-                            <dd class="font-semibold text-slate-900 dark:text-slate-100">{{ isPickupMethod ? 'Pickup = 0.00' : form.rate_type }}</dd>
+                            <dd class="font-semibold text-slate-900 dark:text-slate-100">{{ isPickupMethod ? 'Pickup (flat fee)' : form.rate_type }}</dd>
                         </div>
                         <div class="flex justify-between gap-4">
                             <dt>Status</dt>

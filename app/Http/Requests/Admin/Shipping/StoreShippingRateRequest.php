@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin\Shipping;
 
 use App\Models\Lga;
+use App\Models\PickupLocation;
 use App\Models\ShippingMethod;
 use App\Support\PermissionNames;
 use Illuminate\Foundation\Http\FormRequest;
@@ -22,6 +23,7 @@ class StoreShippingRateRequest extends FormRequest
             'shipping_zone_id' => ['nullable', 'integer', 'exists:shipping_zones,id'],
             'state_id' => ['nullable', 'integer', 'exists:states,id'],
             'lga_id' => ['nullable', 'integer', 'exists:lgas,id'],
+            'pickup_location_id' => ['nullable', 'integer', 'exists:pickup_locations,id'],
             'rate_type' => ['required', 'in:flat,per_kg,hybrid'],
             'base_rate' => ['required', 'numeric', 'min:0'],
             'per_kg' => ['nullable', 'numeric', 'min:0'],
@@ -106,10 +108,23 @@ class StoreShippingRateRequest extends FormRequest
                 $validator->errors()->add('per_kg', 'Per-kg and hybrid rates must define a per-kg charge.');
             }
 
-            if ($method?->isPickup()) {
-                if ((float) $this->input('base_rate', 0) > 0 || (float) $this->input('per_kg', 0) > 0 || (float) $this->input('surcharge', 0) > 0) {
-                    $validator->errors()->add('base_rate', 'Pickup rates must remain zero-cost.');
+            if ($this->filled('pickup_location_id')) {
+                if (!$method?->isPickup()) {
+                    $validator->errors()->add('pickup_location_id', 'Pickup locations only apply to pickup shipping methods.');
+                } else {
+                    $locationBelongsToMethod = PickupLocation::query()
+                        ->whereKey((int) $this->input('pickup_location_id'))
+                        ->where('shipping_method_id', $method->id)
+                        ->exists();
+
+                    if (!$locationBelongsToMethod) {
+                        $validator->errors()->add('pickup_location_id', 'The selected pickup location does not belong to the chosen pickup method.');
+                    }
                 }
+            }
+
+            if ($method?->isPickup() && (float) $this->input('per_kg', 0) > 0) {
+                $validator->errors()->add('per_kg', 'Pickup rates are flat fees and cannot charge per kg.');
             }
         });
     }

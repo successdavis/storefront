@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\AdminSkuController;
 use App\Http\Controllers\Admin\ProductImageController;
 use App\Http\Controllers\Admin\PaymentRecoveryController;
 use App\Http\Controllers\Admin\ShippingMethodController as AdminShippingMethodController;
+use App\Http\Controllers\Admin\PickupLocationController as AdminPickupLocationController;
 use App\Http\Controllers\Admin\ShippingRateController as AdminShippingRateController;
 use App\Http\Controllers\Admin\VariantTypeController;
 use App\Http\Controllers\Admin\AdminVariantValueController;
@@ -486,6 +487,25 @@ Route::prefix('admin')
         Route::patch('shipping-rates/{shippingRate}/toggle-status', [AdminShippingRateController::class, 'toggleStatus'])
             ->middleware('permission.any:admin.catalog.manage')
             ->name('shipping-rates.toggle-status');
+
+        Route::get('pickup-locations', [AdminPickupLocationController::class, 'index'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('pickup-locations.index');
+        Route::get('pickup-locations/create', [AdminPickupLocationController::class, 'create'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('pickup-locations.create');
+        Route::post('pickup-locations', [AdminPickupLocationController::class, 'store'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('pickup-locations.store');
+        Route::get('pickup-locations/{pickupLocation}/edit', [AdminPickupLocationController::class, 'edit'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('pickup-locations.edit');
+        Route::put('pickup-locations/{pickupLocation}', [AdminPickupLocationController::class, 'update'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('pickup-locations.update');
+        Route::patch('pickup-locations/{pickupLocation}/toggle-status', [AdminPickupLocationController::class, 'toggleStatus'])
+            ->middleware('permission.any:admin.catalog.manage')
+            ->name('pickup-locations.toggle-status');
         Route::get('reports/category-price-list', [CategoryPriceListReportController::class, 'index'])
             ->middleware('permission.any:admin.catalog.manage')
             ->name('reports.category-price-list.index');

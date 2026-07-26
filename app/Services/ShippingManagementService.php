@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lga;
+use App\Models\PickupLocation;
 use App\Models\ShippingMethod;
 use App\Models\ShippingRate;
 use App\Models\ShippingZone;
@@ -41,7 +42,7 @@ class ShippingManagementService
         $scope = trim((string) ($filters['scope'] ?? ''));
 
         return ShippingRate::query()
-            ->with(['method:id,name,method_type', 'zone:id,name', 'state:id,name', 'lga:id,name'])
+            ->with(['method:id,name,method_type', 'zone:id,name', 'state:id,name', 'lga:id,name', 'pickupLocation:id,name'])
             ->when($search !== '', function (Builder $query) use ($search) {
                 $query->where(function (Builder $nested) use ($search) {
                     $nested->whereHas('method', fn (Builder $methodQuery) => $methodQuery->where('name', 'like', "%{$search}%"))
@@ -123,6 +124,19 @@ class ShippingManagementService
                 ->values()
                 ->all(),
             'lgas' => $this->lgasForState($stateId),
+            'pickupLocations' => PickupLocation::query()
+                ->with('state:id,name')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (PickupLocation $location) => [
+                    'id' => (int) $location->id,
+                    'name' => $location->name,
+                    'shipping_method_id' => (int) $location->shipping_method_id,
+                    'state' => $location->state?->name,
+                    'is_active' => (bool) $location->is_active,
+                ])
+                ->values()
+                ->all(),
             'scopeTypes' => [
                 ['value' => 'global', 'label' => 'Global'],
                 ['value' => 'zone', 'label' => 'Zone'],
@@ -231,10 +245,11 @@ class ShippingManagementService
         return [
             'id' => (int) $rate->id,
             'shipping_method_id' => (int) $rate->shipping_method_id,
-            'scope_type' => $this->scopeType($rate),
+            'scope_type' => $rate->pickup_location_id ? 'global' : $this->scopeType($rate),
             'shipping_zone_id' => $rate->shipping_zone_id ? (int) $rate->shipping_zone_id : null,
             'state_id' => $rate->state_id ? (int) $rate->state_id : null,
             'lga_id' => $rate->lga_id ? (int) $rate->lga_id : null,
+            'pickup_location_id' => $rate->pickup_location_id ? (int) $rate->pickup_location_id : null,
             'rate_type' => $rate->rate_type,
             'base_rate' => (float) $rate->base_rate,
             'per_kg' => (float) $rate->per_kg,
@@ -340,11 +355,14 @@ class ShippingManagementService
             'shipping_zone_id' => $shippingZoneId,
             'state_id' => $stateId,
             'lga_id' => $lgaId,
+            'pickup_location_id' => $isPickup ? $this->nullableInt($data['pickup_location_id'] ?? null) : null,
+            // Pickup rates are flat fees (no weight component) but may charge:
+            // e.g. stock held in one store picked up at another town's point.
             'rate_type' => $isPickup ? 'flat' : $data['rate_type'],
-            'base_rate' => $isPickup ? 0 : (float) $data['base_rate'],
+            'base_rate' => (float) $data['base_rate'],
             'per_kg' => $isPickup ? 0 : (float) ($data['per_kg'] ?? 0),
-            'surcharge' => $isPickup ? 0 : (float) ($data['surcharge'] ?? 0),
-            'free_shipping_threshold' => $isPickup ? null : $this->nullableFloat($data['free_shipping_threshold'] ?? null),
+            'surcharge' => (float) ($data['surcharge'] ?? 0),
+            'free_shipping_threshold' => $this->nullableFloat($data['free_shipping_threshold'] ?? null),
             'estimated_delivery_text' => $this->nullableString($data['estimated_delivery_text'] ?? null),
             'processing_days_min' => $this->nullableInt($data['processing_days_min'] ?? null),
             'processing_days_max' => $this->nullableInt($data['processing_days_max'] ?? null),
@@ -373,6 +391,7 @@ class ShippingManagementService
             ->where('shipping_zone_id', $normalized['shipping_zone_id'])
             ->where('state_id', $normalized['state_id'])
             ->where('lga_id', $normalized['lga_id'])
+            ->where('pickup_location_id', $normalized['pickup_location_id'] ?? null)
             ->get()
             ->first(function (ShippingRate $existing) use ($normalized) {
                 return $this->rangesOverlap($existing->min_weight, $existing->max_weight, $normalized['min_weight'], $normalized['max_weight'])
@@ -428,6 +447,10 @@ class ShippingManagementService
 
     protected function scopeType(ShippingRate $rate): string
     {
+        if ($rate->pickup_location_id) {
+            return 'pickup_location';
+        }
+
         if ($rate->lga_id) {
             return 'lga';
         }
@@ -446,6 +469,7 @@ class ShippingManagementService
     protected function scopeLabel(ShippingRate $rate): string
     {
         return match ($this->scopeType($rate)) {
+            'pickup_location' => 'Pickup location',
             'lga' => 'LGA',
             'state' => 'State',
             'zone' => 'Zone',
@@ -456,6 +480,7 @@ class ShippingManagementService
     protected function scopeMeta(ShippingRate $rate): ?string
     {
         return match ($this->scopeType($rate)) {
+            'pickup_location' => $rate->pickupLocation?->name,
             'lga' => collect([$rate->lga?->name, $rate->state?->name])->filter()->join(', '),
             'state' => $rate->state?->name,
             'zone' => $rate->zone?->name,

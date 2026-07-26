@@ -5,7 +5,7 @@ use Illuminate\Database\Eloquent\Model;
 class ShippingRate extends Model
 {
     protected $fillable = [
-      'shipping_method_id', 'shipping_zone_id', 'state_id', 'lga_id', 'min_weight', 'max_weight', 'min_subtotal', 'max_subtotal',
+      'shipping_method_id', 'shipping_zone_id', 'state_id', 'lga_id', 'pickup_location_id', 'min_weight', 'max_weight', 'min_subtotal', 'max_subtotal',
       'rate_type', 'base_rate', 'per_kg', 'surcharge', 'free_shipping_threshold', 'estimated_delivery_text',
       'processing_days_min', 'processing_days_max', 'transit_days_min', 'transit_days_max', 'cutoff_time',
       'business_days_only', 'supports_weekend_delivery',
@@ -43,5 +43,10 @@ class ShippingRate extends Model
     public function lga()
     {
         return $this->belongsTo(Lga::class);
+    }
+
+    public function pickupLocation()
+    {
+        return $this->belongsTo(PickupLocation::class);
     }
 }

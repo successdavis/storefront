@@ -35,7 +35,7 @@ class ShippingCostService
         $lgaId = $context['lga_id'];
 
         if ($this->isPickupMethod($method)) {
-            return $this->calculatePickup($method, $context['pickup_location'], $stateId, $shippingZoneId);
+            return $this->calculatePickup($method, $context['pickup_location'], $stateId, $shippingZoneId, $rate, $subtotal);
         }
 
         $calculation = $this->calculateByRateType($rate, $weightKg);
@@ -107,7 +107,7 @@ class ShippingCostService
 
             return [
                 'method' => $method,
-                'rate' => null,
+                'rate' => $this->resolvePickupRate($method, $pickupLocation, $shippingZoneId, $stateId, $lgaId, $subtotal),
                 'pickup_location' => $pickupLocation,
                 'subtotal' => $subtotal,
                 'weight_kg' => 0.0,
@@ -254,28 +254,107 @@ class ShippingCostService
         return $pickupLocation;
     }
 
-    protected function calculatePickup(ShippingMethod $method, ?PickupLocation $pickupLocation, ?int $stateId, ?int $shippingZoneId): array
+    /**
+     * Pickup pricing: an applicable pickup rate (location-specific first,
+     * then the location's state/zone, then global) charges its flat base
+     * rate plus surcharge; with no configured rate, pickup stays free.
+     */
+    protected function calculatePickup(ShippingMethod $method, ?PickupLocation $pickupLocation, ?int $stateId, ?int $shippingZoneId, ?ShippingRate $rate = null, float $subtotal = 0.0): array
     {
+        $baseRate = $rate ? round((float) $rate->base_rate, 2) : 0.0;
+        $surcharge = $rate ? round((float) $rate->surcharge, 2) : 0.0;
+        $totalBeforeFreeCheck = round($baseRate + $surcharge, 2);
+        $freeApplied = false;
+        $total = $totalBeforeFreeCheck;
+
+        if ($rate && $rate->free_shipping_threshold !== null && $subtotal >= (float) $rate->free_shipping_threshold) {
+            $total = 0.0;
+            $freeApplied = true;
+        }
+
         return [
-            'base_rate' => 0.0,
+            'base_rate' => $baseRate,
             'per_kg' => 0.0,
             'weight_kg' => 0.0,
             'per_kg_total' => 0.0,
-            'total' => 0.0,
-            'surcharge' => 0.0,
-            'total_before_free_check' => 0.0,
-            'free_shipping_applied' => false,
-            'currency' => 'NGN',
-            'rate_id' => null,
+            'total' => max($total, 0.0),
+            'surcharge' => $surcharge,
+            'total_before_free_check' => $totalBeforeFreeCheck,
+            'free_shipping_applied' => $freeApplied,
+            'currency' => $rate->currency ?? 'NGN',
+            'rate_id' => $rate?->id,
             'shipping_method_id' => $method->id,
             'shipping_zone_id' => $pickupLocation?->shipping_zone_id ?? $shippingZoneId,
             'state_id' => $pickupLocation?->state_id ?? $stateId,
             'lga_id' => $pickupLocation?->lga_id,
             'used_weight_kg' => 0.0,
             'rate_type' => 'flat',
-            'estimated_delivery_text' => null,
+            'estimated_delivery_text' => $rate?->estimated_delivery_text,
             'method_type' => $method->method_type,
         ];
+    }
+
+    /**
+     * Find the best pickup rate for a method and (optionally) a chosen
+     * location. Location-specific rates only apply to their location;
+     * rates without a location fall back to state/zone/global scoping
+     * evaluated against the pickup location's geography (or the buyer's
+     * when no location is chosen yet).
+     */
+    protected function resolvePickupRate(
+        ShippingMethod $method,
+        ?PickupLocation $pickupLocation,
+        ?int $shippingZoneId,
+        ?int $stateId,
+        ?int $lgaId,
+        float $subtotal
+    ): ?ShippingRate {
+        $effectiveStateId = $pickupLocation?->state_id ? (int) $pickupLocation->state_id : $stateId;
+        $effectiveLgaId = $pickupLocation?->lga_id ? (int) $pickupLocation->lga_id : $lgaId;
+        $effectiveZoneId = $pickupLocation?->shipping_zone_id ? (int) $pickupLocation->shipping_zone_id : $shippingZoneId;
+
+        if ($effectiveZoneId === null && $effectiveStateId !== null) {
+            $effectiveZoneId = $this->resolveZoneForState($effectiveStateId);
+        }
+
+        $candidates = $this->activeRatesForMethod($method->id)
+            ->filter(function (ShippingRate $rate) use ($pickupLocation, $effectiveZoneId, $effectiveStateId, $effectiveLgaId) {
+                if ($rate->pickup_location_id !== null) {
+                    return $pickupLocation !== null && (int) $rate->pickup_location_id === (int) $pickupLocation->id;
+                }
+
+                return $this->rateMatchesScope($rate, $effectiveZoneId, $effectiveStateId, $effectiveLgaId);
+            })
+            ->filter(fn (ShippingRate $rate) => $this->rateMatchesThresholds($rate, $subtotal, 0.0))
+            ->values();
+
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        return $candidates
+            ->sort(function (ShippingRate $left, ShippingRate $right) use ($effectiveZoneId, $effectiveStateId, $effectiveLgaId) {
+                $leftScope = $left->pickup_location_id !== null ? 5 : $this->scopePriority($left, $effectiveZoneId, $effectiveStateId, $effectiveLgaId);
+                $rightScope = $right->pickup_location_id !== null ? 5 : $this->scopePriority($right, $effectiveZoneId, $effectiveStateId, $effectiveLgaId);
+
+                if ($leftScope !== $rightScope) {
+                    return $rightScope <=> $leftScope;
+                }
+
+                $leftConstraintScore = $this->constraintPriority($left);
+                $rightConstraintScore = $this->constraintPriority($right);
+
+                if ($leftConstraintScore !== $rightConstraintScore) {
+                    return $rightConstraintScore <=> $leftConstraintScore;
+                }
+
+                if ((int) $left->sort_order !== (int) $right->sort_order) {
+                    return (int) $left->sort_order <=> (int) $right->sort_order;
+                }
+
+                return (int) $left->id <=> (int) $right->id;
+            })
+            ->first();
     }
 
     protected function activeRatesForMethod(int $methodId): Collection

@@ -9,6 +9,7 @@ defineProps<{
     zones: Array<{ id: number; name: string; state_count: number }>
     states: Array<{ id: number; name: string }>
     lgas: Array<{ id: number; name: string }>
+    pickupLocations: Array<{ id: number; name: string; shipping_method_id: number; state: string | null; is_active: boolean }>
     scopeTypes: Array<{ value: string; label: string }>
     rateTypes: Array<{ value: string; label: string }>
 }>()
@@ -24,6 +25,7 @@ defineProps<{
         :zones="zones"
         :states="states"
         :lgas="lgas"
+        :pickup-locations="pickupLocations"
         :scope-types="scopeTypes"
         :rate-types="rateTypes"
     />
