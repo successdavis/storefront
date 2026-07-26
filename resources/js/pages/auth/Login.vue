@@ -5,7 +5,6 @@ import InputError from '@/components/InputError.vue';
 import TextLink from '@/components/TextLink.vue';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AuthBase from '@/layouts/AuthLayout.vue';
@@ -161,16 +160,7 @@ export default {
                     <InputError :message="errors.password" />
                 </div>
 
-                <!-- Remember me -->
-                <div class="flex items-center justify-between">
-                    <Label
-                        for="remember"
-                        class="flex cursor-pointer items-center gap-3 text-sm font-medium text-slate-600"
-                    >
-                        <Checkbox id="remember" name="remember" :tabindex="3" />
-                        <span>Remember me for 30 days</span>
-                    </Label>
-                </div>
+                <!-- Sessions are remembered until the user signs out -->
 
                 <!-- Submit -->
                 <Button

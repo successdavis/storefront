@@ -60,7 +60,7 @@ function categoryHref(category) {
                     </Link>
                     <Link
                         v-else
-                        :href="route('login')"
+                        :href="route('login', { redirect: $page.url })"
                         class="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-700 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400 sm:px-4 sm:text-sm"
                     >
                         Sign In
@@ -103,7 +103,7 @@ function categoryHref(category) {
                     </Link>
                     <Link
                         v-else
-                        :href="route('login')"
+                        :href="route('login', { redirect: $page.url })"
                         class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
                     >
                         Sign In

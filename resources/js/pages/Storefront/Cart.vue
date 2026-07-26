@@ -116,7 +116,7 @@ function removeSaved(id) {
     <section v-if="!isLoggedIn" class="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Sign in to view your cart</h2>
         <p class="mt-2 text-sm text-slate-500 dark:text-slate-300">Your cart is linked to your account for secure checkout and discount eligibility.</p>
-        <Link :href="route('login')" class="mt-4 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">
+        <Link :href="route('login', { redirect: $page.url })" class="mt-4 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">
             Sign In
         </Link>
     </section>

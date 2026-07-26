@@ -2,6 +2,7 @@
 import { router, usePage } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import { ShoppingCart } from 'lucide-vue-next'
+import { loginUrlWithRedirect } from '@/lib/loginRedirect'
 
 const props = defineProps({
     variantId: {
@@ -38,7 +39,7 @@ function addToCart() {
     }
 
     if (!isLoggedIn.value) {
-        router.visit(route('login'))
+        router.visit(loginUrlWithRedirect())
         return
     }
 

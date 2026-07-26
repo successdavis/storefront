@@ -5,6 +5,7 @@ import { Heart } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import AddToCartButton from '@/components/Storefront/AddToCartButton.vue'
+import { loginUrlWithRedirect } from '@/lib/loginRedirect'
 import ProductGallery from '@/components/Storefront/ProductGallery.vue'
 import ProductGrid from '@/components/Storefront/ProductGrid.vue'
 import SeoHead from '@/components/Storefront/SeoHead.vue'
@@ -154,7 +155,7 @@ function addToWishlist() {
     }
 
     if (!page.props.auth?.user) {
-        router.visit(route('login'))
+        router.visit(loginUrlWithRedirect())
         return
     }
 

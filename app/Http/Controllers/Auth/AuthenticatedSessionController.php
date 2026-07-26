@@ -19,10 +19,34 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(Request $request): Response
     {
+        // A guest interrupted mid-action (e.g. add to cart) arrives with
+        // ?redirect=<path>; store it as the intended URL so both the normal
+        // and two-factor login flows return the user where they left off.
+        $redirect = $this->safeInternalPath((string) $request->query('redirect', ''));
+        if ($redirect !== null) {
+            redirect()->setIntendedUrl($redirect);
+        }
+
         return Inertia::render('auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => $request->session()->get('status'),
         ]);
+    }
+
+    /**
+     * Only same-app relative paths are allowed as post-login destinations.
+     */
+    protected function safeInternalPath(string $path): ?string
+    {
+        if ($path === ''
+            || !str_starts_with($path, '/')
+            || str_starts_with($path, '//')
+            || str_contains($path, '\\')
+        ) {
+            return null;
+        }
+
+        return $path;
     }
 
     /**
@@ -35,13 +59,15 @@ class AuthenticatedSessionController extends Controller
         if (Features::enabled(Features::twoFactorAuthentication()) && $user->hasEnabledTwoFactorAuthentication()) {
             $request->session()->put([
                 'login.id' => $user->getKey(),
-                'login.remember' => $request->boolean('remember'),
+                // Sessions are always remembered; users stay signed in until
+                // they explicitly log out.
+                'login.remember' => true,
             ]);
 
             return to_route('two-factor.login');
         }
 
-        Auth::login($user, $request->boolean('remember'));
+        Auth::login($user, true);
 
         $request->session()->regenerate();
 

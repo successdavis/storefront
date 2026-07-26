@@ -47,8 +47,8 @@ class RegisteredUserController extends Controller
 
         event(new Registered($user));
 
-        Auth::login($user);
+        Auth::login($user, true);
 
-        return to_route('dashboard');
+        return redirect()->intended(route('dashboard', absolute: false));
     }
 }
