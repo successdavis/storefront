@@ -308,13 +308,8 @@ onBeforeUnmount(() => {
 <template>
     <Head title="Checkout" />
 
-    <section class="mb-8 flex flex-wrap items-end justify-between gap-3">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Checkout</h1>
-            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                Confirm your order totals, reuse saved delivery details when you have them, and continue securely with Paystack.
-            </p>
-        </div>
+    <section class="mb-8 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Checkout</h1>
 
         <Link
             :href="route('store.cart')"
@@ -431,7 +426,6 @@ onBeforeUnmount(() => {
                 <div class="flex items-start justify-between gap-3">
                     <div>
                         <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Checkout Details</h2>
-                        <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Choose shipping, review charges, and proceed when everything looks right.</p>
                     </div>
                     <Link
                         :href="route('account.addresses.index')"
@@ -656,8 +650,8 @@ onBeforeUnmount(() => {
                     </p>
                 </div>
 
-                <p class="mt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
-                    {{ totalsAreUpdating ? 'Refreshing totals...' : 'Totals update automatically when you change shipping details or coupon code.' }}
+                <p v-if="totalsAreUpdating" class="mt-4 text-xs font-medium text-slate-600 dark:text-slate-300">
+                    Refreshing totals...
                 </p>
 
                 <div v-if="visibleDeliveryEstimate" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
