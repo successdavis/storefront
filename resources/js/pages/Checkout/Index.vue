@@ -336,8 +336,10 @@ onBeforeUnmount(() => {
         </Link>
     </section>
 
-    <section v-else class="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
-        <div class="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <!-- min-w-0 on the grid children lets long product names truncate instead
+         of forcing the columns (and the page) wider than the viewport -->
+    <section v-else class="grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
+        <div class="min-w-0 space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <div
                 v-if="page.props.flash?.error"
                 class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"
@@ -424,7 +426,7 @@ onBeforeUnmount(() => {
             </article>
         </div>
 
-        <aside class="space-y-4">
+        <aside class="min-w-0 space-y-4">
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                 <div class="flex items-start justify-between gap-3">
                     <div>
