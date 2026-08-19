@@ -6,15 +6,20 @@ import StepPhotos from '@/components/Admin/Products/Wizard/StepPhotos.vue'
 import StepReview from '@/components/Admin/Products/Wizard/StepReview.vue'
 import PreviewCard from '@/components/Admin/Products/Wizard/PreviewCard.vue'
 import { Head, useForm } from '@inertiajs/vue3'
+import axios from 'axios'
 import {
     ArrowLeft,
     ArrowRight,
     Check,
     ClipboardCheck,
+    CloudOff,
+    History,
     ImagePlus,
     Info,
+    LoaderCircle,
     Sparkles,
     Tags,
+    X,
 } from 'lucide-vue-next'
 import { computed, nextTick, provide, reactive, ref, watch } from 'vue'
 
@@ -23,33 +28,87 @@ const props = defineProps({
     brands: { type: Array, default: () => [] },
     suppliers: { type: Array, default: () => [] },
     variantTypes: { type: Array, default: () => [] },
+    draft: { type: Object, default: null },
+    product: { type: [Object, null], default: null }, // present = edit mode
 })
 
-/* ---------------- Form ---------------- */
+/* Edit mode: the wizard doubles as the product editor. */
+const p = props.product?.data ?? props.product ?? null
+const isEdit = !!p
+
+/* Prefill source: the edited product wins, then a restored auto-draft. */
+const seed = p ?? props.draft ?? null
+
+const editVariants = (p?.variants ?? []).map(row => ({ archived: false, ...row }))
+
 const form = useForm({
-    name: '',
-    brand_id: null,
-    category_ids: [],
-    description: '',
-    is_active: true,
-    featured: false,
-    cash_on_delivery: false,
-    weight: null,
-    weight_unit: null,
-    length: null,
-    width: null,
-    height: null,
-    meta_title: '',
-    meta_description: '',
-    youtube_video_url: '',
-    faqs: [],
-    variants: [],
-    images: [],
+    name: seed?.name ?? '',
+    brand_id: seed?.brand_id ?? null,
+    category_ids: [...(seed?.category_ids ?? [])],
+    description: seed?.description ?? '',
+    is_active: isEdit ? !!p.is_active : true,
+    featured: seed?.featured ?? false,
+    cash_on_delivery: seed?.cash_on_delivery ?? false,
+    weight: seed?.weight ?? null,
+    weight_unit: seed?.weight_unit ?? null,
+    length: seed?.length ?? null,
+    width: seed?.width ?? null,
+    height: seed?.height ?? null,
+    meta_title: seed?.meta_title ?? '',
+    meta_description: seed?.meta_description ?? '',
+    youtube_video_url: seed?.youtube_video_url ?? '',
+    faqs: [...(seed?.faqs ?? [])],
+    variants: editVariants,
+    images: (p?.images ?? []).map((img, index) => ({
+        id: img.id,
+        path: img.path,
+        file: null,
+        alt: img.alt || '',
+        is_primary: !!img.is_primary,
+        sort_order: Number.isFinite(+img.sort_order) ? +img.sort_order : index,
+        _preview: img.url || '',
+    })),
 })
+
+/* Brand/category lists are mutable so inline quick-create can extend them. */
+const brandOptions = ref([...(props.brands || [])])
+const categoryOptions = ref([...(props.categories || [])])
+
+function applyQuickBrand(brands, selectId = null) {
+    brandOptions.value = brands
+    if (selectId) form.brand_id = selectId
+}
+
+function applyQuickCategory(tree, selectId = null) {
+    categoryOptions.value = tree
+    if (selectId && !form.category_ids.map(String).includes(String(selectId))) {
+        form.category_ids = [...form.category_ids, selectId]
+    }
+}
 
 /* ---------------- Wizard state ---------------- */
-const mode = ref('simple') // 'simple' | 'variants'
-const selectedTypeNames = ref([])
+const hasOptionVariants = editVariants.some(row => (row.value_ids || []).length > 0)
+const mode = ref(isEdit && hasOptionVariants ? 'variants' : 'simple') // 'simple' | 'variants'
+
+/* On edit, pre-select the option types the existing variants use. */
+function typeNamesFromVariants(rows) {
+    const valueIdToTypeName = new Map()
+    for (const type of props.variantTypes || []) {
+        for (const value of type.values || []) {
+            valueIdToTypeName.set(String(value.id), type.name)
+        }
+    }
+    const names = new Set()
+    for (const row of rows) {
+        for (const valueId of row.value_ids || []) {
+            const name = valueIdToTypeName.get(String(valueId))
+            if (name) names.add(name)
+        }
+    }
+    return Array.from(names)
+}
+
+const selectedTypeNames = ref(isEdit && hasOptionVariants ? typeNamesFromVariants(editVariants) : [])
 
 function makeSimpleRow() {
     return {
@@ -78,7 +137,9 @@ function makeSimpleRow() {
     }
 }
 
-const simpleRow = reactive(makeSimpleRow())
+/* On edit of a simple product, the wizard edits its one existing variant in place. */
+const simpleSeed = isEdit && !hasOptionVariants && editVariants.length ? editVariants[0] : null
+const simpleRow = reactive({ ...makeSimpleRow(), ...(simpleSeed ?? {}) })
 
 function simpleRowAsVariant() {
     return { ...simpleRow, value_ids: [], images: [...(simpleRow.images || [])] }
@@ -118,7 +179,8 @@ const steps = [
 ]
 
 const currentStep = ref(0)
-const maxVisitedStep = ref(0)
+// Editing an existing product unlocks every step so any section is one click away.
+const maxVisitedStep = ref(isEdit ? steps.length - 1 : 0)
 const attempted = reactive({}) // stepIndex -> true after a failed Continue
 const stepPanel = ref(null)
 
@@ -147,7 +209,8 @@ function validateStep(index) {
             if (row.regular_price === null || row.regular_price === '' || Number(row.regular_price) < 0) {
                 problems.push(`${label}: enter a selling price.`)
             }
-            if (row.last_purchase_price === null || row.last_purchase_price === '' || Number(row.last_purchase_price) < 0) {
+            // Existing variants have their cost locked (it comes from purchase history).
+            if (!row.id && (row.last_purchase_price === null || row.last_purchase_price === '' || Number(row.last_purchase_price) < 0)) {
                 problems.push(`${label}: enter the cost (purchase) price.`)
             }
         })
@@ -181,6 +244,7 @@ function goToStep(index) {
     if (index > maxVisitedStep.value + 1) return
     currentStep.value = index
     maxVisitedStep.value = Math.max(maxVisitedStep.value, index)
+    saveDraft() // flush any pending auto-save when moving between steps
     nextTick(() => {
         stepPanel.value?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
     })
@@ -236,6 +300,107 @@ function serverErrorCount(index) {
     return (serverErrorsByStep.value[index] || []).length
 }
 
+/* ---------------- Auto-save as draft ---------------- */
+const AUTOSAVE_DEBOUNCE_MS = 2500
+
+const draftId = ref(props.draft?.id ?? null)
+const draftStatus = ref(props.draft ? 'saved' : 'idle') // idle | saving | saved | error
+const draftSavedAt = ref(null)
+const finalizing = ref(false)
+const showRestoredNotice = ref(!!props.draft)
+
+let draftTimer = null
+let draftInFlight = false
+let draftQueued = false
+let lastDraftSnapshot = ''
+
+function draftPayload() {
+    return {
+        name: form.name,
+        brand_id: form.brand_id,
+        category_ids: [...(form.category_ids || [])],
+        description: form.description,
+        meta_title: form.meta_title || '',
+        meta_description: form.meta_description || '',
+        youtube_video_url: form.youtube_video_url || '',
+        cash_on_delivery: !!form.cash_on_delivery,
+        featured: !!form.featured,
+        weight: form.weight,
+        weight_unit: form.weight_unit,
+        length: form.length,
+        width: form.width,
+        height: form.height,
+        faqs: (form.faqs || [])
+            .filter(faq => String(faq.question || '').trim() && String(faq.answer || '').trim())
+            .map((faq, index) => ({
+                question: faq.question,
+                answer: faq.answer,
+                is_active: faq.is_active !== false,
+                position: index,
+            })),
+    }
+}
+
+if (props.draft) {
+    lastDraftSnapshot = JSON.stringify(draftPayload())
+}
+
+function scheduleDraftSave() {
+    if (isEdit || finalizing.value) return // editing saves explicitly, never via auto-draft
+    if (draftTimer) clearTimeout(draftTimer)
+    draftTimer = setTimeout(saveDraft, AUTOSAVE_DEBOUNCE_MS)
+}
+
+async function saveDraft() {
+    if (draftTimer) {
+        clearTimeout(draftTimer)
+        draftTimer = null
+    }
+    if (isEdit || finalizing.value) return
+    if (validateStep(0).length) return // a draft needs the basics filled in first
+    if (draftInFlight) {
+        draftQueued = true
+        return
+    }
+
+    const payload = draftPayload()
+    const snapshot = JSON.stringify(payload)
+    if (snapshot === lastDraftSnapshot) return
+
+    draftInFlight = true
+    draftStatus.value = 'saving'
+    try {
+        if (!draftId.value) {
+            const { data } = await axios.post('/admin/products/draft', payload)
+            draftId.value = data.id
+            // Survive refreshes: a reload of this URL restores the draft into the wizard.
+            const url = new URL(window.location.href)
+            url.searchParams.set('draft', String(data.id))
+            window.history.replaceState(window.history.state, '', url)
+        } else {
+            await axios.patch(`/admin/products/${draftId.value}/draft`, payload)
+        }
+        lastDraftSnapshot = snapshot
+        draftStatus.value = 'saved'
+        draftSavedAt.value = new Date()
+    } catch {
+        draftStatus.value = 'error'
+    } finally {
+        draftInFlight = false
+        if (draftQueued) {
+            draftQueued = false
+            scheduleDraftSave()
+        }
+    }
+}
+
+watch(draftPayload, scheduleDraftSave, { deep: true })
+
+const draftSavedLabel = computed(() => {
+    if (!draftSavedAt.value) return 'Draft saved'
+    return `Draft saved ${draftSavedAt.value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+})
+
 /* ---------------- Submit ---------------- */
 const toNumberOrNull = value => (value === null || value === '' || value === undefined ? null : Number(value))
 
@@ -243,6 +408,7 @@ function buildPayload(data) {
     const variants = (data.variants || [])
         .filter(row => !row.archived)
         .map(row => ({
+            ...(row.id ? { id: row.id } : {}),
             sku: String(row.sku || '').trim() || null,
             quantity: row.fulfillment_type === 'dropshipping' ? 0 : Math.max(0, parseInt(row.quantity, 10) || 0),
             barcode: String(row.barcode || '').trim() || null,
@@ -261,17 +427,32 @@ function buildPayload(data) {
             show_as_available_when_dropshipping: !!row.show_as_available_when_dropshipping,
             dropshipping_note: row.dropshipping_note || '',
             value_ids: row.value_ids || [],
-            images: (row.images || []).filter(file => file instanceof File),
+            // New uploads travel as files; existing images as {id, path} rows so they survive the sync.
+            images: (row.images || [])
+                .map(img => {
+                    if (img instanceof File) return img
+                    if (img && typeof img === 'object' && (img.id || img.path)) {
+                        return {
+                            ...(img.id ? { id: img.id } : {}),
+                            path: img.path || '',
+                            alt: img.alt || '',
+                            is_primary: !!img.is_primary,
+                            sort_order: img.sort_order ?? 0,
+                        }
+                    }
+                    return null
+                })
+                .filter(Boolean),
         }))
 
     const images = (data.images || [])
-        .filter(row => row.file instanceof File)
-        .map((row, index) => ({
-            file: row.file,
-            alt: row.alt || '',
-            is_primary: row.is_primary ? 1 : 0,
-            sort_order: index,
-        }))
+        .map((row, index) => {
+            const base = { alt: row.alt || '', is_primary: row.is_primary ? 1 : 0, sort_order: index }
+            if (row.file instanceof File) return { ...base, file: row.file }
+            if (row.id) return { ...base, id: row.id, path: row.path || '' }
+            return null
+        })
+        .filter(Boolean)
 
     return { ...data, variants, images }
 }
@@ -286,37 +467,59 @@ function submit() {
         }
     }
 
-    form.transform(buildPayload).post(route('admin.products.store'), {
+    // Stop auto-saving: from here the product is saved (or created fresh) in one request.
+    finalizing.value = true
+    if (draftTimer) {
+        clearTimeout(draftTimer)
+        draftTimer = null
+    }
+
+    const submitOptions = {
         forceFormData: true,
         preserveScroll: true,
         onError: () => {
+            finalizing.value = false
             const erroredSteps = Object.keys(serverErrorsByStep.value).map(Number).sort((a, b) => a - b)
             if (erroredSteps.length) {
                 goToStep(erroredSteps[0])
             }
         },
-    })
+    }
+
+    if (isEdit) {
+        form.transform(buildPayload).put(route('admin.products.update', p.id), submitOptions)
+        return
+    }
+
+    const target = draftId.value
+        ? `/admin/products/${draftId.value}/finalize-draft`
+        : route('admin.products.store')
+
+    form.transform(buildPayload).post(target, submitOptions)
 }
 
 /* ---------------- Shared context for steps ---------------- */
 provide('productWizard', {
     form,
+    isEdit,
     mode,
     simpleRow,
     selectedTypeNames,
-    brands: computed(() => props.brands),
-    categories: computed(() => props.categories),
+    brands: brandOptions,
+    categories: categoryOptions,
     suppliers: computed(() => props.suppliers),
     variantTypes: computed(() => props.variantTypes),
     activeVariants,
     serverErr,
     goToStep,
     submit,
+    applyQuickBrand,
+    applyQuickCategory,
 })
 </script>
 
 <template>
-    <Head title="Create product" />
+    <Head :title="isEdit ? `Edit ${form.name || 'product'}` : 'Create product'" />
 
     <div class="min-h-screen bg-gray-100 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
         <!-- Top bar -->
@@ -332,13 +535,34 @@ provide('productWizard', {
                         <ArrowLeft class="h-4 w-4" aria-hidden="true" />
                     </a>
                     <div>
-                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300">New product</p>
-                        <h1 class="text-lg font-semibold leading-tight">{{ form.name || 'Create a product' }}</h1>
+                        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300">
+                            {{ isEdit ? 'Edit product' : 'New product' }}
+                        </p>
+                        <h1 class="text-lg font-semibold leading-tight">{{ form.name || (isEdit ? 'Edit product' : 'Create a product') }}</h1>
                     </div>
                 </div>
-                <p class="hidden text-sm text-gray-500 dark:text-gray-400 sm:block">
-                    Step {{ currentStep + 1 }} of {{ steps.length }} · {{ steps[currentStep].title }}
-                </p>
+                <div class="hidden text-right sm:block">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                        Step {{ currentStep + 1 }} of {{ steps.length }} · {{ steps[currentStep].title }}
+                    </p>
+                    <p
+                        v-if="draftStatus !== 'idle'"
+                        class="mt-0.5 inline-flex items-center gap-1.5 text-xs"
+                        :class="{
+                            'text-gray-500 dark:text-gray-400': draftStatus === 'saving',
+                            'text-emerald-600 dark:text-emerald-400': draftStatus === 'saved',
+                            'text-amber-600 dark:text-amber-400': draftStatus === 'error',
+                        }"
+                        aria-live="polite"
+                    >
+                        <LoaderCircle v-if="draftStatus === 'saving'" class="h-3 w-3 animate-spin" aria-hidden="true" />
+                        <Check v-else-if="draftStatus === 'saved'" class="h-3 w-3" aria-hidden="true" />
+                        <CloudOff v-else class="h-3 w-3" aria-hidden="true" />
+                        <template v-if="draftStatus === 'saving'">Saving draft…</template>
+                        <template v-else-if="draftStatus === 'saved'">{{ draftSavedLabel }}</template>
+                        <template v-else>Couldn't auto-save — will retry</template>
+                    </p>
+                </div>
             </div>
         </header>
 
@@ -389,6 +613,27 @@ provide('productWizard', {
         <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6">
             <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
                 <div ref="stepPanel" class="min-w-0 space-y-4">
+                    <!-- Restored draft notice -->
+                    <div
+                        v-if="showRestoredNotice"
+                        class="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"
+                        role="status"
+                    >
+                        <History class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                        <p class="flex-1">
+                            <span class="font-medium">Draft restored</span> — your earlier details are filled in.
+                            Pricing and photos aren't part of auto-save, so add those before publishing.
+                        </p>
+                        <button
+                            type="button"
+                            class="rounded p-0.5 text-blue-500 transition hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                            aria-label="Dismiss"
+                            @click="showRestoredNotice = false"
+                        >
+                            <X class="h-4 w-4" aria-hidden="true" />
+                        </button>
+                    </div>
+
                     <!-- Client validation summary -->
                     <div
                         v-if="currentProblems.length"
@@ -453,7 +698,8 @@ provide('productWizard', {
                                 @click="submit"
                             >
                                 <Check class="h-4 w-4" aria-hidden="true" />
-                                {{ form.processing ? 'Creating…' : (form.is_active ? 'Create & publish' : 'Create draft') }}
+                                <template v-if="isEdit">{{ form.processing ? 'Saving…' : 'Save changes' }}</template>
+                                <template v-else>{{ form.processing ? 'Creating…' : (form.is_active ? 'Create & publish' : 'Create draft') }}</template>
                             </button>
                         </div>
                     </div>

@@ -112,6 +112,31 @@ class Category extends Model
     }
 
     /**
+     * Full category tree as nested {id, name, children} arrays, for admin pickers.
+     */
+    public static function selectableTree(): array
+    {
+        $roots = static::whereNull('parent_id')
+            ->select('id', 'name', 'parent_id')
+            ->with(['childrenRecursive' => fn ($q) => $q->select('id', 'name', 'parent_id')->orderBy('name')])
+            ->orderBy('name')
+            ->get();
+
+        $toArray = function (self $category) use (&$toArray): array {
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'children' => collect($category->childrenRecursive ?? [])
+                    ->map(fn ($child) => $toArray($child))
+                    ->values()
+                    ->all(),
+            ];
+        };
+
+        return $roots->map(fn ($root) => $toArray($root))->values()->all();
+    }
+
+    /**
      * 🔗 Products directly under this category
      */
     public function products()

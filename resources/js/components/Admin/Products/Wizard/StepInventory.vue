@@ -6,7 +6,10 @@ import { Boxes, Package, Truck, Warehouse } from 'lucide-vue-next'
 import { computed, inject, onBeforeUnmount, reactive, ref } from 'vue'
 
 const wizard = inject('productWizard')
-const { form, mode, simpleRow, selectedTypeNames, suppliers, variantTypes, serverErr } = wizard
+const { form, isEdit, mode, simpleRow, selectedTypeNames, suppliers, variantTypes, serverErr } = wizard
+
+/* An existing simple variant keeps its SKU/cost/stock: those change via inventory operations. */
+const simpleLocked = computed(() => !!simpleRow.id)
 
 const variantTypeNames = computed(() => (variantTypes.value || []).map(type => type.name))
 const filteredVariantTypes = computed(() =>
@@ -36,6 +39,7 @@ function checkSku() {
     skuStatus.suggestion = null
     if (skuTimer) clearTimeout(skuTimer)
 
+    if (simpleLocked.value) return
     const sku = String(simpleRow.sku || '').trim()
     if (!sku) return
 
@@ -65,6 +69,13 @@ onBeforeUnmount(() => {
 
 /* ---- Simple mode: variant image ---- */
 const simpleImagePreview = ref('')
+
+const simplePhotoSrc = computed(() => {
+    if (simpleImagePreview.value) return simpleImagePreview.value
+    const first = (simpleRow.images || [])[0]
+    if (first && typeof first === 'object' && !(first instanceof File)) return first.url || ''
+    return ''
+})
 
 function onSimpleImageChange(event) {
     const file = event?.target?.files?.[0]
@@ -157,15 +168,19 @@ function fieldClass(extra = '') {
                 </div>
                 <div>
                     <label class="block text-sm font-medium" for="simple-cost">
-                        Cost price <span class="text-rose-500">*</span>
+                        Cost price <span v-if="!simpleLocked" class="text-rose-500">*</span>
                     </label>
                     <input
                         id="simple-cost"
                         v-model.number="simpleRow.last_purchase_price"
                         type="number" min="0" step="0.01" placeholder="0.00"
-                        :class="fieldClass('mt-1.5')"
+                        :disabled="simpleLocked"
+                        :class="fieldClass('mt-1.5 disabled:opacity-50')"
                     />
-                    <p class="mt-1 text-xs" :class="margin !== null ? (margin > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400') : 'text-gray-400 dark:text-gray-500'">
+                    <p v-if="simpleLocked" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        Comes from purchase history — updates as you receive stock.
+                    </p>
+                    <p v-else class="mt-1 text-xs" :class="margin !== null ? (margin > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400') : 'text-gray-400 dark:text-gray-500'">
                         <template v-if="margin !== null">≈ {{ margin }}% margin at this price</template>
                         <template v-else>What you pay your supplier — used for margins & reports.</template>
                     </p>
@@ -176,11 +191,12 @@ function fieldClass(extra = '') {
                         id="simple-qty"
                         v-model.number="simpleRow.quantity"
                         type="number" min="0" step="1"
-                        :disabled="simpleRow.fulfillment_type === 'dropshipping'"
+                        :disabled="simpleLocked || simpleRow.fulfillment_type === 'dropshipping'"
                         :class="fieldClass('mt-1.5 disabled:opacity-50')"
                     />
                     <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        Counted into inventory as an opening balance.
+                        <template v-if="simpleLocked">Adjust stock through purchases, entries or adjustments — not here.</template>
+                        <template v-else>Counted into inventory as an opening balance.</template>
                     </p>
                 </div>
                 <div>
@@ -190,10 +206,12 @@ function fieldClass(extra = '') {
                         v-model="simpleRow.sku"
                         type="text" placeholder="Leave blank to auto-generate"
                         autocomplete="off" spellcheck="false"
-                        :class="fieldClass('mt-1.5 uppercase')"
+                        :disabled="simpleLocked"
+                        :class="fieldClass('mt-1.5 uppercase disabled:opacity-50')"
                         @input="checkSku"
                     />
-                    <p v-if="skuStatus.loading" class="mt-1 text-xs text-gray-400 dark:text-gray-500">Checking availability…</p>
+                    <p v-if="simpleLocked" class="mt-1 text-xs text-gray-400 dark:text-gray-500">SKUs stay fixed once created so history lines up.</p>
+                    <p v-else-if="skuStatus.loading" class="mt-1 text-xs text-gray-400 dark:text-gray-500">Checking availability…</p>
                     <p v-else-if="skuStatus.available === false" class="mt-1 text-xs text-rose-600 dark:text-rose-400">
                         Already in use.
                         <button v-if="skuStatus.suggestion" type="button" class="ml-1 underline" @click="applySuggestedSku">
@@ -292,7 +310,7 @@ function fieldClass(extra = '') {
                 </p>
                 <div class="mt-3 flex items-center gap-3">
                     <input type="file" accept="image/*" class="text-sm" @change="onSimpleImageChange" />
-                    <img v-if="simpleImagePreview" :src="simpleImagePreview" alt="Preview" class="h-14 w-14 rounded-lg border object-cover dark:border-gray-700" />
+                    <img v-if="simplePhotoSrc" :src="simplePhotoSrc" alt="Preview" class="h-14 w-14 rounded-lg border object-cover dark:border-gray-700" />
                 </div>
             </div>
         </div>
@@ -314,7 +332,7 @@ function fieldClass(extra = '') {
                 <div class="mt-4">
                     <VariantMatrix
                         v-model="form.variants"
-                        :is-edit="false"
+                        :is-edit="isEdit"
                         :variant-types="filteredVariantTypes"
                         :suppliers="suppliers"
                     />

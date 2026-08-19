@@ -64,9 +64,28 @@ class ProductUpdateRequest extends FormRequest
             'variants.*.dropshipping_note' => ['nullable','string'],
             'variants.*.value_ids'     => ['array'],
             'variants.*.images'        => ['array'],
-            'variants.*.images.*.id'   => ['nullable','integer','exists:variant_images,id'],
-            'variants.*.images.*.path' => ['required','string'],
+
+            'images'              => ['nullable', 'array'],
+            'images.*.id'         => ['nullable', 'integer', 'exists:product_images,id'],
+            'images.*.file'       => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp,avif,gif', 'max:5120'],
+            'images.*.path'       => ['nullable', 'string'],
+            'images.*.alt'        => ['nullable', 'string', 'max:255'],
+            'images.*.is_primary' => ['sometimes', 'boolean'],
+            'images.*.sort_order' => ['sometimes', 'integer', 'min:0'],
         ];
+
+        // A variant image is either a fresh upload (an UploadedFile) or an existing
+        // image row ({id, path}); pick the matching rules per element.
+        foreach (data_get($this->all(), 'variants', []) as $i => $variant) {
+            foreach (data_get($variant, 'images', []) as $j => $image) {
+                if ($image instanceof \Illuminate\Http\UploadedFile) {
+                    $rules["variants.$i.images.$j"] = ['file', 'image', 'mimes:jpg,jpeg,png,webp,avif,gif', 'max:5120'];
+                } else {
+                    $rules["variants.$i.images.$j.id"] = ['nullable', 'integer', 'exists:variant_images,id'];
+                    $rules["variants.$i.images.$j.path"] = ["required_without:variants.$i.images.$j.id", 'nullable', 'string'];
+                }
+            }
+        }
 
         // build per-row rules that correctly ignore the current variant id
         foreach ($this->input('variants', []) as $i => $variant) {

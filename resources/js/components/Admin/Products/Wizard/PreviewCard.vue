@@ -7,7 +7,7 @@ const props = defineProps({
 })
 
 const wizard = inject('productWizard')
-const { form, brands, activeVariants } = wizard
+const { form, isEdit, brands, activeVariants } = wizard
 
 const brandName = computed(() => brands.value.find(brand => brand.id === form.brand_id)?.name || '')
 
@@ -83,7 +83,7 @@ const tip = computed(() => tips[Math.min(props.currentStep, tips.length - 1)])
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                             : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'"
                     >
-                        {{ form.is_active ? 'Will publish' : 'Draft' }}
+                        {{ form.is_active ? (isEdit ? 'Published' : 'Will publish') : 'Draft' }}
                     </span>
                 </div>
                 <p v-if="totalStock" class="text-xs text-gray-500 dark:text-gray-400">{{ totalStock }} in stock</p>

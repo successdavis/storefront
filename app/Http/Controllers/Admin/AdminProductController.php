@@ -3,10 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\{Admin\Product\ProductStoreRequest, Admin\Product\ProductUpdateRequest};
+use App\Http\Requests\{Admin\Product\ProductDraftRequest, Admin\Product\ProductStoreRequest, Admin\Product\ProductUpdateRequest};
 use App\Http\Resources\ProductResource;
 use App\Models\{Brand, Category, Product, VariantType, Vendor};
 use App\Services\ProductService;
+use App\Services\SlugService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -181,53 +182,85 @@ class AdminProductController extends Controller
         ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
-        // fetch roots with full descendant tree
-        $roots = Category::whereNull('parent_id')
-            ->select('id', 'name', 'parent_id')
-            ->with(['childrenRecursive' => function ($q) {
-                $q->select('id', 'name', 'parent_id')->orderBy('name');
-            }])
-            ->orderBy('name')
-            ->get();
-
-        // reshape to { id, name, children: [...] }
-        $categories = $roots->map(fn ($root) => $this->catToArray($root))->values();
-
         return Inertia::render('Admin/Products/Create', [
-            'categories'    => $categories,
+            'categories'    => Category::selectableTree(),
             'brands'        => Brand::select('id', 'name')->orderBy('name')->get(),
             'suppliers'     => Vendor::select('id', 'name', 'active')->orderBy('name')->get(),
             'variantTypes'  => VariantType::with('values:id,variant_type_id,value')
                 ->select('id', 'name')->get(),
+            'draft'         => $this->resumableDraft($request->integer('draft')),
         ]);
+    }
+
+    /**
+     * Load a wizard auto-draft (unpublished, variant-less product) for resuming in the create wizard.
+     */
+    protected function resumableDraft(int $draftId): ?array
+    {
+        if ($draftId <= 0) {
+            return null;
+        }
+
+        $product = Product::query()
+            ->with(['categories:id', 'faqs'])
+            ->whereKey($draftId)
+            ->where('is_active', false)
+            ->whereDoesntHave('variants')
+            ->first();
+
+        if (! $product) {
+            return null;
+        }
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'brand_id' => $product->brand_id,
+            'category_ids' => $product->categories->pluck('id')->values()->all(),
+            'description' => $product->description,
+            'meta_title' => $product->meta_title,
+            'meta_description' => $product->meta_description,
+            'youtube_video_url' => $product->youtube_video_url,
+            'cash_on_delivery' => (bool) $product->cash_on_delivery,
+            'featured' => (bool) $product->featured,
+            'weight' => $product->weight,
+            'weight_unit' => $product->weight_unit,
+            'length' => $product->length,
+            'width' => $product->width,
+            'height' => $product->height,
+            'faqs' => $product->faqs
+                ->map(fn ($faq) => [
+                    'id' => $faq->id,
+                    'product_variant_id' => null,
+                    'question' => $faq->question,
+                    'answer' => $faq->answer,
+                    'is_active' => (bool) $faq->is_active,
+                    'position' => (int) $faq->position,
+                    'slug' => $faq->slug,
+                    'locale' => $faq->locale,
+                ])
+                ->values()
+                ->all(),
+        ];
     }
 
     public function edit(Product $product)
     {
-        // fetch roots with full descendant tree
-        $roots = Category::whereNull('parent_id')
-            ->select('id', 'name', 'parent_id')
-            ->with(['childrenRecursive' => function ($q) {
-                $q->select('id', 'name', 'parent_id')->orderBy('name');
-            }])
-            ->orderBy('name')
-            ->get();
-
-        // reshape to { id, name, children: [...] }
-        $categories = $roots->map(fn ($root) => $this->catToArray($root))->values();
-
         $product->load([
+            'categories:id,name,slug,parent_id',
             'images',
             'faqs',
             'variants' => fn ($query) => $query
                 ->where('is_active', true)
                 ->with(['values', 'images']),
         ]);
-        return Inertia::render('Admin/Products/Edit', [
+
+        // The create wizard doubles as the edit experience.
+        return Inertia::render('Admin/Products/Create', [
             'product' => new ProductResource($product),
-            'categories'    => $categories,
+            'categories'    => Category::selectableTree(),
             'brands'     => Brand::select('id','name')->orderBy('name')->get(),
             'suppliers'  => Vendor::select('id', 'name', 'active')->orderBy('name')->get(),
             'variantTypes' => VariantType::with('values:id,variant_type_id,value')
@@ -241,10 +274,82 @@ class AdminProductController extends Controller
         return redirect()->route('admin.products.show', $product)->with('success', 'Product created.');
     }
 
+    /**
+     * Auto-save from the create wizard: create an unpublished, variant-less draft.
+     */
+    public function storeDraft(ProductDraftRequest $request, ProductService $svc)
+    {
+        $data = $request->validated();
+        $data['is_active'] = false;
+
+        $product = $svc->create($data);
+
+        return response()->json([
+            'id' => $product->id,
+            'saved_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Auto-save from the create wizard: refresh a draft's product-level fields.
+     */
+    public function updateDraft(ProductDraftRequest $request, Product $product, ProductService $svc)
+    {
+        abort_unless(
+            ! $product->is_active && $product->variants()->doesntExist(),
+            409,
+            'Only unfinished drafts can be auto-saved.'
+        );
+
+        $svc->update($product, $request->validated());
+
+        return response()->json([
+            'id' => $product->id,
+            'saved_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Turn a wizard auto-draft into the finished product: variants, images and publish state.
+     */
+    public function finalizeDraft(ProductStoreRequest $request, Product $product, ProductService $svc, SlugService $slugService)
+    {
+        abort_unless(
+            ! $product->is_active && $product->variants()->doesntExist(),
+            409,
+            'This product is no longer an unfinished draft.'
+        );
+
+        $data = $request->validated();
+
+        // The slug was minted from the draft's early name; refresh it if the name moved on.
+        if ($data['name'] !== $product->name && Str::slug((string) $data['name']) !== $product->slug) {
+            $product->slug = $slugService->makeUnique($data['name'], 'products');
+            $product->saveQuietly();
+        }
+
+        $svc->update($product, $data);
+
+        if (! empty($data['images'])) {
+            $svc->syncImages($product, $data['images']);
+        }
+
+        return redirect()->route('admin.products.show', $product)->with('success', 'Product created.');
+    }
+
     public function update(ProductUpdateRequest $request, Product $product, ProductService $svc)
     {
-        $svc->update($product, $request->validated());
-        return back()->with('success', 'Product updated.');
+        $data = $request->validated();
+
+        $svc->update($product, $data);
+
+        // The wizard submits the full gallery; only sync when the key is present so
+        // payloads without it can never wipe a product's images.
+        if (array_key_exists('images', $data)) {
+            $svc->syncImages($product, $data['images'] ?? []);
+        }
+
+        return redirect()->route('admin.products.show', $product)->with('success', 'Product updated.');
     }
 
     public function destroy(Product $product)
@@ -341,15 +446,4 @@ class AdminProductController extends Controller
             ->all();
     }
 
-    private function catToArray(Category $cat): array
-    {
-        return [
-            'id'        => $cat->id,
-            'name'      => $cat->name,
-            'children'  => collect($cat->childrenRecursive ?? [])
-                ->map(fn ($c) => $this->catToArray($c))
-                ->values()
-                ->all(),
-        ];
-    }
 }

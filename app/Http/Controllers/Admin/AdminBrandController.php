@@ -38,6 +38,26 @@ class AdminBrandController extends Controller
         return Inertia::render('Admin/Brands/Upsert');
     }
 
+    /**
+     * Minimal JSON create used by inline "new brand" affordances (e.g. the product wizard).
+     */
+    public function quickStore(Request $request, \App\Services\SlugService $slugService)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255', 'unique:brands,name'],
+        ]);
+
+        $brand = Brand::create([
+            'name' => $data['name'],
+            'slug' => $slugService->makeUnique($data['name'], 'brands'),
+        ]);
+
+        return response()->json([
+            'brand' => ['id' => $brand->id, 'name' => $brand->name],
+            'brands' => Brand::select('id', 'name')->orderBy('name')->get(),
+        ]);
+    }
+
     public function store(StoreBrandRequest $request, ImageOptimizationService $images)
     {
         $data = $request->validated();

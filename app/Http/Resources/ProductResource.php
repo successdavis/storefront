@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\MediaUrl;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class ProductResource extends JsonResource
@@ -46,6 +47,7 @@ class ProductResource extends JsonResource
             'images' => $this->images->map(fn ($img) => [
                 'id'         => (int) $img->id,
                 'path'       => $img->path,
+                'url'        => MediaUrl::make($img->path),
                 'alt'        => $img->alt,
                 'is_primary' => (bool) $img->is_primary,
                 'sort_order' => (int) $img->sort_order,
@@ -91,6 +93,7 @@ class ProductResource extends JsonResource
                     'images'                    => $v->images->map(fn ($img) => [
                         'id'                    => (int) $img->id,
                         'path'                  => $img->path,
+                        'url'                   => MediaUrl::make($img->path),
                         'alt'                   => $img->alt,
                         'is_primary'            => (bool) $img->is_primary,
                         'sort_order'            => (int) $img->sort_order,

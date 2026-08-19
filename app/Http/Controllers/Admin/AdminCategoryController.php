@@ -12,6 +12,36 @@ use Inertia\Inertia;
 
 class AdminCategoryController extends Controller
 {
+    /**
+     * Minimal JSON create used by inline "new category" affordances (e.g. the product wizard).
+     */
+    public function quickStore(Request $request, \App\Services\SlugService $slugService)
+    {
+        $data = $request->validate([
+            'name' => [
+                'required', 'string', 'max:255',
+                \Illuminate\Validation\Rule::unique('categories', 'name')
+                    ->where('parent_id', $request->input('parent_id') ?: null),
+            ],
+            'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
+        ]);
+
+        $category = Category::create([
+            'name' => $data['name'],
+            'parent_id' => $data['parent_id'] ?? null,
+            'slug' => $slugService->makeUnique($data['name'], 'categories'),
+        ]);
+
+        return response()->json([
+            'category' => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'parent_id' => $category->parent_id,
+            ],
+            'categories' => Category::selectableTree(),
+        ]);
+    }
+
     public function index(Request $request)
     {
         // Optional search by name

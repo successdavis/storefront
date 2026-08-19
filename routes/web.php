@@ -410,7 +410,11 @@ Route::prefix('admin')
         // Catalog management
         Route::patch('categories/{category}/remove-parent', [AdminCategoryController::class, 'removeParent'])
             ->name('categories.remove-parent');
+        Route::post('categories/quick', [AdminCategoryController::class, 'quickStore'])
+            ->name('categories.quick-store');
         Route::resource('categories', AdminCategoryController::class)->except(['show']);
+        Route::post('brands/quick', [AdminBrandController::class, 'quickStore'])
+            ->name('brands.quick-store');
         Route::resource('brands', AdminBrandController::class)->except(['show']);
         Route::patch('brands/{brand}/toggle-top', [AdminBrandController::class, 'toggleTop'])
             ->name('brands.toggle-top');
@@ -536,6 +540,9 @@ Route::prefix('admin')
         Route::get('/products/{product}', [AdminProductController::class, 'show'])->name('products.show');
         Route::get('/products/{product}/edit', [AdminProductController::class, 'edit'])->name('products.edit');
         Route::post('/products', [AdminProductController::class, 'store'])->name('products.store');
+        Route::post('/products/draft', [AdminProductController::class, 'storeDraft'])->name('products.draft.store');
+        Route::patch('/products/{product}/draft', [AdminProductController::class, 'updateDraft'])->name('products.draft.update');
+        Route::post('/products/{product}/finalize-draft', [AdminProductController::class, 'finalizeDraft'])->name('products.draft.finalize');
         Route::put('/products/{product}', [AdminProductController::class, 'update'])->name('products.update');
         Route::delete('/products/bulk-delete-products', [AdminProductController::class, 'bulkDestroy'])->name('products.bulk-destroy');
         Route::delete('/products/{product}', [AdminProductController::class, 'destroy'])->name('products.destroy');

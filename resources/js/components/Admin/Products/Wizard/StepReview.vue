@@ -8,7 +8,7 @@ const props = defineProps({
 })
 
 const wizard = inject('productWizard')
-const { form, mode, brands, categories, variantTypes, activeVariants, goToStep } = wizard
+const { form, isEdit, mode, brands, categories, variantTypes, activeVariants, goToStep } = wizard
 
 const brandName = computed(() => brands.value.find(brand => brand.id === form.brand_id)?.name || '—')
 
@@ -43,6 +43,11 @@ function variantLabel(row) {
 }
 
 const totalStock = computed(() => activeVariants.value.reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0))
+
+/* Opening balances are only recorded for variants that don't exist yet. */
+const newStock = computed(() => activeVariants.value
+    .filter(row => !row.id)
+    .reduce((sum, row) => sum + (parseInt(row.quantity, 10) || 0), 0))
 
 const money = value => (value === null || value === '' || value === undefined || Number.isNaN(Number(value))
     ? '—'
@@ -154,7 +159,8 @@ const sections = computed(() => [
                     </tbody>
                 </table>
             </div>
-            <p v-if="totalStock" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ totalStock }} unit(s) will be recorded as opening stock.</p>
+            <p v-if="newStock" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ newStock }} unit(s) will be recorded as opening stock for new variants.</p>
+            <p v-else-if="totalStock" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ totalStock }} unit(s) currently in stock.</p>
         </div>
 
         <!-- Photos summary -->
@@ -203,7 +209,7 @@ const sections = computed(() => [
                 >
                     <Eye class="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                     <span>
-                        <span class="block text-sm font-semibold">Publish immediately</span>
+                        <span class="block text-sm font-semibold">{{ isEdit ? 'Published' : 'Publish immediately' }}</span>
                         <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">Customers can see and buy it right away.</span>
                     </span>
                 </button>
@@ -218,7 +224,7 @@ const sections = computed(() => [
                 >
                     <EyeOff class="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
                     <span>
-                        <span class="block text-sm font-semibold">Save as draft</span>
+                        <span class="block text-sm font-semibold">{{ isEdit ? 'Hidden (draft)' : 'Save as draft' }}</span>
                         <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">Hidden from the store until you publish it.</span>
                     </span>
                 </button>
