@@ -301,6 +301,8 @@ Route::prefix('admin')
             ->name('inventory-alerts.suppress');
         Route::post('/inventory-alerts/{alert}/unsuppress', [InventoryAlertController::class, 'unsuppress'])
             ->name('inventory-alerts.unsuppress');
+        Route::post('/inventory-alerts/{alert}/replenishment', [InventoryAlertController::class, 'setReplenishment'])
+            ->name('inventory-alerts.replenishment');
         Route::get('/transactions', [TransactionController::class, 'index'])
             ->middleware('permission.any:admin.transactions.view')
             ->name('transactions.index');

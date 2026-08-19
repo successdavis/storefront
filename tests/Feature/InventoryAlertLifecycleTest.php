@@ -233,6 +233,119 @@ class InventoryAlertLifecycleTest extends TestCase
         Mail::assertSent(InventoryAlertMail::class, 1);
     }
 
+    public function test_staff_can_set_replenishment_status_from_alert_and_stock_alerts_resolve(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'sku' => 'ALERT-REPL-001',
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($director)
+            ->post(route('admin.inventory-alerts.replenishment', $alert), [
+                'replenishment_status' => ProductVariant::REPLENISHMENT_DISCONTINUED,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $variant->id,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_DISCONTINUED,
+        ]);
+
+        // Marking a variant paused/discontinued closes its open stock-level alerts.
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $alert->id,
+            'status' => 'resolved',
+            'resolved_by' => $director->id,
+            'resolved_reason' => 'Variant replenishment status changed to Discontinued.',
+        ]);
+    }
+
+    public function test_setting_replenishment_back_to_reorderable_keeps_alert_open(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'sku' => 'ALERT-REPL-002',
+                'replenishment_status' => ProductVariant::REPLENISHMENT_PAUSED,
+            ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'low_stock',
+            'severity' => 'high',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is below threshold.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($director)
+            ->post(route('admin.inventory-alerts.replenishment', $alert), [
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $variant->id,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+        ]);
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $alert->id,
+            'status' => 'open',
+        ]);
+    }
+
+    public function test_replenishment_endpoint_rejects_unknown_status(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create(['replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($director)
+            ->from(route('admin.inventory-alerts.index'))
+            ->post(route('admin.inventory-alerts.replenishment', $alert), [
+                'replenishment_status' => 'retired',
+            ])
+            ->assertSessionHasErrors('replenishment_status');
+
+        $this->assertDatabaseHas('product_variants', [
+            'id' => $variant->id,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+        ]);
+    }
+
     public function test_staff_can_batch_suppress_alerts_and_audit_actor_is_exposed(): void
     {
         $director = User::factory()->create();

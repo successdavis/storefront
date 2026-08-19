@@ -10,8 +10,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Head, Link, router } from '@inertiajs/vue3'
-import { AlarmClock, BellOff, Check, CheckCheck, ImageOff, RotateCcw } from 'lucide-vue-next'
+import { AlarmClock, BellOff, Check, CheckCheck, ChevronDown, ImageOff, RotateCcw } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -278,6 +286,30 @@ function replenishmentLabel(value) {
         discontinued: 'Discontinued',
         reorderable: 'Reorderable',
     }[value] || 'Unknown'
+}
+
+const replenishmentOptions = [
+    { value: 'reorderable', label: 'Reorderable', hint: 'Restock as normal', dotClass: 'bg-emerald-500' },
+    { value: 'paused', label: 'Paused', hint: 'Hold reordering for now', dotClass: 'bg-amber-500' },
+    { value: 'discontinued', label: 'Discontinued', hint: 'Will not be restocked', dotClass: 'bg-rose-500' },
+]
+
+const replenishmentPendingId = ref(null)
+
+function setReplenishment(alert, status) {
+    if (!alert.variant_id || alert.replenishment_status === status || replenishmentPendingId.value) {
+        return
+    }
+
+    replenishmentPendingId.value = alert.id
+    router.post(`/admin/inventory-alerts/${alert.id}/replenishment`, {
+        replenishment_status: status,
+    }, {
+        preserveScroll: true,
+        onFinish: () => {
+            replenishmentPendingId.value = null
+        },
+    })
 }
 
 function postAlertAction(alert, action, payload = {}, options = {}) {
@@ -653,7 +685,47 @@ function submitBatchAction() {
                                 </Link>
                                 <p v-else class="max-w-md font-medium leading-snug text-gray-900 dark:text-gray-100">{{ alert.product }}</p>
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">SKU: {{ alert.sku || 'N/A' }}</p>
-                                <span :class="['mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium', replenishmentClass(alert.replenishment_status)]">
+                                <DropdownMenu v-if="alert.variant_id">
+                                    <DropdownMenuTrigger as-child>
+                                        <button
+                                            type="button"
+                                            :class="['mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:ring-2 hover:ring-gray-300 disabled:opacity-60 dark:hover:ring-gray-600', replenishmentClass(alert.replenishment_status)]"
+                                            :disabled="replenishmentPendingId === alert.id"
+                                            title="Set replenishment status"
+                                            :aria-label="`Set replenishment status for ${alert.product}`"
+                                        >
+                                            {{ replenishmentPendingId === alert.id ? 'Saving…' : replenishmentLabel(alert.replenishment_status) }}
+                                            <ChevronDown class="h-3 w-3" aria-hidden="true" />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" class="w-56">
+                                        <DropdownMenuLabel class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                            Replenishment status
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                            v-for="option in replenishmentOptions"
+                                            :key="option.value"
+                                            class="cursor-pointer items-start gap-2 py-2"
+                                            @select="setReplenishment(alert, option.value)"
+                                        >
+                                            <span :class="['mt-1.5 h-2 w-2 shrink-0 rounded-full', option.dotClass]" aria-hidden="true" />
+                                            <span class="flex-1">
+                                                <span class="block text-sm font-medium">{{ option.label }}</span>
+                                                <span class="block text-xs text-gray-500 dark:text-gray-400">{{ option.hint }}</span>
+                                            </span>
+                                            <Check
+                                                v-if="alert.replenishment_status === option.value"
+                                                class="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-400"
+                                                aria-hidden="true"
+                                            />
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                                <span
+                                    v-else
+                                    :class="['mt-2 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium', replenishmentClass(alert.replenishment_status)]"
+                                >
                                     {{ replenishmentLabel(alert.replenishment_status) }}
                                 </span>
                             </td>

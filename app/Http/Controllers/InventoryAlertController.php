@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Inventory\Alerts\InventoryAlertEngine;
 use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\InventoryAlert;
+use App\Models\ProductVariant;
 use App\Services\ProductService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -206,6 +208,35 @@ class InventoryAlertController extends Controller
         ]);
 
         return back();
+    }
+
+    public function setReplenishment(Request $request, InventoryAlert $alert, InventoryAlertEngine $alertEngine)
+    {
+        $validated = $request->validate([
+            'replenishment_status' => ['required', Rule::in([
+                ProductVariant::REPLENISHMENT_REORDERABLE,
+                ProductVariant::REPLENISHMENT_PAUSED,
+                ProductVariant::REPLENISHMENT_DISCONTINUED,
+            ])],
+        ]);
+
+        $variant = $alert->variant;
+
+        if (! $variant) {
+            return back()->with('error', 'This alert is not linked to a product variant.');
+        }
+
+        $variant->update(['replenishment_status' => $validated['replenishment_status']]);
+
+        if (! $variant->isReorderable()) {
+            $alertEngine->resolveStockLevelAlertsForVariant(
+                $variant,
+                sprintf('Variant replenishment status changed to %s.', $variant->replenishmentStatusLabel()),
+                auth()->id(),
+            );
+        }
+
+        return back()->with('success', sprintf('Replenishment status set to %s.', $variant->replenishmentStatusLabel()));
     }
 
     public function bulk(Request $request)
