@@ -195,8 +195,7 @@ class AdminProductController extends Controller
         // reshape to { id, name, children: [...] }
         $categories = $roots->map(fn ($root) => $this->catToArray($root))->values();
 
-        return Inertia::render('Admin/Products/Edit', [
-            'product'       => null,
+        return Inertia::render('Admin/Products/Create', [
             'categories'    => $categories,
             'brands'        => Brand::select('id', 'name')->orderBy('name')->get(),
             'suppliers'     => Vendor::select('id', 'name', 'active')->orderBy('name')->get(),
@@ -239,7 +238,7 @@ class AdminProductController extends Controller
     public function store(ProductStoreRequest $request, ProductService $svc)
     {
         $product = $svc->create($request->validated());
-        return redirect()->route('admin.products.edit', $product)->with('success', 'Product created.');
+        return redirect()->route('admin.products.show', $product)->with('success', 'Product created.');
     }
 
     public function update(ProductUpdateRequest $request, Product $product, ProductService $svc)

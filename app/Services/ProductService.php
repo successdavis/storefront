@@ -53,6 +53,10 @@ class ProductService
             $this->syncFaqs($product, $data['faqs'] ?? []);
             $this->syncVariants($product, $data['variants'] ?? []);
 
+            if (!empty($data['images'])) {
+                $this->syncImages($product, $data['images']);
+            }
+
             return $product->fresh(['images','faqs','variants.values','variants.images']);
         });
     }

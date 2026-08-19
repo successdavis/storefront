@@ -32,6 +32,12 @@ class ProductStoreRequest extends FormRequest
             'width'             => ['nullable','numeric'],
             'height'            => ['nullable','numeric'],
 
+            'images'              => ['nullable', 'array'],
+            'images.*.file'       => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp,avif,gif', 'max:5120'],
+            'images.*.alt'        => ['nullable', 'string', 'max:255'],
+            'images.*.is_primary' => ['sometimes', 'boolean'],
+            'images.*.sort_order' => ['sometimes', 'integer', 'min:0'],
+
             'faqs' => ['array'],
             'faqs.*.question' => ['required','string','max:255'],
             'faqs.*.answer'   => ['required','string'],
@@ -65,7 +71,8 @@ class ProductStoreRequest extends FormRequest
             'variants.*.dropshipping_note'      => ['nullable','string'],
             'variants.*.value_ids'              => ['array'], // variant_values ids
             'variants.*.images'                 => ['array'],
-            'variants.*.images.*.path'          => ['required','string'],
+            // On create every variant image is a fresh upload, so validate the file itself.
+            'variants.*.images.*'               => ['file', 'image', 'mimes:jpg,jpeg,png,webp,avif,gif', 'max:5120'],
         ];
     }
 }
