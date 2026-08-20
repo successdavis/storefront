@@ -120,6 +120,18 @@ class ProductVariant extends Model
         );
     }
 
+    public function scopeStockedFulfillment($query)
+    {
+        $column = $query->getModel()->qualifyColumn('fulfillment_type');
+
+        // NULL predates the fulfillment_type column and means locally stocked.
+        return $query->where(function ($fulfillmentQuery) use ($column) {
+            $fulfillmentQuery
+                ->whereNull($column)
+                ->orWhere($column, '!=', self::FULFILLMENT_DROPSHIPPING);
+        });
+    }
+
     public function scopeEligibleForStockLevelAlerts($query)
     {
         $model = $query->getModel();
@@ -128,7 +140,9 @@ class ProductVariant extends Model
             ->where($model->qualifyColumn('track_inventory'), true)
             ->active()
             ->onActiveProduct()
-            ->reorderable();
+            ->reorderable()
+            // Dropshipping variants hold no local stock, so stock-level alerts don't apply.
+            ->stockedFulfillment();
     }
 
     public function scopeEligibleForOperationalAlerts($query)

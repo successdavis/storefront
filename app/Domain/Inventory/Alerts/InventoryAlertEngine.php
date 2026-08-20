@@ -67,6 +67,25 @@ class InventoryAlertEngine
             ]);
     }
 
+    /**
+     * Close open stock-level alerts that belong to dropshipping variants — they hold
+     * no local stock, so low/out-of-stock conditions are meaningless for them.
+     */
+    public function resolveStockLevelAlertsForDropshippingVariants(?int $resolvedBy = null): int
+    {
+        return InventoryAlert::query()
+            ->where('status', 'open')
+            ->whereIn('type', self::STOCK_LEVEL_TYPES)
+            ->whereHas('variant', fn ($query) => $query
+                ->where('fulfillment_type', ProductVariant::FULFILLMENT_DROPSHIPPING))
+            ->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+                'resolved_by' => $resolvedBy,
+                'resolved_reason' => 'Variant is fulfilled by dropshipping; no local stock is expected.',
+            ]);
+    }
+
     public function resolveRecoveredOutOfStockAlerts(?int $resolvedBy = null): int
     {
         return InventoryAlert::query()

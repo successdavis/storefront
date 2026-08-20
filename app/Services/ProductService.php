@@ -367,6 +367,11 @@ class ProductService
                 $variant,
                 sprintf('Variant replenishment status changed to %s.', $variant->replenishmentStatusLabel())
             );
+        } elseif ($variant->isDropshipping()) {
+            $this->alertEngine->resolveStockLevelAlertsForVariant(
+                $variant,
+                'Variant switched to dropshipping fulfillment; no local stock is expected.'
+            );
         }
 
         $variant->values()->sync($valueIds);

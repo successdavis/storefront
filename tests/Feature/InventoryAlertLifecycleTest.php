@@ -233,6 +233,126 @@ class InventoryAlertLifecycleTest extends TestCase
         Mail::assertSent(InventoryAlertMail::class, 1);
     }
 
+    public function test_stock_level_detectors_skip_dropshipping_variants(): void
+    {
+        $product = Product::factory()->create(['is_active' => true]);
+
+        $stockedOut = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'quantity' => 0,
+            'reserved' => 0,
+            'track_inventory' => true,
+            'is_active' => true,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            'fulfillment_type' => ProductVariant::FULFILLMENT_STOCKED,
+        ]);
+
+        ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'quantity' => 0,
+            'reserved' => 0,
+            'track_inventory' => true,
+            'is_active' => true,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            'fulfillment_type' => ProductVariant::FULFILLMENT_DROPSHIPPING,
+        ]);
+
+        $detectedIds = collect((new OutOfStockDetector())->detect())
+            ->pluck('id')
+            ->all();
+
+        $this->assertSame([$stockedOut->id], $detectedIds);
+    }
+
+    public function test_scan_resolves_existing_stock_alerts_for_dropshipping_variants(): void
+    {
+        Setting::set('slow_moving_min_age', 10000);
+
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'quantity' => 0,
+                'reserved' => 0,
+                'track_inventory' => true,
+                'is_active' => true,
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+                'fulfillment_type' => ProductVariant::FULFILLMENT_STOCKED,
+            ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        // The variant becomes dropshipping after the alert was raised.
+        $variant->update(['fulfillment_type' => ProductVariant::FULFILLMENT_DROPSHIPPING]);
+
+        $this->artisan('inventory:scan')->assertExitCode(0);
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $alert->id,
+            'status' => 'resolved',
+            'resolved_reason' => 'Variant is fulfilled by dropshipping; no local stock is expected.',
+        ]);
+
+        // And it must not be re-raised on the next scan.
+        $this->artisan('inventory:scan')->assertExitCode(0);
+        $this->assertSame(1, $variant->inventoryAlerts()->count());
+    }
+
+    public function test_switching_a_variant_to_dropshipping_on_product_save_resolves_its_stock_alerts(): void
+    {
+        $product = Product::factory()->create(['is_active' => true]);
+        $variant = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'quantity' => 0,
+            'reserved' => 0,
+            'track_inventory' => true,
+            'is_active' => true,
+            'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            'fulfillment_type' => ProductVariant::FULFILLMENT_STOCKED,
+        ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        app(\App\Services\ProductService::class)->update($product, [
+            'name' => $product->name,
+            'description' => $product->description,
+            'variants' => [
+                [
+                    'id' => $variant->id,
+                    'regular_price' => (float) $variant->regular_price,
+                    'fulfillment_type' => ProductVariant::FULFILLMENT_DROPSHIPPING,
+                    'value_ids' => [],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            ProductVariant::FULFILLMENT_DROPSHIPPING,
+            $variant->fresh()->fulfillment_type
+        );
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $alert->id,
+            'status' => 'resolved',
+            'resolved_reason' => 'Variant switched to dropshipping fulfillment; no local stock is expected.',
+        ]);
+    }
+
     public function test_staff_can_set_replenishment_status_from_alert_and_stock_alerts_resolve(): void
     {
         $director = User::factory()->create();
