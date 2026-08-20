@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
         <!-- Dropdown menu -->
         <div
             v-if="isOpen"
-            class="absolute mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-10
+            class="absolute mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg z-10
                    dark:bg-gray-800 dark:border-gray-700 dark:shadow-gray-900/50"
         >
             <div

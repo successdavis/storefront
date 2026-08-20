@@ -103,7 +103,7 @@ onBeforeUnmount(() => {
             <div v-for="t in variantTypes" :key="t.id" class="border rounded p-3">
                 <div class="font-medium mb-2">{{ t.name }}</div>
 
-                <div v-if="t.values && t.values.length" class="flex flex-wrap gap-2">
+                <div v-if="t.values && t.values.length" class="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
                     <button
                         v-for="v in t.values"
                         :key="v.id"
