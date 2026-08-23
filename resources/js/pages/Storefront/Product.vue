@@ -1,7 +1,7 @@
 <script setup>
 import axios from 'axios'
 import { router, usePage } from '@inertiajs/vue3'
-import { Heart } from 'lucide-vue-next'
+import { CircleCheck, Heart, ImageOff } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import StorefrontLayout from '@/layouts/StorefrontLayout.vue'
 import AddToCartButton from '@/components/Storefront/AddToCartButton.vue'
@@ -97,6 +97,10 @@ const formatter = new Intl.NumberFormat('en-NG', {
 
 function money(value) {
     return formatter.format(Number(value || 0))
+}
+
+function variantThumb(variant) {
+    return variant.images?.[0]?.url || props.product.images?.[0]?.url || null
 }
 
 function buildVariantEstimateMap(product) {
@@ -288,22 +292,65 @@ onBeforeUnmount(() => {
                     {{ visibleDeliveryEstimate.storefront_message }}
                 </p>
 
-                <div v-if="product.variants?.length" class="mt-5 space-y-2">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Variants</p>
-                    <div class="flex flex-wrap gap-2">
+                <div v-if="product.variants?.length > 1" class="mt-5">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                        <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            Choose an option
+                            <span class="ml-1.5 align-middle rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                {{ product.variants.length }} available
+                            </span>
+                        </p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">
+                            Selected: <span class="font-semibold text-slate-900 dark:text-slate-100">{{ selectedVariant?.label }}</span>
+                        </p>
+                    </div>
+
+                    <div role="radiogroup" aria-label="Product options" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <button
                             v-for="variant in product.variants"
                             :key="variant.id"
                             type="button"
+                            role="radio"
+                            :aria-checked="selectedVariantId === variant.id"
                             :class="[
-                                'rounded-lg border px-3 py-2 text-xs font-medium transition',
+                                'relative flex items-center gap-3 rounded-xl border p-2.5 text-left transition',
                                 selectedVariantId === variant.id
-                                    ? 'border-slate-900 bg-slate-900 text-white'
-                                    : 'border-slate-300 bg-white text-slate-700 hover:border-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-500',
+                                    ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900 dark:border-slate-100 dark:bg-slate-900 dark:ring-slate-100'
+                                    : 'border-slate-200 bg-white hover:border-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-slate-500',
+                                !variant.stock?.is_in_stock ? 'opacity-70' : '',
                             ]"
                             @click="selectedVariantId = variant.id"
                         >
-                            {{ variant.label }}
+                            <img
+                                v-if="variantThumb(variant)"
+                                :src="variantThumb(variant)"
+                                :alt="variant.label"
+                                class="h-11 w-11 shrink-0 rounded-lg border border-slate-200 object-cover dark:border-slate-700"
+                                loading="lazy"
+                            >
+                            <span
+                                v-else
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-200 text-slate-300 dark:border-slate-700 dark:text-slate-600"
+                            >
+                                <ImageOff class="size-4" aria-hidden="true" />
+                            </span>
+
+                            <span class="min-w-0 flex-1 pr-5">
+                                <span class="block text-sm font-medium leading-snug text-slate-900 line-clamp-2 dark:text-slate-100">
+                                    {{ variant.label }}
+                                </span>
+                                <span class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
+                                    <span class="font-semibold text-slate-900 dark:text-slate-100">{{ money(variant.price?.current) }}</span>
+                                    <span v-if="variant.stock?.is_in_stock" class="text-emerald-600 dark:text-emerald-400">In stock</span>
+                                    <span v-else class="font-medium text-rose-600 dark:text-rose-400">Out of stock</span>
+                                </span>
+                            </span>
+
+                            <CircleCheck
+                                v-if="selectedVariantId === variant.id"
+                                class="absolute right-2 top-2 size-4.5 text-slate-900 dark:text-slate-100"
+                                aria-hidden="true"
+                            />
                         </button>
                     </div>
                 </div>
