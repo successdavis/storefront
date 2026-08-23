@@ -66,8 +66,11 @@ class InventoryAlertController extends Controller
             ->orderByRaw("CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC")
             ->orderByDesc('first_detected_at')
             ->paginate(25)
-            ->withQueryString()
-            ->through(fn (InventoryAlert $alert): array => $this->formatAlert($alert, $variantNameFormatter));
+            ->withQueryString();
+
+        $inStockVariantsByProduct = $this->inStockVariantsByProduct($alerts->getCollection());
+
+        $alerts = $alerts->through(fn (InventoryAlert $alert): array => $this->formatAlert($alert, $variantNameFormatter, $inStockVariantsByProduct));
 
         return Inertia::render('Admin/InventoryAlerts/Index', [
             'alerts' => $alerts,
@@ -336,9 +339,43 @@ class InventoryAlertController extends Controller
         ];
     }
 
-    protected function formatAlert(InventoryAlert $alert, VariantNameFormatter $variantNameFormatter): array
+    /**
+     * Map product_id => collection of active, in-stock variants for the alerts on this page,
+     * so each row can say whether sibling variants still have stock.
+     */
+    protected function inStockVariantsByProduct(\Illuminate\Support\Collection $alerts): \Illuminate\Support\Collection
     {
+        $productIds = $alerts
+            ->map(fn (InventoryAlert $alert) => $alert->variant?->product_id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return collect();
+        }
+
+        return ProductVariant::query()
+            ->whereIn('product_id', $productIds)
+            ->where('is_active', true)
+            ->where('available', '>', 0)
+            ->get(['id', 'product_id'])
+            ->groupBy('product_id');
+    }
+
+    protected function formatAlert(
+        InventoryAlert $alert,
+        VariantNameFormatter $variantNameFormatter,
+        ?\Illuminate\Support\Collection $inStockVariantsByProduct = null
+    ): array {
         $variant = $alert->variant;
+
+        $siblingInStock = false;
+        if ($variant && $inStockVariantsByProduct) {
+            $siblingInStock = (bool) $inStockVariantsByProduct
+                ->get($variant->product_id)
+                ?->contains(fn ($candidate) => (int) $candidate->id !== (int) $variant->id);
+        }
 
         return [
             'id' => (int) $alert->id,
@@ -360,6 +397,7 @@ class InventoryAlertController extends Controller
             'available' => $variant ? max((int) $variant->quantity - (int) ($variant->reserved ?? 0), 0) : null,
             'replenishment_status' => $variant?->replenishment_status ?? 'unknown',
             'replenishment_note' => $variant?->replenishment_note,
+            'sibling_in_stock' => $siblingInStock,
             'first_detected_at' => optional($alert->first_detected_at)->toDateTimeString(),
             'last_seen_at' => optional($alert->last_seen_at)->toDateTimeString(),
             'acknowledged_at' => optional($alert->acknowledged_at)->toDateTimeString(),

@@ -233,6 +233,161 @@ class InventoryAlertLifecycleTest extends TestCase
         Mail::assertSent(InventoryAlertMail::class, 1);
     }
 
+    public function test_restocking_a_variant_resolves_its_out_of_stock_alert_immediately(): void
+    {
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'quantity' => 0,
+                'reserved' => 0,
+                'reorder_point' => 0,
+                'track_inventory' => true,
+                'is_active' => true,
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        // A plain restock — no scan runs in between.
+        $variant->update(['quantity' => 8]);
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $alert->id,
+            'status' => 'resolved',
+            'resolved_reason' => 'Stock condition recovered.',
+        ]);
+    }
+
+    public function test_restock_below_reorder_point_resolves_out_of_stock_but_keeps_low_stock(): void
+    {
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'quantity' => 0,
+                'reserved' => 0,
+                'reorder_point' => 10,
+                'track_inventory' => true,
+                'is_active' => true,
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            ]);
+
+        $outOfStock = InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $lowStock = InventoryAlert::query()->create([
+            'type' => 'low_stock',
+            'severity' => 'high',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is below threshold.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        // Restock to 5: back in stock, but still under the reorder point of 10.
+        $variant->update(['quantity' => 5]);
+
+        $this->assertDatabaseHas('inventory_alerts', ['id' => $outOfStock->id, 'status' => 'resolved']);
+        $this->assertDatabaseHas('inventory_alerts', ['id' => $lowStock->id, 'status' => 'open']);
+
+        // Top up past the reorder point: the low-stock alert clears too.
+        $variant->update(['quantity' => 15]);
+
+        $this->assertDatabaseHas('inventory_alerts', ['id' => $lowStock->id, 'status' => 'resolved']);
+    }
+
+    public function test_scan_resolves_recovered_low_stock_alerts(): void
+    {
+        Setting::set('slow_moving_min_age', 10000);
+
+        $variant = ProductVariant::factory()
+            ->for(Product::factory()->create(['is_active' => true]))
+            ->create([
+                'quantity' => 2,
+                'reserved' => 0,
+                'reorder_point' => 5,
+                'track_inventory' => true,
+                'is_active' => true,
+                'replenishment_status' => ProductVariant::REPLENISHMENT_REORDERABLE,
+            ]);
+
+        $alert = InventoryAlert::query()->create([
+            'type' => 'low_stock',
+            'severity' => 'high',
+            'variant_id' => $variant->id,
+            'message' => 'Variant is below threshold.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        // Bulk update bypasses model events — the scheduled scan is the safety net.
+        ProductVariant::query()->whereKey($variant->id)->update(['quantity' => 20]);
+
+        $this->artisan('inventory:scan')->assertExitCode(0);
+
+        $this->assertDatabaseHas('inventory_alerts', [
+            'id' => $alert->id,
+            'status' => 'resolved',
+            'resolved_reason' => 'Stock condition recovered.',
+        ]);
+    }
+
+    public function test_alerts_page_flags_products_whose_other_variants_are_in_stock(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        $product = Product::factory()->create(['is_active' => true]);
+
+        $emptyVariant = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'quantity' => 0,
+            'reserved' => 0,
+            'is_active' => true,
+        ]);
+
+        // A sibling variant of the same product still has stock.
+        ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'quantity' => 7,
+            'reserved' => 0,
+            'is_active' => true,
+        ]);
+
+        InventoryAlert::query()->create([
+            'type' => 'out_of_stock',
+            'severity' => 'critical',
+            'variant_id' => $emptyVariant->id,
+            'message' => 'Variant is out of stock.',
+            'status' => 'open',
+            'first_detected_at' => now(),
+            'last_seen_at' => now(),
+        ]);
+
+        $this->actingAs($director)
+            ->get(route('admin.inventory-alerts.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/InventoryAlerts/Index')
+                ->where('alerts.data.0.sibling_in_stock', true));
+    }
+
     public function test_stock_level_detectors_skip_dropshipping_variants(): void
     {
         $product = Product::factory()->create(['is_active' => true]);

@@ -734,6 +734,9 @@ function submitBatchAction() {
                                 <p>On hand: <span class="font-medium text-gray-900 dark:text-gray-100">{{ alert.quantity ?? 'N/A' }}</span></p>
                                 <p>Reserved: <span class="font-medium text-gray-900 dark:text-gray-100">{{ alert.reserved ?? 'N/A' }}</span></p>
                                 <p>Available: <span class="font-medium text-gray-900 dark:text-gray-100">{{ alert.available ?? 'N/A' }}</span></p>
+                                <p v-if="alert.sibling_in_stock" class="mt-1.5 max-w-40 text-xs leading-snug text-sky-600 dark:text-sky-400">
+                                    Only this option is affected — other options of this product are in stock.
+                                </p>
                             </td>
 
                             <td class="px-4 py-4 text-xs text-gray-500 dark:text-gray-400">

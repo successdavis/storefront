@@ -103,4 +103,53 @@ class InventoryAlertEngine
                 'resolved_reason' => 'Stock condition recovered.',
             ]);
     }
+
+    public function resolveRecoveredLowStockAlerts(?int $resolvedBy = null): int
+    {
+        return InventoryAlert::query()
+            ->where('type', 'low_stock')
+            ->where('status', 'open')
+            ->whereHas('variant', function ($query): void {
+                $query
+                    ->eligibleForStockLevelAlerts()
+                    ->whereColumn('product_variants.available', '>', 'product_variants.reorder_point');
+            })
+            ->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+                'resolved_by' => $resolvedBy,
+                'resolved_reason' => 'Stock condition recovered.',
+            ]);
+    }
+
+    /**
+     * Immediately close recovered stock alerts for one variant. Called from the
+     * variant observer after every stock movement, so restocks clear their alerts
+     * on the spot instead of waiting for the next scheduled scan.
+     */
+    public function resolveRecoveredStockAlertsForVariant(ProductVariant $variant, ?int $resolvedBy = null): int
+    {
+        $available = (int) $variant->quantity - (int) ($variant->reserved ?? 0);
+
+        if ($available <= 0) {
+            return 0;
+        }
+
+        $types = ['out_of_stock'];
+
+        if ($available > (int) ($variant->reorder_point ?? 0)) {
+            $types[] = 'low_stock';
+        }
+
+        return InventoryAlert::query()
+            ->where('variant_id', $variant->id)
+            ->where('status', 'open')
+            ->whereIn('type', $types)
+            ->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+                'resolved_by' => $resolvedBy,
+                'resolved_reason' => 'Stock condition recovered.',
+            ]);
+    }
 }
