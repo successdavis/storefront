@@ -9,7 +9,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { Head, router, useForm } from '@inertiajs/vue3'
+import { Head, Link, router, useForm } from '@inertiajs/vue3'
+import { ArrowUpRight } from 'lucide-vue-next'
 import { computed, reactive, ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -220,9 +221,28 @@ function formatCurrency(value: number) {
                         <tr v-for="invoice in report.invoices.data" :key="invoice.id">
                             <td class="px-6 py-4">
                                 <p class="font-semibold text-slate-900 dark:text-slate-100">{{ invoice.invoice_number }}</p>
-                                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ invoice.order?.order_number || 'No order link' }}</p>
+                                <Link
+                                    v-if="invoice.order?.id"
+                                    :href="route('admin.orders.show', invoice.order.id)"
+                                    class="mt-1 inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                                    :title="`View order ${invoice.order.order_number} and its items`"
+                                >
+                                    {{ invoice.order.order_number }}
+                                    <ArrowUpRight class="h-3 w-3" aria-hidden="true" />
+                                </Link>
+                                <p v-else class="mt-1 text-xs text-slate-500 dark:text-slate-400">No order link</p>
                             </td>
-                            <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ invoice.customer?.name || 'Customer' }}</td>
+                            <td class="px-6 py-4">
+                                <Link
+                                    v-if="invoice.customer?.id"
+                                    :href="route('admin.customers.show', invoice.customer.id)"
+                                    class="font-medium text-slate-700 hover:text-sky-600 hover:underline dark:text-slate-200 dark:hover:text-sky-400"
+                                    :title="`Open ${invoice.customer.name}'s profile`"
+                                >
+                                    {{ invoice.customer.name }}
+                                </Link>
+                                <span v-else class="text-slate-600 dark:text-slate-300">Customer</span>
+                            </td>
                             <td class="px-6 py-4">
                                 <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" :class="invoice.status === 'paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200' : invoice.status === 'overdue' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200'">
                                     {{ invoice.status_label }}
