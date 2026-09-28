@@ -240,6 +240,7 @@ function openPdfPrintDialog(printWindow, url) {
                         <th class="px-4 py-3 text-left">Product Variant</th>
                         <th class="px-4 py-3 text-left">SKU</th>
                         <th class="px-4 py-3 text-left">Barcode</th>
+                        <th class="px-4 py-3 text-right">Available Stock</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -273,9 +274,27 @@ function openPdfPrintDialog(printWindow, url) {
                         <td class="px-4 py-3 font-mono text-xs">
                             {{ variant.barcode || 'Will be auto-generated' }}
                         </td>
+                        <td class="px-4 py-3 text-right">
+                            <span
+                                v-if="variant.is_dropshipping"
+                                class="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-200"
+                                title="Fulfilled by a supplier — no local stock to label"
+                            >
+                                Dropshipping
+                            </span>
+                            <span
+                                v-else
+                                :class="[
+                                    'font-semibold tabular-nums',
+                                    variant.available > 0 ? 'text-gray-900 dark:text-gray-100' : 'text-rose-600 dark:text-rose-400',
+                                ]"
+                            >
+                                {{ variant.available }}
+                            </span>
+                        </td>
                     </tr>
                     <tr v-if="variants.data.length === 0">
-                        <td class="px-4 py-6 text-center text-sm text-gray-500" colspan="4">
+                        <td class="px-4 py-6 text-center text-sm text-gray-500" colspan="5">
                             No variants found.
                         </td>
                     </tr>

@@ -47,6 +47,9 @@ class BarcodePrintController extends Controller
                     'sku' => $variant->sku,
                     'barcode' => $variant->barcode,
                     'display_name' => $this->variantNameFormatter->format($variant),
+                    // How many labels are worth printing: stock on hand minus reservations.
+                    'available' => max(0, (int) $variant->available),
+                    'is_dropshipping' => $variant->isDropshipping(),
                 ];
             });
 
