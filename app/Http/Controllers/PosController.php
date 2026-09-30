@@ -10,6 +10,7 @@ use App\Services\InventoryService;
 use App\Services\OrderService;
 use App\Services\ProductService;
 use App\Support\RoleNames;
+use App\Support\SearchTerms;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -55,12 +56,20 @@ class PosController extends Controller
             ->active()
             ->with(['product', 'product.images', 'product.categories:id', 'images', 'values.type'])
             ->when($q, function ($query, $q) {
+                // Word-by-word matching, same rules as the storefront search
+                // bar, so "Dell 5480" finds "Dell Latitude 5480" variants.
                 $query->where(function ($q2) use ($q) {
-                    $q2->where('sku', 'like', "%{$q}%")
-                        ->orWhere('barcode', 'like', "%{$q}%")
-                        ->orWhereHas('product', function ($qp) use ($q) {
-                            $qp->where('name', 'like', "%{$q}%");
+                    foreach (SearchTerms::groups($q) as $expansions) {
+                        $q2->where(function ($termQuery) use ($expansions) {
+                            foreach ($expansions as $expansion) {
+                                $pattern = "%{$expansion}%";
+                                $termQuery
+                                    ->orWhere('sku', 'like', $pattern)
+                                    ->orWhere('barcode', 'like', $pattern)
+                                    ->orWhereHas('product', fn ($qp) => $qp->where('name', 'like', $pattern));
+                            }
                         });
+                    }
                 });
             })
             ->when($brandId, fn($q) => $q->whereHas('product', fn($q2) => $q2->where('brand_id', $brandId)))
@@ -109,11 +118,20 @@ class PosController extends Controller
                 });
             })
             ->when($barcode === '' && $search !== '', function ($query) use ($search) {
+                // Word-by-word matching, same rules as the storefront search
+                // bar; the exact-match scanner branch above stays untouched.
                 $query->where(function ($searchQuery) use ($search) {
-                    $searchQuery
-                        ->where('sku', 'like', "%{$search}%")
-                        ->orWhere('barcode', 'like', "%{$search}%")
-                        ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', "%{$search}%"));
+                    foreach (SearchTerms::groups($search) as $expansions) {
+                        $searchQuery->where(function ($termQuery) use ($expansions) {
+                            foreach ($expansions as $expansion) {
+                                $pattern = "%{$expansion}%";
+                                $termQuery
+                                    ->orWhere('sku', 'like', $pattern)
+                                    ->orWhere('barcode', 'like', $pattern)
+                                    ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', $pattern));
+                            }
+                        });
+                    }
                 });
             })
             ->paginate(12);

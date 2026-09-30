@@ -3,12 +3,30 @@
     <!-- Filters (unchanged) -->
     <div class="bg-white p-4 shadow-md dark:bg-gray-800">
       <div class="flex items-center gap-3">
-        <input v-model="filters.q" placeholder="Search by Product Name/Barcode" class="flex-1 rounded border px-3 py-2" />
-        <select v-model="filters.category_id" @change="reload" class="rounded border px-3 py-2">
+        <div class="relative flex-1">
+          <Search class="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input
+            v-model="filters.q"
+            type="search"
+            placeholder="Search product, SKU, or barcode"
+            autocomplete="off"
+            class="h-11 w-full rounded-2xl border border-amber-200 bg-white px-11 pr-10 text-sm text-slate-700 shadow-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-amber-400 dark:focus:ring-amber-400/20"
+          />
+          <button
+            v-if="filters.q"
+            type="button"
+            aria-label="Clear search"
+            class="absolute right-3 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            @click="filters.q = ''"
+          >
+            <X class="size-4" />
+          </button>
+        </div>
+        <select v-model="filters.category_id" @change="reload" class="h-11 rounded-2xl border border-amber-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
           <option :value="null">All Categories</option>
           <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
-        <select v-model="filters.brand_id" @change="reload" class="rounded border px-3 py-2">
+        <select v-model="filters.brand_id" @change="reload" class="h-11 rounded-2xl border border-amber-200 bg-white px-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
           <option :value="null">All Brands</option>
           <option v-for="b in brands" :key="b.id" :value="b.id">{{ b.name }}</option>
         </select>
@@ -64,6 +82,7 @@
 </template>
 
 <script setup>
+import { Search, X } from 'lucide-vue-next'
 import { useProducts } from '../composables/useProducts'
 import { useCart } from '../composables/useCart'
 import { useCurrencyFormatter } from '@/pages/Admin/Pos/composables/useCurrencyFormatter.js';

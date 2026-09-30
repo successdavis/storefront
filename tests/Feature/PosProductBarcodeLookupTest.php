@@ -46,6 +46,28 @@ class PosProductBarcodeLookupTest extends TestCase
             ->assertJsonPath('data.0.product.name', 'Scanned Power Bank');
     }
 
+    public function test_admin_pos_products_api_matches_multi_word_searches_across_name_and_sku(): void
+    {
+        $director = User::factory()->create();
+        $director->syncRoles([RoleNames::DIRECTOR]);
+
+        $product = Product::factory()->create(['name' => 'Dell Latitude 5480']);
+        $variant = ProductVariant::factory()
+            ->for($product)
+            ->create([
+                'sku' => 'DELL-LAT-5480',
+                'is_active' => true,
+            ]);
+
+        // "Dell 5480" has the words non-adjacent in the product name; the old
+        // whole-phrase LIKE found nothing.
+        $this->actingAs($director)
+            ->getJson(route('admin.pos.products.api', ['q' => 'Dell 5480']))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $variant->id);
+    }
+
     public function test_admin_pos_products_api_does_not_return_inactive_variant_for_barcode_scan(): void
     {
         $director = User::factory()->create();
