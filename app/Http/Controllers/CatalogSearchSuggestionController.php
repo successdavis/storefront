@@ -8,6 +8,8 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\ProductService;
+use App\Support\SearchTerms;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,18 +50,17 @@ class CatalogSearchSuggestionController extends Controller
 
     protected function productGroups(string $term): array
     {
-        $products = Product::query()
-            ->with(['brand:id,name', 'images'])
-            ->withSum(
-                ['variants as total_available' => fn ($query) => $query->where('is_active', true)],
-                'available'
-            )
-            ->where(fn ($query) => $query
-                ->where('name', 'like', "%{$term}%")
-                ->orWhere('slug', 'like', "%{$term}%"))
-            ->orderByDesc('id')
-            ->limit(6)
-            ->get()
+        $termGroups = SearchTerms::groups($term);
+
+        $products = $this->productQuery($termGroups, requireAllTerms: true)->get();
+
+        // Same fallback as the storefront: if no product matches every word,
+        // retry matching any word so near-misses still surface.
+        if ($products->isEmpty() && count($termGroups) > 1) {
+            $products = $this->productQuery($termGroups, requireAllTerms: false)->get();
+        }
+
+        $products = $products
             ->map(fn (Product $product): array => [
                 'id' => "product:{$product->id}",
                 'type' => 'product',
@@ -74,9 +75,19 @@ class CatalogSearchSuggestionController extends Controller
             ])
             ->all();
 
+        $tokenPatterns = collect($termGroups)
+            ->flatten()
+            ->map(fn (string $token): string => "%{$token}%")
+            ->values()
+            ->all();
+
         $brands = Brand::query()
             ->withCount('products')
-            ->where('name', 'like', "%{$term}%")
+            ->where(function (Builder $query) use ($tokenPatterns) {
+                foreach ($tokenPatterns as $pattern) {
+                    $query->orWhere('name', 'like', $pattern);
+                }
+            })
             ->orderBy('name')
             ->limit(4)
             ->get()
@@ -92,7 +103,11 @@ class CatalogSearchSuggestionController extends Controller
 
         $categories = Category::query()
             ->withCount('products')
-            ->where('name', 'like', "%{$term}%")
+            ->where(function (Builder $query) use ($tokenPatterns) {
+                foreach ($tokenPatterns as $pattern) {
+                    $query->orWhere('name', 'like', $pattern);
+                }
+            })
             ->orderBy('name')
             ->limit(4)
             ->get()
@@ -113,8 +128,46 @@ class CatalogSearchSuggestionController extends Controller
         ];
     }
 
+    /**
+     * Candidate products where each word group matches the name, slug, brand,
+     * or a variant SKU/barcode (any word when $requireAllTerms is false).
+     *
+     * @param array<int, array<int, string>> $termGroups
+     */
+    protected function productQuery(array $termGroups, bool $requireAllTerms): Builder
+    {
+        return Product::query()
+            ->with(['brand:id,name', 'images'])
+            ->withSum(
+                ['variants as total_available' => fn ($query) => $query->where('is_active', true)],
+                'available'
+            )
+            ->where(function (Builder $query) use ($termGroups, $requireAllTerms) {
+                foreach ($termGroups as $index => $expansions) {
+                    $method = ($requireAllTerms || $index === 0) ? 'where' : 'orWhere';
+
+                    $query->{$method}(function (Builder $termQuery) use ($expansions) {
+                        foreach ($expansions as $expansion) {
+                            $pattern = "%{$expansion}%";
+                            $termQuery
+                                ->orWhere('name', 'like', $pattern)
+                                ->orWhere('slug', 'like', $pattern)
+                                ->orWhereHas('brand', fn (Builder $brandQuery) => $brandQuery->where('name', 'like', $pattern))
+                                ->orWhereHas('variants', fn (Builder $variantQuery) => $variantQuery
+                                    ->where('sku', 'like', $pattern)
+                                    ->orWhere('barcode', 'like', $pattern));
+                        }
+                    });
+                }
+            })
+            ->orderByDesc('id')
+            ->limit(6);
+    }
+
     protected function barcodeGroups(string $term): array
     {
+        $termGroups = SearchTerms::groups($term);
+
         $variants = ProductVariant::query()
             ->with([
                 'product:id,name',
@@ -122,10 +175,19 @@ class CatalogSearchSuggestionController extends Controller
                 'values:id,variant_type_id,value',
                 'values.type:id,name',
             ])
-            ->where(fn ($query) => $query
-                ->where('sku', 'like', "%{$term}%")
-                ->orWhere('barcode', 'like', "%{$term}%")
-                ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', "%{$term}%")))
+            ->where(function (Builder $query) use ($termGroups) {
+                foreach ($termGroups as $expansions) {
+                    $query->where(function (Builder $termQuery) use ($expansions) {
+                        foreach ($expansions as $expansion) {
+                            $pattern = "%{$expansion}%";
+                            $termQuery
+                                ->orWhere('sku', 'like', $pattern)
+                                ->orWhere('barcode', 'like', $pattern)
+                                ->orWhereHas('product', fn (Builder $productQuery) => $productQuery->where('name', 'like', $pattern));
+                        }
+                    });
+                }
+            })
             ->orderBy('id')
             ->limit(8)
             ->get()

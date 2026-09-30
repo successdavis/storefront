@@ -7,6 +7,7 @@ use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Services\ProductService;
+use App\Support\SearchTerms;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,11 +32,20 @@ class BarcodePrintController extends Controller
                 'values.type:id,name',
             ])
             ->when($search !== '', function ($query) use ($search) {
+                // Word-by-word matching, same rules as the storefront search
+                // bar, so "Dell 5480" finds "Dell Latitude 5480" variants.
                 $query->where(function ($variantQuery) use ($search) {
-                    $variantQuery
-                        ->where('sku', 'like', "%{$search}%")
-                        ->orWhere('barcode', 'like', "%{$search}%")
-                        ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', "%{$search}%"));
+                    foreach (SearchTerms::groups($search) as $expansions) {
+                        $variantQuery->where(function ($termQuery) use ($expansions) {
+                            foreach ($expansions as $expansion) {
+                                $pattern = "%{$expansion}%";
+                                $termQuery
+                                    ->orWhere('sku', 'like', $pattern)
+                                    ->orWhere('barcode', 'like', $pattern)
+                                    ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', $pattern));
+                            }
+                        });
+                    }
                 });
             })
             ->orderBy('id')

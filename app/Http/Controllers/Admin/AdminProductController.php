@@ -8,6 +8,7 @@ use App\Http\Resources\ProductResource;
 use App\Models\{Brand, Category, Product, VariantType, Vendor};
 use App\Services\ProductService;
 use App\Services\SlugService;
+use App\Support\SearchTerms;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -43,10 +44,23 @@ class AdminProductController extends Controller
             ])
             ->withSum(['variants as total_stock' => fn ($query) => $query->where('is_active', true)], 'quantity')
             ->when($filters['search'] !== '', function ($query) use ($filters) {
-                $search = $filters['search'];
-                $query->where(function ($q) use ($search) {
-                    $q->where('name','like',"%{$search}%")
-                        ->orWhere('slug','like',"%{$search}%");
+                // Word-by-word matching, same rules as the storefront search
+                // bar, so "Dell 5480" finds "Dell Latitude 5480".
+                $query->where(function ($q) use ($filters) {
+                    foreach (SearchTerms::groups($filters['search']) as $expansions) {
+                        $q->where(function ($termQuery) use ($expansions) {
+                            foreach ($expansions as $expansion) {
+                                $pattern = "%{$expansion}%";
+                                $termQuery
+                                    ->orWhere('name', 'like', $pattern)
+                                    ->orWhere('slug', 'like', $pattern)
+                                    ->orWhereHas('brand', fn ($brandQuery) => $brandQuery->where('name', 'like', $pattern))
+                                    ->orWhereHas('variants', fn ($variantQuery) => $variantQuery
+                                        ->where('sku', 'like', $pattern)
+                                        ->orWhere('barcode', 'like', $pattern));
+                            }
+                        });
+                    }
                 });
             })
             ->when($filters['status'] !== '', fn ($query) => $query

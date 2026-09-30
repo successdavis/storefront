@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
+use App\Support\SearchTerms;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -383,22 +384,7 @@ class StorefrontSearchService
      */
     protected function parseSearchTerms(string $search): array
     {
-        $stopwords = ['the', 'a', 'an', 'and', 'or', 'for', 'with', 'of', 'in', 'on', 'to', 'by', 'from'];
-
-        $tokens = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(trim($search)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-
-        return collect($tokens)
-            ->filter(fn (string $token) => mb_strlen($token) >= 2 && !in_array($token, $stopwords, true))
-            ->unique()
-            ->take(6)
-            ->map(fn (string $token) => collect([$token, Str::singular($token)])
-                ->filter(fn (string $term) => mb_strlen($term) >= 2)
-                ->unique()
-                ->values()
-                ->all())
-            ->filter()
-            ->values()
-            ->all();
+        return SearchTerms::parse($search);
     }
 
     protected function applyTermConstraint(Builder $query, array $expansions): void
