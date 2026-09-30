@@ -1,4 +1,5 @@
 <script setup>
+import AdminSearchBar from '@/components/Admin/AdminSearchBar.vue'
 import Pagination from '@/components/Pagination.vue'
 import axios from 'axios'
 import { Head, router } from '@inertiajs/vue3'
@@ -74,6 +75,17 @@ function applySearch() {
             replace: true,
         },
     )
+}
+
+function onSearchSubmit(term) {
+    search.value = term
+    applySearch()
+}
+
+function onSuggestionSelect(item) {
+    // Suggestions on this page filter the printable list to that exact variant.
+    search.value = item.apply_search || item.label
+    applySearch()
 }
 
 async function printSelected() {
@@ -189,22 +201,15 @@ function openPdfPrintDialog(printWindow, url) {
                 </p>
             </div>
 
-            <div class="flex w-full max-w-xl gap-2">
-                <input
-                    v-model="search"
-                    type="text"
-                    class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900"
-                    placeholder="Search product, SKU, or barcode"
-                    @keyup.enter="applySearch"
-                />
-                <button
-                    type="button"
-                    class="rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-                    @click="applySearch"
-                >
-                    Search
-                </button>
-            </div>
+            <AdminSearchBar
+                class="w-full max-w-xl"
+                :initial-query="filters.search || ''"
+                context="barcodes"
+                storage-key="admin.barcodes.recent-searches"
+                placeholder="Search product, SKU, or barcode"
+                @submit="onSearchSubmit"
+                @select="onSuggestionSelect"
+            />
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">

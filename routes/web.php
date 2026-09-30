@@ -44,6 +44,7 @@ use App\Http\Controllers\Account\SavedItemController as AccountSavedItemControll
 use App\Http\Controllers\Auth\GoogleOAuthController;
 use App\Http\Controllers\BrandController;
 use App\Http\Controllers\BarcodePrintController;
+use App\Http\Controllers\CatalogSearchSuggestionController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CartItemController;
 use App\Http\Controllers\CheckoutController;
@@ -95,6 +96,10 @@ Route::get('dashboard', DashboardRedirectController::class)->middleware(['auth',
 Route::post('/barcodes/print', [BarcodePrintController::class, 'print'])
     ->middleware(['auth', 'verified', 'permission.any:admin.access,sales.pos.use'])
     ->name('barcodes.print');
+// Live suggestions for the admin products page and both barcode label pages.
+Route::get('/catalog/search-suggestions', CatalogSearchSuggestionController::class)
+    ->middleware(['auth', 'verified', 'permission.any:admin.access,sales.pos.use'])
+    ->name('catalog.search-suggestions');
 
 Route::prefix('store')->name('store.')->group(function () {
     Route::get('/', [StorefrontController::class, 'home'])->name('home');

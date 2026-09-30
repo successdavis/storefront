@@ -1,5 +1,6 @@
 <!-- resources/js/Pages/Products/Index.vue -->
 <script setup>
+import AdminSearchBar from '@/components/Admin/AdminSearchBar.vue'
 import ImagePreviewModal from '@/components/ImagePreviewModal.vue'
 import { router } from '@inertiajs/vue3'
 import { ref, watch, computed, nextTick } from 'vue'
@@ -68,17 +69,27 @@ function applyFilters() {
 }
 
 function clearFilters() {
+    const hadAdvancedFilters = activeFilterCount.value > 0
     search.value = ''
     Object.keys(advancedFilters.value).forEach(key => (advancedFilters.value[key] = ''))
+
+    // The advanced-filters watcher reloads when any select changes; when only the
+    // search term was set, trigger the reload ourselves.
+    if (!hadAdvancedFilters) applyFilters()
 }
 
 watch(advancedFilters, applyFilters, { deep: true })
 
-let searchTimeout
-watch(search, () => {
-    clearTimeout(searchTimeout)
-    searchTimeout = setTimeout(applyFilters, 350)
-})
+function onSearchSubmit(term) {
+    search.value = term
+    applyFilters()
+}
+
+function onSuggestionSelect(item) {
+    if (item.href) {
+        router.visit(item.href)
+    }
+}
 
 function togglePublished(id) {
     router.patch(route('admin.products.toggle-published', id), {}, { preserveScroll: true, preserveState: true })
@@ -152,8 +163,15 @@ function applyBulk() {
             <a :href="route('admin.products.create')" class="px-4 py-2 bg-blue-600 text-white rounded">New Product</a>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
-            <input v-model="search" placeholder="Search name or slug" class="border rounded px-3 py-2 w-64" />
+        <div class="grid gap-3 md:grid-cols-2">
+            <AdminSearchBar
+                :initial-query="props.filters?.search ?? ''"
+                context="products"
+                storage-key="admin.products.recent-searches"
+                placeholder="Search products, brands, categories"
+                @submit="onSearchSubmit"
+                @select="onSuggestionSelect"
+            />
 
             <div class="flex items-center gap-2">
                 <select
