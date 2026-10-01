@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Inventory\Alerts\DiscrepancyDashboard;
 use App\Domain\Inventory\Audit\StockAuditService;
-use App\Domain\Inventory\Support\VariantNameFormatter;
 use App\Http\Requests\Admin\StoreStockAuditRequest;
 use App\Models\Category;
-use App\Models\InventoryAlert;
 use App\Models\StockAuditSession;
 use App\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
@@ -14,6 +13,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,7 +23,6 @@ class StockAuditController extends Controller
 {
     public function __construct(
         protected StockAuditService $stockAuditService,
-        protected VariantNameFormatter $variantNameFormatter,
     ) {}
 
     public function index(Request $request): Response
@@ -288,122 +288,44 @@ class StockAuditController extends Controller
         ));
     }
 
-    public function discrepancies(Request $request): Response
+    public function discrepancies(Request $request, DiscrepancyDashboard $dashboard): Response
     {
-        $sessionFilter = $request->filled('session_id') ? (int) $request->input('session_id') : null;
-        $sourceFilter = $request->string('source')->toString() ?: 'all';
-
-        $alerts = InventoryAlert::query()
-            ->with([
-                'variant:id,product_id,sku,quantity,reserved',
-                'variant.product:id,name',
-                'variant.values:id,variant_type_id,value',
-                'variant.values.type:id,name',
-            ])
-            ->where('status', 'open')
-            ->whereNull('suppressed_at')
-            ->where(function ($query): void {
-                $query->whereNull('snoozed_until')
-                    ->orWhere('snoozed_until', '<=', now());
-            })
-            ->whereIn('type', ['discrepancy', 'negative_stock'])
-            ->orderByDesc('first_detected_at')
-            ->get();
-
-        $alerts = $alerts
-            ->map(function (InventoryAlert $alert): array {
-                $meta = is_array($alert->meta) ? $alert->meta : [];
-                $systemQty = data_get($meta, 'system_quantity', $alert->variant?->quantity);
-                $physicalQty = data_get($meta, 'physical_quantity');
-                $variance = data_get($meta, 'variance');
-                $source = (string) data_get($meta, 'source', 'system');
-                $sessionId = data_get($meta, 'audit_session_id');
-
-                if ($variance === null && $systemQty !== null && $physicalQty !== null) {
-                    $variance = (int) $physicalQty - (int) $systemQty;
-                }
-
-                return [
-                    'id' => (int) $alert->id,
-                    'type' => $alert->type,
-                    'severity' => $alert->severity,
-                    'product' => $alert->variant ? $this->variantNameFormatter->format($alert->variant) : 'Unknown variant',
-                    'sku' => $alert->variant?->sku,
-                    'system_quantity' => $systemQty !== null ? (int) $systemQty : null,
-                    'physical_quantity' => $physicalQty !== null ? (int) $physicalQty : null,
-                    'variance' => $variance !== null ? (int) $variance : null,
-                    'message' => $alert->message,
-                    'status' => $alert->status,
-                    'detected_at' => optional($alert->first_detected_at)->toDateTimeString(),
-                    'adjustment_id' => data_get($meta, 'stock_adjustment_id'),
-                    'session_id' => $sessionId !== null ? (int) $sessionId : null,
-                    'source' => $source === 'audit' ? 'audit' : 'system',
-                ];
-            })
-            ->when($sessionFilter, function ($collection) use ($sessionFilter) {
-                return $collection->where('session_id', $sessionFilter);
-            })
-            ->when($sourceFilter === 'audit', function ($collection) {
-                return $collection->where('source', 'audit');
-            })
-            ->when($sourceFilter === 'system', function ($collection) {
-                return $collection->where('source', 'system');
-            })
-            ->values();
-
-        $sessions = StockAuditSession::query()
-            ->whereIn('status', [StockAuditSession::STATUS_SUBMITTED, StockAuditSession::STATUS_REVIEWED])
-            ->orderByDesc('id')
-            ->limit(100)
-            ->get(['id', 'scope_type', 'coverage_percentage', 'submitted_at'])
-            ->map(fn (StockAuditSession $session): array => [
-                'id' => (int) $session->id,
-                'label' => sprintf(
-                    '#%d (%s, %s%%)',
-                    $session->id,
-                    ucfirst($session->scope_type),
-                    number_format((float) $session->coverage_percentage, 2),
-                ),
-                'submitted_at' => optional($session->submitted_at)->toDateTimeString(),
-            ])
-            ->values();
+        $filters = $dashboard->normalizeFilters($request->query());
+        $facets = $dashboard->facets($filters['session_id'], $filters['category_id']);
 
         return Inertia::render('InventoryDiscrepancies', [
-            'alerts' => $alerts,
-            'sessions' => $sessions,
-            'filters' => [
-                'session_id' => $sessionFilter,
-                'source' => $sourceFilter,
-            ],
+            'alerts' => $dashboard->paginate($filters),
+            'summary' => $dashboard->summary($filters),
+            'filters' => $filters,
+            'sessionOptions' => $facets['sessions'],
+            'categoryOptions' => $facets['categories'],
         ]);
     }
 
-    public function resolveDiscrepancies(Request $request): RedirectResponse
+    public function resolveDiscrepancies(Request $request, DiscrepancyDashboard $dashboard): RedirectResponse
     {
+        $allMatching = $request->boolean('all_matching');
+
         $validated = $request->validate([
-            'alert_ids' => ['required', 'array', 'min:1'],
-            'alert_ids.*' => ['integer', 'exists:inventory_alerts,id'],
+            'all_matching' => ['sometimes', 'boolean'],
+            'alert_ids' => [Rule::excludeIf($allMatching), 'required', 'array', 'min:1'],
+            'alert_ids.*' => [Rule::excludeIf($allMatching), 'integer', 'exists:inventory_alerts,id'],
+            'until_id' => [Rule::excludeIf(! $allMatching), 'required', 'integer', 'min:1'],
+            'filters' => [Rule::excludeIf(! $allMatching), 'sometimes', 'array'],
         ]);
 
-        $resolved = InventoryAlert::query()
-            ->whereIn('id', $validated['alert_ids'])
-            ->where('status', 'open')
-            ->whereNull('suppressed_at')
-            ->where(function ($query): void {
-                $query->whereNull('snoozed_until')
-                    ->orWhere('snoozed_until', '<=', now());
-            })
-            ->whereIn('type', ['discrepancy', 'negative_stock'])
-            ->update([
-                'status' => 'resolved',
-                'resolved_at' => now(),
-                'resolved_by' => auth()->id(),
-                'resolved_reason' => 'Resolved from discrepancy dashboard.',
-            ]);
+        $query = $allMatching
+            ? $dashboard->filteredQuery($dashboard->normalizeFilters($validated['filters'] ?? []))
+                ->where('id', '<=', (int) $validated['until_id'])
+            : $dashboard->openQuery()->whereIn('id', $validated['alert_ids']);
 
-        $message = sprintf('%d discrepancy alert(s) resolved.', $resolved);
+        $resolved = $dashboard->resolve($query, auth()->id());
 
-        return back()->with($resolved > 0 ? 'success' : 'warning', $message);
+        if ($resolved === 0) {
+            return back()->with('warning', 'No open alerts were resolved. They may already have been handled.');
+        }
+
+        return back()->with('success', sprintf('Resolved %d %s.', $resolved, Str::plural('alert', $resolved)));
     }
 
     protected function auditRouteMap(Request $request): array
@@ -473,7 +395,7 @@ class StockAuditController extends Controller
 
         return [
             'id' => (int) $session->id,
-            'reference' => sprintf('AUD-%06d', $session->id),
+            'reference' => $session->reference(),
             'status' => $session->status,
             'source' => $source,
             'source_label' => str($source)->replace('_', ' ')->title()->toString(),

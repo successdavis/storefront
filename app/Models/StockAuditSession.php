@@ -45,6 +45,16 @@ class StockAuditSession extends Model
         'last_activity_at' => 'datetime',
     ];
 
+    public static function referenceFor(int $id): string
+    {
+        return sprintf('AUD-%06d', $id);
+    }
+
+    public function reference(): string
+    {
+        return static::referenceFor((int) $this->id);
+    }
+
     public function items(): HasMany
     {
         return $this->hasMany(StockAuditItem::class, 'session_id');
