@@ -25,17 +25,81 @@ const money = (value) => new Intl.NumberFormat('en-NG', {
     currency: 'NGN',
 }).format(Number(value || 0))
 
-const sales = computed(() => props.variant?.sales ?? { units_sold: 0, orders_count: 0, last_sold_at: null })
+const count = (value) => Number(value || 0).toLocaleString()
+
+// No cost history is stored as 0, which would read as a real cost of ₦0.00.
+const knownCost = (value) => (Number(value) > 0 ? Number(value) : null)
 
 const margin = computed(() => {
     const price = Number(props.variant?.price?.current ?? 0)
-    const cost = Number(props.variant?.average_cost ?? 0)
+    const averageCost = knownCost(props.variant?.average_cost)
+    const lastCost = knownCost(props.variant?.last_purchase_price)
+    const cost = averageCost ?? lastCost
 
-    if (price <= 0 || cost <= 0) {
+    if (price <= 0 || cost === null) {
         return null
     }
 
-    return { amount: price - cost, percent: ((price - cost) / price) * 100 }
+    return {
+        amount: price - cost,
+        percent: ((price - cost) / price) * 100,
+        basis: averageCost !== null ? 'vs avg. cost' : 'vs last cost',
+    }
+})
+
+const metricGroups = computed(() => {
+    const variant = props.variant
+
+    if (!variant) {
+        return []
+    }
+
+    const sales = variant.sales ?? { units_sold: 0, orders_count: 0, last_sold_at: null }
+
+    return [
+        {
+            title: 'Sales',
+            rows: [
+                { label: 'Total sold', value: count(sales.units_sold) },
+                { label: 'Orders', value: count(sales.orders_count) },
+                {
+                    label: 'Last sold',
+                    value: sales.last_sold_at ? formatDate(sales.last_sold_at) : 'Never',
+                    hint: sales.last_sold_at ? formatRelative(sales.last_sold_at) : null,
+                },
+            ],
+        },
+        {
+            title: 'Stock',
+            rows: [
+                { label: 'On hand', value: count(variant.stock.on_hand) },
+                { label: 'Reserved', value: count(variant.stock.reserved) },
+                { label: 'Available', value: count(variant.stock.available) },
+                { label: 'Reorder point', value: variant.reorder_point ?? '—' },
+            ],
+        },
+        {
+            title: 'Pricing',
+            rows: [
+                {
+                    label: 'Price',
+                    value: money(variant.price.current),
+                    hint: variant.price.has_discount ? money(variant.price.regular) : null,
+                    hintClass: 'line-through',
+                },
+                { label: 'Cost', value: knownCost(variant.last_purchase_price) !== null ? money(variant.last_purchase_price) : '—' },
+                { label: 'Avg. cost', value: knownCost(variant.average_cost) !== null ? money(variant.average_cost) : '—' },
+                {
+                    label: 'Margin',
+                    value: margin.value ? money(margin.value.amount) : '—',
+                    hint: margin.value ? `${margin.value.percent.toFixed(1)}% ${margin.value.basis}` : null,
+                    valueClass: margin.value
+                        ? (margin.value.amount >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')
+                        : '',
+                },
+            ],
+        },
+    ]
 })
 
 watch(open, (isOpen) => {
@@ -60,215 +124,129 @@ async function copyBarcode() {
 
 function replenishmentClass(status) {
     return {
-        paused: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
-        discontinued: 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200',
-    }[status] || 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
+        paused: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200',
+        discontinued: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200',
+    }[status] || 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'
 }
 
-const labelClass = 'text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400'
-const tileClass = 'rounded-2xl border border-slate-200 px-4 py-3 dark:border-slate-700'
+const badgeClass = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold'
+const iconButtonClass = 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+const factLabelClass = 'text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500'
 </script>
 
 <template>
     <Dialog v-model:open="open">
-        <DialogContent v-if="variant" class="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-            <DialogHeader>
-                <div class="flex items-start gap-4 pr-6">
+        <DialogContent v-if="variant" class="max-h-[90vh] grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto rounded-2xl p-5 sm:max-w-2xl">
+            <DialogHeader class="gap-0 pr-8 text-left sm:text-left">
+                <div class="flex items-center gap-3">
                     <img
                         v-if="variant.image"
                         :src="variant.image"
                         alt=""
-                        class="h-16 w-16 shrink-0 rounded-2xl border border-slate-200 object-cover dark:border-slate-700"
+                        class="h-11 w-11 shrink-0 rounded-xl border border-slate-200 object-cover dark:border-slate-700"
                     />
-                    <div v-else class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
-                        <Package class="h-6 w-6" aria-hidden="true" />
+                    <div v-else class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+                        <Package class="h-5 w-5" aria-hidden="true" />
                     </div>
-                    <div class="min-w-0 text-left">
-                        <DialogTitle class="text-lg leading-snug text-slate-900 dark:text-slate-100">{{ variant.label }}</DialogTitle>
-                        <DialogDescription class="mt-1 text-slate-500 dark:text-slate-400">
+                    <div class="min-w-0 flex-1">
+                        <DialogTitle class="line-clamp-2 text-base font-semibold leading-tight text-slate-900 dark:text-slate-100" :title="variant.label">
+                            {{ variant.label }}
+                        </DialogTitle>
+                        <DialogDescription class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
                             {{ productName }}<template v-if="variant.sku"> · <span class="font-mono">{{ variant.sku }}</span></template>
                         </DialogDescription>
-                        <div class="mt-2 flex flex-wrap gap-2">
-                            <span
-                                class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold"
-                                :class="variant.stock.is_in_stock
-                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
-                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'"
-                            >
-                                {{ variant.stock.is_in_stock ? 'In stock' : 'Out of stock' }}
-                            </span>
-                            <span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold" :class="replenishmentClass(variant.replenishment_status)">
-                                {{ variant.replenishment_status_label || 'Reorderable' }}
-                            </span>
-                            <span
-                                v-if="variant.stock.is_dropshipping"
-                                class="inline-flex rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-200"
-                            >
-                                Dropshipping
-                            </span>
-                        </div>
                     </div>
+                </div>
+                <div class="mt-3 flex flex-wrap gap-1.5">
+                    <span
+                        :class="[badgeClass, variant.stock.is_in_stock
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300']"
+                    >
+                        {{ variant.stock.is_in_stock ? 'In stock' : 'Out of stock' }}
+                    </span>
+                    <span :class="[badgeClass, replenishmentClass(variant.replenishment_status)]">
+                        {{ variant.replenishment_status_label || 'Reorderable' }}
+                    </span>
+                    <span v-if="variant.stock.is_dropshipping" :class="[badgeClass, 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200']">
+                        Dropshipping
+                    </span>
                 </div>
             </DialogHeader>
 
-            <section class="space-y-2">
-                <h3 :class="labelClass">Barcode</h3>
-                <div v-if="variant.barcode" class="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-700 sm:flex-row sm:items-center">
-                    <div class="flex justify-center rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200 dark:ring-slate-600">
-                        <img
-                            v-if="variant.barcode_image"
-                            :src="variant.barcode_image"
-                            :alt="`Barcode ${variant.barcode}`"
-                            class="h-14 max-w-full"
-                        />
-                        <span v-else class="font-mono text-sm text-slate-900">{{ variant.barcode }}</span>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <p class="break-all font-mono text-base font-semibold tracking-wider text-slate-900 dark:text-slate-100">{{ variant.barcode }}</p>
-                        <div class="mt-2 flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                class="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-400"
-                                @click="copyBarcode"
-                            >
-                                <Check v-if="copied" class="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                                <Copy v-else class="h-3.5 w-3.5" aria-hidden="true" />
-                                {{ copied ? 'Copied' : 'Copy' }}
-                            </button>
-                            <a
-                                :href="variant.labels_url"
-                                class="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 dark:border-slate-600 dark:text-slate-200 dark:hover:border-slate-400"
-                            >
-                                <Printer class="h-3.5 w-3.5" aria-hidden="true" />
-                                Print labels
-                            </a>
+            <div
+                v-if="variant.barcode"
+                class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 p-2 pl-2.5 dark:border-slate-700"
+            >
+                <div v-if="variant.barcode_image" class="rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 dark:ring-slate-600">
+                    <img :src="variant.barcode_image" :alt="`Barcode ${variant.barcode}`" class="h-8 w-auto" />
+                </div>
+                <span class="break-all font-mono text-sm font-semibold tracking-wider text-slate-900 dark:text-slate-100">{{ variant.barcode }}</span>
+                <div class="ml-auto flex items-center gap-0.5">
+                    <button
+                        type="button"
+                        :class="iconButtonClass"
+                        :aria-label="copied ? 'Barcode copied' : 'Copy barcode'"
+                        :title="copied ? 'Copied' : 'Copy barcode'"
+                        @click="copyBarcode"
+                    >
+                        <Check v-if="copied" class="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                        <Copy v-else class="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <a :href="variant.labels_url" :class="iconButtonClass" aria-label="Print barcode labels" title="Print labels">
+                        <Printer class="h-4 w-4" aria-hidden="true" />
+                    </a>
+                </div>
+            </div>
+            <p v-else class="rounded-xl border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                No barcode assigned to this variant.
+            </p>
+
+            <div class="grid divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-700 dark:border-slate-700 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                <section v-for="group in metricGroups" :key="group.title" class="px-3.5 py-3">
+                    <h3 class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">{{ group.title }}</h3>
+                    <dl class="space-y-1.5">
+                        <div v-for="row in group.rows" :key="row.label" class="flex items-baseline justify-between gap-3 text-sm">
+                            <dt class="shrink-0 text-slate-500 dark:text-slate-400">{{ row.label }}</dt>
+                            <dd class="min-w-0 text-right">
+                                <span class="font-semibold tabular-nums text-slate-900 dark:text-slate-100" :class="row.valueClass">{{ row.value }}</span>
+                                <span v-if="row.hint" class="block text-[11px] text-slate-400 dark:text-slate-500" :class="row.hintClass">{{ row.hint }}</span>
+                            </dd>
                         </div>
-                    </div>
+                    </dl>
+                </section>
+            </div>
+
+            <dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+                <div>
+                    <dt :class="factLabelClass">Fulfillment</dt>
+                    <dd class="mt-0.5 text-sm text-slate-900 dark:text-slate-100">{{ variant.stock.is_dropshipping ? 'Dropshipping' : 'Stocked locally' }}</dd>
                 </div>
-                <p v-else class="rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    No barcode assigned to this variant.
-                </p>
-            </section>
-
-            <section class="space-y-2">
-                <h3 :class="labelClass">Sales</h3>
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Total sold</p>
-                        <p class="mt-1 text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ Number(sales.units_sold).toLocaleString() }}</p>
-                    </div>
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Orders</p>
-                        <p class="mt-1 text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ Number(sales.orders_count).toLocaleString() }}</p>
-                    </div>
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Last sold</p>
-                        <template v-if="sales.last_sold_at">
-                            <p class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{{ formatDate(sales.last_sold_at) }}</p>
-                            <p class="text-xs text-slate-500 dark:text-slate-400">{{ formatRelative(sales.last_sold_at) }}</p>
-                        </template>
-                        <p v-else class="mt-1 text-sm text-slate-500 dark:text-slate-400">Never sold</p>
-                    </div>
+                <div>
+                    <dt :class="factLabelClass">Replenishment</dt>
+                    <dd class="mt-0.5 text-sm text-slate-900 dark:text-slate-100">{{ variant.replenishment_status_label || 'Reorderable' }}</dd>
                 </div>
-            </section>
-
-            <section class="space-y-2">
-                <h3 :class="labelClass">Stock</h3>
-                <div class="grid gap-3 grid-cols-2 sm:grid-cols-4">
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">On hand</p>
-                        <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ variant.stock.on_hand }}</p>
-                    </div>
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Reserved</p>
-                        <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ variant.stock.reserved }}</p>
-                    </div>
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Available</p>
-                        <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ variant.stock.available }}</p>
-                    </div>
-                    <div :class="tileClass">
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Reorder point</p>
-                        <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ variant.reorder_point ?? '-' }}</p>
-                    </div>
+                <div>
+                    <dt :class="factLabelClass">Tracking</dt>
+                    <dd class="mt-0.5 text-sm text-slate-900 dark:text-slate-100">{{ variant.track_inventory ? 'On' : 'Off' }}</dd>
                 </div>
-            </section>
-
-            <section class="space-y-2">
-                <h3 :class="labelClass">Pricing</h3>
-                <dl class="grid gap-3 grid-cols-2 sm:grid-cols-4">
-                    <div :class="tileClass">
-                        <dt class="text-xs text-slate-500 dark:text-slate-400">Price</dt>
-                        <dd class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{{ money(variant.price.current) }}</dd>
-                        <dd v-if="variant.price.has_discount" class="text-xs text-slate-500 line-through dark:text-slate-400">{{ money(variant.price.regular) }}</dd>
-                    </div>
-                    <div :class="tileClass">
-                        <dt class="text-xs text-slate-500 dark:text-slate-400">Cost</dt>
-                        <dd class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {{ variant.last_purchase_price !== null ? money(variant.last_purchase_price) : '-' }}
-                        </dd>
-                    </div>
-                    <div :class="tileClass">
-                        <dt class="text-xs text-slate-500 dark:text-slate-400">Average cost</dt>
-                        <dd class="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {{ variant.average_cost !== null ? money(variant.average_cost) : '-' }}
-                        </dd>
-                    </div>
-                    <div :class="tileClass">
-                        <dt class="text-xs text-slate-500 dark:text-slate-400">Margin</dt>
-                        <dd v-if="margin" class="mt-1 text-sm font-semibold" :class="margin.amount >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'">
-                            {{ money(margin.amount) }}
-                        </dd>
-                        <dd v-if="margin" class="text-xs text-slate-500 dark:text-slate-400">{{ margin.percent.toFixed(1) }}% of price</dd>
-                        <dd v-else class="mt-1 text-sm text-slate-500 dark:text-slate-400">-</dd>
-                    </div>
-                </dl>
-            </section>
-
-            <section class="space-y-2">
-                <h3 :class="labelClass">Details</h3>
-                <dl class="divide-y divide-slate-100 rounded-2xl border border-slate-200 text-sm dark:divide-slate-800 dark:border-slate-700">
-                    <div v-if="variant.attributes.length" class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4">
-                        <dt class="w-40 shrink-0 text-slate-500 dark:text-slate-400">Attributes</dt>
-                        <dd class="flex flex-wrap gap-1.5">
-                            <span
-                                v-for="attribute in variant.attributes"
-                                :key="`${attribute.name}-${attribute.value}`"
-                                class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                            >
-                                <template v-if="attribute.name">{{ attribute.name }}: </template>{{ attribute.value }}
-                            </span>
-                        </dd>
-                    </div>
-                    <div class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4">
-                        <dt class="w-40 shrink-0 text-slate-500 dark:text-slate-400">Fulfillment</dt>
-                        <dd class="text-slate-900 dark:text-slate-100">{{ variant.stock.is_dropshipping ? 'Dropshipping' : 'Stocked locally' }}</dd>
-                    </div>
-                    <div v-if="variant.supplier" class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4">
-                        <dt class="w-40 shrink-0 text-slate-500 dark:text-slate-400">Supplier</dt>
-                        <dd class="text-slate-900 dark:text-slate-100">
-                            {{ variant.supplier.name || 'Not set' }}
-                            <span v-if="variant.supplier.cost !== null" class="text-slate-500 dark:text-slate-400"> · {{ money(variant.supplier.cost) }}</span>
-                            <span v-if="variant.supplier.lead_time_days !== null" class="text-slate-500 dark:text-slate-400"> · {{ variant.supplier.lead_time_days }}-day lead time</span>
-                        </dd>
-                    </div>
-                    <div class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4">
-                        <dt class="w-40 shrink-0 text-slate-500 dark:text-slate-400">Replenishment</dt>
-                        <dd class="text-slate-900 dark:text-slate-100">
-                            {{ variant.replenishment_status_label || 'Reorderable' }}
-                            <p v-if="variant.replenishment_note" class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{ variant.replenishment_note }}</p>
-                        </dd>
-                    </div>
-                    <div class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4">
-                        <dt class="w-40 shrink-0 text-slate-500 dark:text-slate-400">Inventory tracking</dt>
-                        <dd class="text-slate-900 dark:text-slate-100">{{ variant.track_inventory ? 'On' : 'Off' }}</dd>
-                    </div>
-                    <div class="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:gap-4">
-                        <dt class="w-40 shrink-0 text-slate-500 dark:text-slate-400">Created</dt>
-                        <dd class="text-slate-900 dark:text-slate-100">{{ formatDate(variant.created_at) }}</dd>
-                    </div>
-                </dl>
-            </section>
+                <div>
+                    <dt :class="factLabelClass">Created</dt>
+                    <dd class="mt-0.5 text-sm text-slate-900 dark:text-slate-100">{{ formatDate(variant.created_at) }}</dd>
+                </div>
+                <div v-if="variant.supplier" class="col-span-2 sm:col-span-4">
+                    <dt :class="factLabelClass">Supplier</dt>
+                    <dd class="mt-0.5 text-sm text-slate-900 dark:text-slate-100">
+                        {{ variant.supplier.name || 'Not set' }}
+                        <span v-if="variant.supplier.cost !== null" class="text-slate-500 dark:text-slate-400"> · {{ money(variant.supplier.cost) }}</span>
+                        <span v-if="variant.supplier.lead_time_days !== null" class="text-slate-500 dark:text-slate-400"> · {{ variant.supplier.lead_time_days }}-day lead time</span>
+                    </dd>
+                </div>
+                <div v-if="variant.replenishment_note" class="col-span-2 sm:col-span-4">
+                    <dt :class="factLabelClass">Replenishment note</dt>
+                    <dd class="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{{ variant.replenishment_note }}</dd>
+                </div>
+            </dl>
         </DialogContent>
     </Dialog>
 </template>
