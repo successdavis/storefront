@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 use App\Services\SkuGenerator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
+use Milon\Barcode\DNS1D;
 
 class ProductService
 {
@@ -833,12 +834,14 @@ class ProductService
                 ->with([
                     'values.type:id,name',
                     'images:id,product_variant_id,path,responsive_paths,alt,is_primary,sort_order',
+                    'defaultSupplier:id,name',
                 ])
                 ->orderBy('id'),
         ]);
 
         $card = $this->toStorefrontCard($product, null, true);
         $variants = $product->variants->values();
+        $variantSales = $this->adminVariantSales($variants->pluck('id')->all());
         $transactionVariants = $product->variants()
             ->withTrashed()
             ->with(['values.type:id,name'])
@@ -886,7 +889,7 @@ class ProductService
             'transactions' => $this->adminTransactionFeed($product, $transactionVariants),
             'notes_enabled' => $this->tableExists('product_notes'),
             'notes' => $this->adminNotesPayload($product),
-            'variants' => $variants->map(function (ProductVariant $variant) use ($product) {
+            'variants' => $variants->map(function (ProductVariant $variant) use ($product, $variantSales) {
                 $price = $this->resolveVariantPricing($variant, null, $product, false);
                 $stock = $this->resolveVariantStock($variant);
 
@@ -895,6 +898,21 @@ class ProductService
                     'label' => $this->describeVariant($variant),
                     'sku' => $variant->sku,
                     'barcode' => $variant->barcode,
+                    'barcode_image' => $this->barcodeImage($variant->barcode),
+                    'labels_url' => route('admin.barcodes.index', ['search' => $variant->sku ?: $variant->barcode]),
+                    'attributes' => $variant->values
+                        ->map(fn ($value) => ['name' => $value->type?->name, 'value' => $value->value])
+                        ->values()
+                        ->all(),
+                    'sales' => $variantSales->get((int) $variant->id, $this->formatSalesRow(null)),
+                    'reorder_point' => $variant->reorder_point !== null ? (int) $variant->reorder_point : null,
+                    'track_inventory' => (bool) $variant->track_inventory,
+                    'supplier' => $variant->isDropshipping() ? [
+                        'name' => $variant->defaultSupplier?->name,
+                        'cost' => $variant->supplier_cost !== null ? (float) $variant->supplier_cost : null,
+                        'lead_time_days' => $variant->supplier_lead_time_days !== null ? (int) $variant->supplier_lead_time_days : null,
+                    ] : null,
+                    'created_at' => $variant->created_at?->toIso8601String(),
                     'last_purchase_price' => $variant->last_purchase_price !== null ? (float) $variant->last_purchase_price : null,
                     'average_cost' => $variant->average_cost !== null ? (float) $variant->average_cost : null,
                     'replenishment_status' => $variant->replenishment_status ?? ProductVariant::REPLENISHMENT_REORDERABLE,
@@ -1020,24 +1038,71 @@ class ProductService
     protected function adminSalesSummary(Product $product): array
     {
         if (!$this->tableExists('order_items') || !$this->tableExists('orders')) {
-            return ['units_sold' => 0, 'orders_count' => 0, 'last_sold_at' => null];
+            return $this->formatSalesRow(null);
         }
 
-        $sales = DB::table('order_items')
+        return $this->formatSalesRow(
+            $this->soldOrderItemsQuery()
+                ->join('product_variants', 'product_variants.id', '=', 'order_items.variant_id')
+                ->where('product_variants.product_id', $product->id)
+                ->first()
+        );
+    }
+
+    /**
+     * @param array<int, int> $variantIds
+     * @return Collection<int, array> sales figures keyed by variant id
+     */
+    protected function adminVariantSales(array $variantIds): Collection
+    {
+        if ($variantIds === [] || !$this->tableExists('order_items') || !$this->tableExists('orders')) {
+            return collect();
+        }
+
+        return $this->soldOrderItemsQuery()
+            ->whereIn('order_items.variant_id', $variantIds)
+            ->groupBy('order_items.variant_id')
+            ->addSelect('order_items.variant_id')
+            ->get()
+            ->mapWithKeys(fn (object $row) => [(int) $row->variant_id => $this->formatSalesRow($row)]);
+    }
+
+    protected function soldOrderItemsQuery(): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->join('product_variants', 'product_variants.id', '=', 'order_items.variant_id')
-            ->where('product_variants.product_id', $product->id)
             ->whereIn('orders.status', Order::SOLD_STATUSES)
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as units_sold')
             ->selectRaw('COUNT(DISTINCT orders.id) as orders_count')
-            ->selectRaw('MAX(orders.created_at) as last_sold_at')
-            ->first();
+            ->selectRaw('MAX(orders.created_at) as last_sold_at');
+    }
 
+    protected function formatSalesRow(?object $row): array
+    {
         return [
-            'units_sold' => (int) $sales->units_sold,
-            'orders_count' => (int) $sales->orders_count,
-            'last_sold_at' => $sales->last_sold_at ? Carbon::parse($sales->last_sold_at)->toIso8601String() : null,
+            'units_sold' => (int) ($row->units_sold ?? 0),
+            'orders_count' => (int) ($row->orders_count ?? 0),
+            'last_sold_at' => !empty($row?->last_sold_at) ? Carbon::parse($row->last_sold_at)->toIso8601String() : null,
         ];
+    }
+
+    /**
+     * Code 128 barcode as an SVG data URI, for an <img> (never inline markup: the
+     * barcode is editable text).
+     */
+    protected function barcodeImage(?string $barcode): ?string
+    {
+        if (blank($barcode)) {
+            return null;
+        }
+
+        try {
+            $svg = (new DNS1D())->getBarcodeSVG($barcode, 'C128', 1.6, 56, 'black', false);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $svg ? 'data:image/svg+xml;base64,' . base64_encode($svg) : null;
     }
 
     protected function orderTransactionEntries(array $variantIds, Collection $variantLabels): array

@@ -1,6 +1,8 @@
 <script setup>
+import VariantDetailsDialog from '@/components/Admin/Products/VariantDetailsDialog.vue'
 import { formatDate } from '@/lib/datetime'
 import { Head, Link, useForm, router } from '@inertiajs/vue3'
+import { Info } from 'lucide-vue-next'
 import { computed, ref } from 'vue'
 
 const props = defineProps({
@@ -8,6 +10,14 @@ const props = defineProps({
 })
 
 const sales = computed(() => props.product.sales_summary ?? { units_sold: 0, orders_count: 0, last_sold_at: null })
+
+const detailsVariant = ref(null)
+const detailsOpen = ref(false)
+
+function openVariantDetails(variant) {
+    detailsVariant.value = variant
+    detailsOpen.value = true
+}
 
 const selectedTransactionType = ref('all')
 const editingNoteId = ref(null)
@@ -217,11 +227,11 @@ function deleteNote(noteId) {
                             <thead class="bg-slate-50 dark:bg-slate-950">
                                 <tr class="text-left text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                                     <th class="px-6 py-3">Variant</th>
-                                    <th class="px-6 py-3">Barcode</th>
                                     <th class="px-6 py-3">Price</th>
                                     <th class="px-6 py-3">Cost</th>
                                     <th class="px-6 py-3">Available</th>
                                     <th class="px-6 py-3">Replenishment</th>
+                                    <th class="px-6 py-3"><span class="sr-only">Details</span></th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
@@ -231,7 +241,6 @@ function deleteNote(noteId) {
                                             <p class="font-medium text-slate-900 dark:text-slate-100">{{ variant.label }}</p>
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ variant.barcode || '-' }}</td>
                                     <td class="px-6 py-4 text-slate-900 dark:text-slate-100">
                                         <div>{{ money(variant.price.current) }}</div>
                                         <div v-if="variant.price.has_discount" class="text-xs text-slate-500 line-through dark:text-slate-400">
@@ -253,6 +262,17 @@ function deleteNote(noteId) {
                                         <p v-if="variant.replenishment_note" class="mt-1 max-w-xs text-xs text-slate-500 dark:text-slate-400">
                                             {{ variant.replenishment_note }}
                                         </p>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button
+                                            type="button"
+                                            class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-100"
+                                            :aria-label="`View details for ${variant.label}`"
+                                            title="View details"
+                                            @click="openVariantDetails(variant)"
+                                        >
+                                            <Info class="h-4 w-4" aria-hidden="true" />
+                                        </button>
                                     </td>
                                 </tr>
                             </tbody>
@@ -426,5 +446,7 @@ function deleteNote(noteId) {
                 </div>
             </div>
         </section>
+
+        <VariantDetailsDialog v-model:open="detailsOpen" :variant="detailsVariant" :product-name="product.name" />
     </div>
 </template>

@@ -28,10 +28,13 @@ class ProductVariantObserver
 
     public function saved(ProductVariant $variant): void
     {
-        // A dropshipped variant is never on the shelf, so an audit's "not scanned"
-        // alert for it no longer applies.
-        if ($variant->wasChanged('fulfillment_type') && $variant->isDropshipping()) {
-            app(InventoryAlertEngine::class)->resolveUnscannedAuditAlertsForDropshippingVariants($variant->id);
+        // Once a variant is no longer expected on the shelf (dropshipped, or paused or
+        // discontinued with nothing left), an audit's "not scanned" alert no longer applies.
+        if (
+            $variant->wasChanged(['fulfillment_type', 'replenishment_status', 'quantity'])
+            && ! $variant->isExpectedOnShelf()
+        ) {
+            app(InventoryAlertEngine::class)->resolveUnscannedAuditAlertsNotExpectedOnShelf($variant->id);
         }
 
         // Restocks (or released reservations) clear recovered stock alerts immediately,

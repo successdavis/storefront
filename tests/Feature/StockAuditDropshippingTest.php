@@ -107,7 +107,7 @@ class StockAuditDropshippingTest extends TestCase
             'first_detected_at' => now(),
         ]);
 
-        $resolved = app(InventoryAlertEngine::class)->resolveUnscannedAuditAlertsForDropshippingVariants();
+        $resolved = app(InventoryAlertEngine::class)->resolveUnscannedAuditAlertsNotExpectedOnShelf();
 
         $this->assertSame(1, $resolved);
         $this->assertSame('resolved', $dropshippedUnscanned->fresh()->status);

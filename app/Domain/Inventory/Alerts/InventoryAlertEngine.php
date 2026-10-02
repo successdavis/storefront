@@ -87,25 +87,36 @@ class InventoryAlertEngine
     }
 
     /**
-     * Close "item not found during audit" alerts on dropshipping variants. They are
-     * never on the shelf, so an audit has nothing to count. Counted mismatches stay
-     * open because a person recorded an actual quantity for them.
+     * Close "item not found during audit" alerts on variants an audit no longer
+     * expects on the shelf: dropshipped ones, and paused or discontinued ones with
+     * no stock on record. Counted mismatches stay open because a person recorded an
+     * actual quantity for them.
      */
-    public function resolveUnscannedAuditAlertsForDropshippingVariants(?int $variantId = null, ?int $resolvedBy = null): int
+    public function resolveUnscannedAuditAlertsNotExpectedOnShelf(?int $variantId = null, ?int $resolvedBy = null): int
     {
-        return InventoryAlert::query()
+        $unscanned = fn () => InventoryAlert::query()
             ->where('status', 'open')
             ->where('type', 'discrepancy')
             ->where('meta->missing_item', true)
-            ->when($variantId, fn ($query) => $query->where('variant_id', $variantId))
+            ->when($variantId, fn ($query) => $query->where('variant_id', $variantId));
+
+        $resolve = fn (string $reason) => [
+            'status' => 'resolved',
+            'resolved_at' => now(),
+            'resolved_by' => $resolvedBy,
+            'resolved_reason' => $reason,
+        ];
+
+        $dropshipped = $unscanned()
             ->whereHas('variant', fn ($query) => $query
                 ->where('fulfillment_type', ProductVariant::FULFILLMENT_DROPSHIPPING))
-            ->update([
-                'status' => 'resolved',
-                'resolved_at' => now(),
-                'resolved_by' => $resolvedBy,
-                'resolved_reason' => 'Variant is fulfilled by dropshipping; it is not stocked locally, so audits do not count it.',
-            ]);
+            ->update($resolve('Variant is fulfilled by dropshipping; it is not stocked locally, so audits do not count it.'));
+
+        $retired = $unscanned()
+            ->whereHas('variant', fn ($query) => $query->whereNot(fn ($shelf) => $shelf->expectedOnShelf()))
+            ->update($resolve('Variant is paused or discontinued with no stock on record, so audits do not expect it on the shelf.'));
+
+        return $dropshipped + $retired;
     }
 
     public function resolveRecoveredOutOfStockAlerts(?int $resolvedBy = null): int

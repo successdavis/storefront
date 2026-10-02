@@ -35,7 +35,7 @@ class StockAuditService
     {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
 
-        return $this->scopedVariantQuery($scopeType, $categoryId)
+        return $this->expectedVariantQuery($scopeType, $categoryId)
             ->with([
                 'product:id,name',
                 'values:id,variant_type_id,value',
@@ -769,7 +769,7 @@ class StockAuditService
         }
 
         $totalExpected = $expectedVariantIds->count();
-        $totalScanned = $scannedVariantIds->count();
+        $totalScanned = $scannedVariantIds->intersect($expectedVariantIds)->count();
         $coverage = $totalExpected > 0
             ? round(($totalScanned / $totalExpected) * 100, 2)
             : 0;
@@ -807,16 +807,16 @@ class StockAuditService
             ->lockForUpdate()
             ->findOrFail($session->id);
 
+        $expectedVariantIds = $this->sessionScopedVariantIds($session);
+
+        // Units counted for variants outside the expected set (say, found stock of
+        // a discontinued item) are recorded but don't count toward coverage.
         $scannedItems = StockAuditItem::query()
             ->where('session_id', $session->id)
+            ->whereIn('variant_id', $expectedVariantIds)
             ->count();
 
-        $expectedItems = $this->expectedItemsCount(
-            $session->scope_type,
-            $session->category_id,
-            $session->warehouse_id,
-            $session->id,
-        );
+        $expectedItems = $expectedVariantIds->count();
 
         $coverage = $expectedItems > 0
             ? round(($scannedItems / $expectedItems) * 100, 2)
@@ -848,7 +848,7 @@ class StockAuditService
     ): int {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
 
-        return (int) $this->scopedVariantQuery($scopeType, $categoryId)
+        return (int) $this->expectedVariantQuery($scopeType, $categoryId)
             ->when(
                 true,
                 fn (Builder $query) => $this->excludeVariantsLockedByOtherSessions(
@@ -877,6 +877,18 @@ class StockAuditService
         }
 
         return $query->orderBy('id');
+    }
+
+    /**
+     * The part of the scope an audit is expected to cover. Paused or discontinued
+     * variants with no stock on record stay countable (found units still get
+     * recorded) but are never listed, required, or flagged as not scanned.
+     */
+    protected function expectedVariantQuery(
+        string $scopeType = StockAuditSession::SCOPE_FULL,
+        ?int $categoryId = null,
+    ): Builder {
+        return $this->scopedVariantQuery($scopeType, $categoryId)->expectedOnShelf();
     }
 
     protected function normalizeScope(string $scopeType, ?int $categoryId): array
@@ -946,7 +958,7 @@ class StockAuditService
     protected function sessionScopedVariantIds(StockAuditSession $session): Collection
     {
         return $this->excludeVariantsLockedByOtherSessions(
-            $this->scopedVariantQuery($session->scope_type, $session->category_id),
+            $this->expectedVariantQuery($session->scope_type, $session->category_id),
             $session->warehouse_id,
             $session->id,
         )

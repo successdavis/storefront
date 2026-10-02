@@ -132,6 +132,27 @@ class ProductVariant extends Model
         });
     }
 
+    /**
+     * Variants a stock audit expects to find on the shelf: locally stocked, and not
+     * paused or discontinued with nothing left on record.
+     */
+    public function scopeExpectedOnShelf($query)
+    {
+        $model = $query->getModel();
+
+        return $query
+            ->stockedFulfillment()
+            ->where(function ($shelfQuery) use ($model) {
+                $shelfQuery
+                    ->where($model->qualifyColumn('quantity'), '>', 0)
+                    ->orWhereNull($model->qualifyColumn('replenishment_status'))
+                    ->orWhereNotIn($model->qualifyColumn('replenishment_status'), [
+                        self::REPLENISHMENT_PAUSED,
+                        self::REPLENISHMENT_DISCONTINUED,
+                    ]);
+            });
+    }
+
     public function scopeEligibleForStockLevelAlerts($query)
     {
         $model = $query->getModel();
@@ -213,6 +234,15 @@ class ProductVariant extends Model
     public function requiresLocalStock(): bool
     {
         return $this->fulfillment_type !== self::FULFILLMENT_DROPSHIPPING;
+    }
+
+    public function isExpectedOnShelf(): bool
+    {
+        return $this->requiresLocalStock()
+            && ((int) $this->quantity > 0 || ! in_array($this->replenishment_status, [
+                self::REPLENISHMENT_PAUSED,
+                self::REPLENISHMENT_DISCONTINUED,
+            ], true));
     }
 
     public function isReorderable(): bool

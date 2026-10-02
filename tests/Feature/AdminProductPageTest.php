@@ -97,6 +97,32 @@ class AdminProductPageTest extends TestCase
             );
     }
 
+    public function test_variant_details_include_barcode_image_label_link_and_their_own_sales(): void
+    {
+        $product = Product::factory()->create();
+        $black = ProductVariant::factory()->create(['product_id' => $product->id, 'sku' => 'CORD-BLK']);
+        $white = ProductVariant::factory()->create(['product_id' => $product->id, 'sku' => 'CORD-WHT']);
+
+        $this->sale($black, 2, 'completed', '2026-09-01 10:00:00', pos: true);
+        $this->sale($black, 1, 'paid', '2026-09-03 10:00:00');
+        $this->sale($white, 5, 'cancelled', '2026-09-04 10:00:00');
+
+        $this->actingAs($this->director)
+            ->get(route('admin.products.show', $product))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('product.variants.0.sku', 'CORD-BLK')
+                ->where('product.variants.0.sales.units_sold', 3)
+                ->where('product.variants.0.sales.orders_count', 2)
+                ->where('product.variants.0.sales.last_sold_at', Carbon::parse('2026-09-03 10:00:00')->toIso8601String())
+                ->where('product.variants.0.labels_url', route('admin.barcodes.index', ['search' => 'CORD-BLK']))
+                ->where('product.variants.0.barcode_image', fn (?string $image) => str_starts_with((string) $image, 'data:image/svg+xml;base64,'))
+                ->where('product.variants.1.sku', 'CORD-WHT')
+                ->where('product.variants.1.sales.units_sold', 0)
+                ->where('product.sales_summary.units_sold', 3)
+            );
+    }
+
     public function test_product_without_sales_reports_zero_sold(): void
     {
         $product = Product::factory()->create();
