@@ -28,12 +28,16 @@ class ProductVariantObserver
 
     public function saved(ProductVariant $variant): void
     {
-        // Restocks (or released reservations) clear recovered stock alerts immediately,
-        // instead of leaving them open until the next scheduled inventory scan.
-        if (! $variant->wasChanged(['quantity', 'reserved'])) {
-            return;
+        // A dropshipped variant is never on the shelf, so an audit's "not scanned"
+        // alert for it no longer applies.
+        if ($variant->wasChanged('fulfillment_type') && $variant->isDropshipping()) {
+            app(InventoryAlertEngine::class)->resolveUnscannedAuditAlertsForDropshippingVariants($variant->id);
         }
 
-        app(InventoryAlertEngine::class)->resolveRecoveredStockAlertsForVariant($variant);
+        // Restocks (or released reservations) clear recovered stock alerts immediately,
+        // instead of leaving them open until the next scheduled inventory scan.
+        if ($variant->wasChanged(['quantity', 'reserved'])) {
+            app(InventoryAlertEngine::class)->resolveRecoveredStockAlertsForVariant($variant);
+        }
     }
 }

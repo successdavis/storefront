@@ -191,7 +191,9 @@ async function lookupBarcode(rawBarcode) {
         )
     } catch (error) {
         currentVariant.value = null
-        scannerError.value = 'Barcode not found in this audit scope. Confirm label and try again.'
+        scannerError.value = error.response?.data?.reason === 'dropshipping'
+            ? error.response.data.message
+            : 'Barcode not found in this audit scope. Confirm label and try again.'
     }
 }
 

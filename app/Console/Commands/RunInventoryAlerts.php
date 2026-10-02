@@ -57,6 +57,7 @@ class RunInventoryAlerts extends Command
             $engine->resolveRecoveredOutOfStockAlerts();
             $engine->resolveRecoveredLowStockAlerts();
             $engine->resolveStockLevelAlertsForDropshippingVariants();
+            $engine->resolveUnscannedAuditAlertsForDropshippingVariants();
 
             foreach ((new NegativeStockDetector)->detect() as $variant) {
                 $alerts->push($engine->raise(

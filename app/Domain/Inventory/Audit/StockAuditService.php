@@ -866,7 +866,9 @@ class StockAuditService
     ): Builder {
         [$scopeType, $categoryId] = $this->normalizeScope($scopeType, $categoryId);
 
-        $query = ProductVariant::query();
+        // Dropshipping variants are never on the shelf, so an audit neither lists,
+        // accepts nor expects a count for them (and never flags them as missing).
+        $query = ProductVariant::query()->stockedFulfillment();
 
         if ($scopeType === StockAuditSession::SCOPE_CATEGORY && $categoryId) {
             $query->whereHas('product.categories', function (Builder $builder) use ($categoryId): void {

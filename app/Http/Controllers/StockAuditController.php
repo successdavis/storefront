@@ -6,6 +6,7 @@ use App\Domain\Inventory\Alerts\DiscrepancyDashboard;
 use App\Domain\Inventory\Audit\StockAuditService;
 use App\Http\Requests\Admin\StoreStockAuditRequest;
 use App\Models\Category;
+use App\Models\ProductVariant;
 use App\Models\StockAuditSession;
 use App\Models\Warehouse;
 use Illuminate\Http\RedirectResponse;
@@ -187,10 +188,18 @@ class StockAuditController extends Controller
         $variant = $this->stockAuditService->findByBarcode($validated['barcode'], $session);
 
         if (!$variant) {
+            $isDropshipping = $session && ProductVariant::query()
+                ->where('barcode', trim($validated['barcode']))
+                ->where('fulfillment_type', ProductVariant::FULFILLMENT_DROPSHIPPING)
+                ->exists();
+
             return response()->json([
-                'message' => $session
-                    ? 'No product variant found for this barcode in the selected audit scope.'
-                    : 'No product variant found for this barcode.',
+                'message' => match (true) {
+                    $isDropshipping => 'This item is fulfilled by dropshipping. It is not stocked locally, so it does not need to be counted.',
+                    $session !== null => 'No product variant found for this barcode in the selected audit scope.',
+                    default => 'No product variant found for this barcode.',
+                },
+                'reason' => $isDropshipping ? 'dropshipping' : 'not_found',
             ], 404);
         }
 

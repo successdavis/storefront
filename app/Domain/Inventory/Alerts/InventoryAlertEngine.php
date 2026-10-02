@@ -86,6 +86,28 @@ class InventoryAlertEngine
             ]);
     }
 
+    /**
+     * Close "item not found during audit" alerts on dropshipping variants. They are
+     * never on the shelf, so an audit has nothing to count. Counted mismatches stay
+     * open because a person recorded an actual quantity for them.
+     */
+    public function resolveUnscannedAuditAlertsForDropshippingVariants(?int $variantId = null, ?int $resolvedBy = null): int
+    {
+        return InventoryAlert::query()
+            ->where('status', 'open')
+            ->where('type', 'discrepancy')
+            ->where('meta->missing_item', true)
+            ->when($variantId, fn ($query) => $query->where('variant_id', $variantId))
+            ->whereHas('variant', fn ($query) => $query
+                ->where('fulfillment_type', ProductVariant::FULFILLMENT_DROPSHIPPING))
+            ->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+                'resolved_by' => $resolvedBy,
+                'resolved_reason' => 'Variant is fulfilled by dropshipping; it is not stocked locally, so audits do not count it.',
+            ]);
+    }
+
     public function resolveRecoveredOutOfStockAlerts(?int $resolvedBy = null): int
     {
         return InventoryAlert::query()
