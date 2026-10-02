@@ -185,7 +185,7 @@ class DiscrepancyDashboard
         $query = $this->filteredQuery($filters)->with([
             'variant:id,product_id,sku,barcode,quantity',
             'variant.images',
-            'variant.product:id,name',
+            'variant.product:id,name,slug',
             'variant.product.images',
             'variant.values:id,variant_type_id,value',
             'variant.values.type:id,name',
@@ -418,7 +418,7 @@ class DiscrepancyDashboard
             'image' => $variant?->product
                 ? $this->productService->resolveProductImage($variant->product, $variant)
                 : null,
-            'product_url' => $variant?->product_id ? route('admin.products.show', $variant->product_id) : null,
+            'product_url' => $variant?->product ? route('admin.products.show', $variant->product) : null,
             'system_quantity' => $systemQuantity !== null ? (int) $systemQuantity : null,
             'physical_quantity' => $physicalQuantity !== null ? (int) $physicalQuantity : null,
             'ledger_quantity' => $ledgerQuantity !== null ? (int) $ledgerQuantity : null,

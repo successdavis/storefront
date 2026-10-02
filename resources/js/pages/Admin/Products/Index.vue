@@ -355,10 +355,10 @@ function applyBulk() {
                         </td>
 
                         <td class="flex items-center gap-2 px-6 py-4">
-                            <a :href="route('admin.products.show', p.id)" class="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100">
+                            <a :href="route('admin.products.show', p.slug)" class="p-2 rounded-full bg-emerald-50 hover:bg-emerald-100">
                                 <EyeIcon class="h-5 w-5 text-emerald-700" />
                             </a>
-                            <a :href="route('admin.products.edit', p.id)" class="p-2 rounded-full bg-blue-50 hover:bg-blue-100">
+                            <a :href="route('admin.products.edit', p.slug)" class="p-2 rounded-full bg-blue-50 hover:bg-blue-100">
                                 <PencilSquareIcon class="h-5 w-5 text-blue-700" />
                             </a>
                             <button @click="duplicateProduct(p.id)" class="p-2 rounded-full bg-amber-50 hover:bg-amber-100">

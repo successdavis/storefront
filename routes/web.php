@@ -542,8 +542,14 @@ Route::prefix('admin')
 
         Route::get('/products', [AdminProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [AdminProductController::class, 'create'])->name('products.create');
-        Route::get('/products/{product}', [AdminProductController::class, 'show'])->name('products.show');
-        Route::get('/products/{product}/edit', [AdminProductController::class, 'edit'])->name('products.edit');
+        // Product pages are addressed by slug; actions below stay on ids so a numeric
+        // slug can never be mistaken for another product's id.
+        Route::get('/products/{product:slug}', [AdminProductController::class, 'show'])
+            ->name('products.show')
+            ->missing(fn (Request $request) => AdminProductController::redirectToCurrentSlug($request));
+        Route::get('/products/{product:slug}/edit', [AdminProductController::class, 'edit'])
+            ->name('products.edit')
+            ->missing(fn (Request $request) => AdminProductController::redirectToCurrentSlug($request));
         Route::post('/products', [AdminProductController::class, 'store'])->name('products.store');
         Route::post('/products/draft', [AdminProductController::class, 'storeDraft'])->name('products.draft.store');
         Route::patch('/products/{product}/draft', [AdminProductController::class, 'updateDraft'])->name('products.draft.update');

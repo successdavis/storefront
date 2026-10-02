@@ -677,8 +677,8 @@ function submitBatchAction() {
 
                             <td class="px-4 py-4">
                                 <Link
-                                    v-if="alert.product_id"
-                                    :href="route('admin.products.show', alert.product_id)"
+                                    v-if="alert.product_url"
+                                    :href="alert.product_url"
                                     class="block max-w-md font-medium leading-snug text-gray-900 transition hover:text-blue-600 hover:underline dark:text-gray-100 dark:hover:text-blue-400"
                                 >
                                     {{ alert.product }}

@@ -9,6 +9,7 @@ use App\Models\{Brand, Category, Product, VariantType, Vendor};
 use App\Services\ProductService;
 use App\Services\SlugService;
 use App\Support\SearchTerms;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -194,6 +195,28 @@ class AdminProductController extends Controller
         return Inertia::render('Admin/Products/Show', [
             'product' => $productService->adminDetailPayload($product),
         ]);
+    }
+
+    /**
+     * Old product page links (numeric ids, or a slug from before a rename) keep
+     * working by redirecting to the product's current slug URL.
+     */
+    public static function redirectToCurrentSlug(Request $request): RedirectResponse
+    {
+        $value = (string) $request->route()->originalParameter('product');
+
+        $product = (ctype_digit($value) ? Product::query()->find((int) $value) : null)
+            ?? Product::query()
+                ->whereHas('slugHistories', fn ($query) => $query->where('slug', $value))
+                ->latest('id')
+                ->first();
+
+        abort_unless($product && filled($product->slug), 404);
+
+        return redirect()->route(
+            $request->route()->getName(),
+            array_merge($request->query(), ['product' => $product->slug]),
+        );
     }
 
     public function create(Request $request)

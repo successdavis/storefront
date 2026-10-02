@@ -34,7 +34,7 @@ class InventoryAlertController extends Controller
         $baseQuery = InventoryAlert::query()
             ->with([
                 'variant:id,product_id,sku,quantity,reserved,replenishment_status,replenishment_note',
-                'variant.product:id,name,is_active,deleted_at',
+                'variant.product:id,name,slug,is_active,deleted_at',
                 'variant.product.images',
                 'variant.images',
                 'variant.values:id,variant_type_id,value',
@@ -389,6 +389,7 @@ class InventoryAlertController extends Controller
             'sku' => $variant?->sku,
             'variant_id' => $variant?->id ? (int) $variant->id : null,
             'product_id' => $variant?->product_id ? (int) $variant->product_id : null,
+            'product_url' => $variant?->product ? route('admin.products.show', $variant->product) : null,
             'image_url' => $variant?->product
                 ? $this->productService->resolveProductImage($variant->product, $variant)
                 : null,

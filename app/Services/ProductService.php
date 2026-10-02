@@ -10,6 +10,7 @@ use App\Models\{Admin\ProductImage,
     ItemReceiptItem,
     OpeningBalance,
     OpeningBalanceItem,
+    Order,
     OrderItem,
     Product,
     ProductFaq,
@@ -25,6 +26,7 @@ use App\Models\{Admin\ProductImage,
 use App\Models\Category;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Schema;
@@ -877,6 +879,7 @@ class ProductService
                 ),
                 'average_cost' => $this->summarizeNumericMetric($variants->pluck('average_cost')),
             ],
+            'sales_summary' => $this->adminSalesSummary($product),
             'created_at' => optional($product->created_at)->toDateTimeString(),
             'updated_at' => optional($product->updated_at)->toDateTimeString(),
             'transaction_filters' => $this->adminTransactionFilters(),
@@ -1008,6 +1011,33 @@ class ProductService
             ->sortByDesc(fn (array $entry) => $entry['occurred_at'] ?? '')
             ->values()
             ->all();
+    }
+
+    /**
+     * Lifetime units sold across every variant the product has had, including
+     * deactivated and deleted ones, from orders that completed as sales.
+     */
+    protected function adminSalesSummary(Product $product): array
+    {
+        if (!$this->tableExists('order_items') || !$this->tableExists('orders')) {
+            return ['units_sold' => 0, 'orders_count' => 0, 'last_sold_at' => null];
+        }
+
+        $sales = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->join('product_variants', 'product_variants.id', '=', 'order_items.variant_id')
+            ->where('product_variants.product_id', $product->id)
+            ->whereIn('orders.status', Order::SOLD_STATUSES)
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as units_sold')
+            ->selectRaw('COUNT(DISTINCT orders.id) as orders_count')
+            ->selectRaw('MAX(orders.created_at) as last_sold_at')
+            ->first();
+
+        return [
+            'units_sold' => (int) $sales->units_sold,
+            'orders_count' => (int) $sales->orders_count,
+            'last_sold_at' => $sales->last_sold_at ? Carbon::parse($sales->last_sold_at)->toIso8601String() : null,
+        ];
     }
 
     protected function orderTransactionEntries(array $variantIds, Collection $variantLabels): array

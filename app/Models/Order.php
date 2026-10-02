@@ -13,6 +13,9 @@ class Order extends Model
 {
     use HasFactory, HasPayments;
 
+    /** Orders whose items count as sold; pending, failed and cancelled orders do not. */
+    public const SOLD_STATUSES = ['paid', 'shipped', 'completed'];
+
     protected $fillable = [
         'user_id', 'total_amount', 'discount', 'channel', 'status', 'order_number', 'subtotal', 'shipping_total', 'tax_total', 'currency'
     ];
